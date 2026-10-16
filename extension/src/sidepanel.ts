@@ -125,6 +125,16 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       await updateViolations(form);
       return { violations };
     }
+    case "draft_message": {
+      // Opens a pre-filled compose window; the user reviews it and clicks Send (ADR 0001).
+      const tab = await activeTab();
+      const sandbox = tab.url?.startsWith("http://localhost:8787/sandbox/");
+      const base = sandbox ? "http://localhost:8787/sandbox/gmail-compose.html?" : "https://mail.google.com/mail/?view=cm&";
+      const q = new URLSearchParams({ to: String(args.to ?? ""), su: String(args.subject ?? ""), body: String(args.body ?? "") });
+      await chrome.tabs.create({ url: base + q.toString() });
+      say("system", "Drafted the request. Review it and click Send yourself.");
+      return { opened: true, note: "The user must review and click Send." };
+    }
     case "complete_step":
       say("system", `✓ ${args.summary}`);
       return { ok: true };
