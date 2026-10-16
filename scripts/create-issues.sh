@@ -109,8 +109,13 @@ issue "Extension skeleton: side panel, page reader, element finder, overlay" "ex
 - [ ] Overlay in Shadow DOM: pulse highlight, badges, flagged Create
 - [ ] **Milestone:** \"where do I add labels?\" pulses the Labels section on the sandbox page"
 
-issue "Live relay: side panel ⇄ Cloud Run ⇄ Vertex Live" "api" "$D1" \
-"ADR 0003. Model \`gemini-live-2.5-flash-native-audio\`.
+issue "Live relay with provider adapter (router in dev, Vertex Live in prod)" "api" "$D1" \
+"ADR 0003 and ADR 0006.
+- [ ] GuideRail relay protocol: audio, text, toolCall, toolResult, transcript, resumption
+- [ ] \`RouterRealtimeProvider\`: OpenAI-compatible \`/v1/realtime\`, \`gpt-realtime\`, key from gitignored \`api/.env.local\`
+- [ ] \`VertexLiveProvider\`: \`gemini-live-2.5-flash-native-audio\` via ADC / service account
+- [ ] Fake provider for tests
+- [ ] **Switch to Vertex by end of Day 2**
 - [ ] WebSocket \`/live\` with Firebase ID token check
 - [ ] Audio up (PCM16 16 kHz) and down (24 kHz)
 - [ ] Tool calls routed to the side panel; server tools run in the API
