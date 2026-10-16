@@ -6,5 +6,3 @@ dist/
 .DS_Store
 .firebase/
 service-account*.json
-.env.local
-**/.env.local
