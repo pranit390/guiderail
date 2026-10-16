@@ -1,0 +1,15 @@
+{
+  "name": "guiderail",
+  "private": true,
+  "type": "module",
+  "workspaces": ["server", "extension"],
+  "scripts": {
+    "dev:server": "npm run dev -w server",
+    "build:ext": "npm run build -w extension",
+    "watch:ext": "npm run watch -w extension",
+    "typecheck": "npm run typecheck -ws"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
