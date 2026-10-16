@@ -18,7 +18,7 @@
 
 - **Users:** engineers, analysts and ops staff working in cloud consoles and admin tools
 - **Buyers:** platform engineering, cloud governance and FinOps, IT enablement
-- **First Policy:** Zoop's GCP Resource Labeling Policy (5 mandatory labels)
+- **First Policy:** an example Org Labeling Policy (5 mandatory labels)
 
 ## Demo story (about 3.5 min, 4 apps, 2 people)
 
@@ -28,7 +28,7 @@
 4. **Blocker:** permission denied. GuideRail finds `roles/run.developer` and drafts the Gmail request. The user sends it.
 5. **Approver:** the admin opens the link and picks *Owner*. GuideRail says "Least privilege: grant Cloud Run Developer." Fixed.
 6. **Resume:** "Access granted. Picking up where we left off."
-7. **Guide, then guard:** at Labels, GuideRail explains the 5 labels and suggests values. The user types `owner=pranit@zoop.one`, and GuideRail says "No @ or dots. Use owner=pranit."
+7. **Guide, then guard:** at Labels, GuideRail explains the 5 labels and suggests values. The user types `owner=pranit@example.com`, and GuideRail says "No @ or dots. Use owner=pranit."
 8. **Done:** the user clicks Create. The dashboard shows 1 Journey, 4 apps, 4 Violations prevented, about 6 min.
 9. **Close:** "Guide first. Guard second. Never clicks for you."
 

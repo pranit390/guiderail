@@ -144,7 +144,7 @@ html{scroll-behavior:smooth}
       <li><b>Q6</b> GuideRail drafts messages. The user always clicks Send.</li>
       <li><b>Q7</b> Two builders. A owns the extension; B owns the server, rules, sandbox and pitch.</li>
       <li><b>Q8</b> Voice goes through a Cloud Run relay to the Vertex Live API. No API keys anywhere.</li>
-      <li><b>Q9</b> Project <code>zoop-innovation</code>, with every resource carrying Zoop's 5 labels.</li>
+      <li><b>Q9</b> A dedicated GCP project, with every resource carrying the Org Labeling Policy's 5 labels.</li>
       <li><b>Q10</b> TypeScript everywhere.</li>
     </ul>
   </div>
@@ -162,7 +162,7 @@ html{scroll-behavior:smooth}
       <tr><td><b>Session</b></td><td>One connected voice or text conversation. A Journey may use several.</td><td>Reconnected after a page reload</td></tr>
       <tr><td><b>Step</b></td><td>One highlighted action the user performs.</td><td>"Click <i>Create service</i>"</td></tr>
       <tr><td><b>Blocker</b></td><td>Something on screen that stops the Journey.</td><td><code>permission_denied</code></td></tr>
-      <tr><td><b>Policy</b></td><td>A human-readable company document.</td><td>Zoop GCP Labeling Policy</td></tr>
+      <tr><td><b>Policy</b></td><td>A human-readable company document.</td><td>Org Labeling Policy</td></tr>
       <tr><td><b>Rule</b></td><td>One requirement from a Policy, in two parts: a <b>guide</b> (what it means, its format, examples, a suggested value) and a <b>check</b> (machine-checkable).</td><td>Label <code>owner</code>: explain, suggest <code>pranit</code>, then check</td></tr>
       <tr><td><b>Violation</b></td><td>A Rule failing against what's currently on screen.</td><td><code>owner</code> missing, severity block</td></tr>
       <tr><td><b>Requester / Approver</b></td><td>The person who is blocked, and the person who grants access.</td><td>New engineer / project admin</td></tr>
@@ -194,7 +194,7 @@ html{scroll-behavior:smooth}
       <div class="box"><b>chrome.storage</b><span><code>.managed</code>: Policies from IT. <code>.session</code>: live Journey pointer.</span></div>
     </div>
     <div class="zone gcp">
-      <div class="zt">Google Cloud · zoop-innovation</div>
+      <div class="zt">Google Cloud · your project</div>
       <div class="box g key"><b>Cloud Run · guiderail-api</b><span>WebSocket <code>/live</code> relay to the Vertex Live API. REST for compile, judge, approvals, sandbox.</span></div>
       <div class="box g"><b>Vertex AI</b><span><code>gemini-live-2.5-flash-native-audio</code> (voice + tools). <code>gemini-3.8-flash</code> (compile and judge).</span></div>
       <div class="box g"><b>ADK agent</b><span>Policy compiler and fuzzy judge, with approval-link tools.</span></div>
@@ -215,7 +215,7 @@ html{scroll-behavior:smooth}
     <div class="card"><h4>Gemini picks what, code finds where</h4><p>Gemini calls <code>highlight({text:"Create service"})</code>. The content script finds the element in the page. Gemini never returns pixel coordinates, which is the pattern TipTour uses.</p></div>
     <div class="card"><h4>Policy checks are plain code</h4><p>Rules are JSON and checked locally in about 1 ms on every field change. That keeps the demo reliable on camera. Gemini only compiles Policies and judges the fuzzy rules.</p></div>
     <div class="card"><h4>The side panel owns state</h4><p>Chrome kills an idle background worker after about 30 s. The side panel stays open across tab switches in the window, so the voice session and Journey live there.</p></div>
-    <div class="card"><h4>No keys, Vertex only</h4><p>The browser never holds a credential. Cloud Run uses its service account to reach Vertex. Zoop's security team has nothing to object to.</p></div>
+    <div class="card"><h4>No keys, Vertex only</h4><p>The browser never holds a credential. Cloud Run uses its service account to reach Vertex. A security team has nothing to object to.</p></div>
   </div>
 </section>
 
@@ -223,13 +223,13 @@ html{scroll-behavior:smooth}
   <h2><span class="n">3</span>MVP demo flow</h2>
   <p class="sub">The one end-to-end story we build, rehearse and record. About 3.5 minutes across 4 apps and 2 people.</p>
   <ol class="story">
-    <li><div><div class="who">Requester · Chrome</div>Installs GuideRail. It signs in anonymously and silently, and a sandbox org is created with Zoop's Policy already loaded.</div></li>
+    <li><div><div class="who">Requester · Chrome</div>Installs GuideRail. It signs in anonymously and silently, and a sandbox org is created with the Org Labeling Policy already loaded.</div></li>
     <li><div><div class="who">Requester · console.cloud.google.com (signed out)</div>Presses <code>⌘⇧K</code>. The side panel opens and the user says the Goal.<div class="say">"I want to deploy my app to Cloud Run."</div>Blocker <code>not_signed_in</code> is detected, so GuideRail starts a Detour: "First, sign in. Top right." It highlights the button, and the user types their own password.</div></li>
     <li><div><div class="who">Requester · Cloud Console</div>Project picker, then Cloud Run, then <i>Create service</i>. Each Step is highlighted and spoken, and moves on when the user clicks.</div></li>
     <li><div><div class="who">Requester · Cloud Run</div>Blocker <code>permission_denied</code> is detected.<div class="say">"You need Cloud Run Developer on this project. I'll draft a request to your admin."</div>Gmail compose opens pre-filled with the role, project, reason and an Approver link. <b>The user clicks Send.</b></div></li>
     <li><div><div class="who">Approver · second Chrome profile · Gmail → Approver page → IAM</div>Opens the link. GuideRail starts an Approver Journey with the role already chosen. The admin picks <i>Owner</i>.<div class="say">"Hold on. Policy says least privilege. Grant Cloud Run Developer instead."</div>The admin fixes it and grants. The audit log records <code>violation → resolved</code>.</div></li>
     <li><div><div class="who">Requester · back in Cloud Run</div>The Journey resumes from Firestore.<div class="say">"Access granted. Picking up where we left off."</div>Service account Step: the name must start with <code>sa-</code>, no Owner role, no key download.</div></li>
-    <li><div><div class="who">Requester · Cloud Run create form · Labels step</div><b>Guide first:</b> GuideRail explains the 5 required labels and shows a Suggested labels card (environment asked, application from the service name, component=api, owner=pranit, managed-by=manual) with copy buttons.<div class="say">"Zoop needs 5 labels here. I've suggested values. Is this prod or dev?"</div><b>Then guard:</b> the user skips one and moves toward Create. Five <code>block</code> Violations show. Create is outlined red with the reason, and GuideRail speaks and highlights the Labels section. The user types <code>owner=pranit@zoop.one</code>.<div class="say">"Label values can't contain @ or dots. Use your first name: owner=pranit."</div></div></li>
+    <li><div><div class="who">Requester · Cloud Run create form · Labels step</div><b>Guide first:</b> GuideRail explains the 5 required labels and shows a Suggested labels card (environment asked, application from the service name, component=api, owner=pranit, managed-by=manual) with copy buttons.<div class="say">"Your org needs 5 labels here. I've suggested values. Is this prod or dev?"</div><b>Then guard:</b> the user skips one and moves toward Create. Five <code>block</code> Violations show. Create is outlined red with the reason, and GuideRail speaks and highlights the Labels section. The user types <code>owner=pranit@example.com</code>.<div class="say">"Label values can't contain @ or dots. Use your first name: owner=pranit."</div></div></li>
     <li><div><div class="who">Requester</div>All Rules pass. "You're good to deploy." <b>The user clicks Create.</b> The Goal is detected (service URL shown) and the Journey completes.</div></li>
     <li><div><div class="who">Admin dashboard · Firebase Hosting</div>1 Journey, 4 apps, 2 Detours, 4 Violations prevented, about 6 min in total.</div></li>
   </ol>
@@ -348,8 +348,8 @@ sequenceDiagram
     </tbody>
   </table></div>
   <p>Gmail compose opens by URL, so GuideRail never types into Gmail:</p>
-  <pre class="code">https://mail.google.com/mail/?view=cm&amp;to=admin@zoop.one
-  &amp;su=Access request: roles/run.developer on zoop-innovation
+  <pre class="code">https://mail.google.com/mail/?view=cm&amp;to=admin@example.com
+  &amp;su=Access request: roles/run.developer on demo-project
   &amp;body=…reason…%0A%0AApprove with GuideRail: https://guiderail.web.app/a/apr_91c</pre>
 
   <h3>4.6 Journey states</h3>
@@ -421,7 +421,7 @@ sequenceDiagram
 
   <h3>5.2 Deploy</h3>
   <pre class="code">gcloud run deploy guiderail-api --source api/ --region us-central1 \
-  --service-account sa-guiderail-api@zoop-innovation.iam.gserviceaccount.com \
+  --service-account sa-guiderail-api@PROJECT_ID.iam.gserviceaccount.com \
   --timeout 3600 --session-affinity --min-instances 1 --concurrency 40 \
   --labels environment=dev,application=guiderail,component=api,owner=pranit,managed-by=gcp</pre>
   <p>The service account has <code>roles/aiplatform.user</code> and <code>roles/datastore.user</code> and nothing else. <code>--timeout 3600</code> keeps the WebSocket open for long sessions. <code>--min-instances 1</code> avoids a cold start during judging.</p>
@@ -451,7 +451,7 @@ sequenceDiagram
 
 <section id="rules">
   <h2><span class="n">7</span>Policy rules (seeded)</h2>
-  <p class="sub">From the Zoop GCP Resource Labeling Policy (effective July 2026) plus two IAM rules for the Approver scene.</p>
+  <p class="sub">From the example Org Labeling Policy plus two IAM rules for the Approver scene.</p>
   <div class="note"><h4>Guide before guard</h4>Every Rule carries a <code>guide</code> as well as a <code>check</code>. When the user reaches a Rule's section, GuideRail first <b>explains and suggests</b> (format, examples, a value worked out from context). The <code>check</code> runs afterwards on every change and only speaks when something is wrong. Suggestions: <code>owner</code> from the user's first name or team, <code>managed-by=manual</code> for console creates, <code>application</code> from the service name matched to canonical apps, <code>component</code> from the resource type, and <code>environment</code> always asked.</div>
   <div class="tbl"><table>
     <thead><tr><th>Rule</th><th>Scope</th><th>Check</th><th>Severity</th></tr></thead>
@@ -467,7 +467,7 @@ sequenceDiagram
       <tr><td><code>sa-no-keys</code></td><td>Service account keys tab</td><td>Warn before "Add key"</td><td><span class="pill p-warn">warn</span></td></tr>
     </tbody>
   </table></div>
-  <pre class="code">{ "id": "owner-format", "policyId": "zoop-gcp-labels",
+  <pre class="code">{ "id": "owner-format", "policyId": "org-labeling",
   "scope": { "url": "console.cloud.google.com/run/create*", "section": "Labels" },
   "guide": { "explain": "Team or person responsible for cost and cleanup.",
              "format": "lowercase first name or team, no @ or dots",

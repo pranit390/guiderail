@@ -1,5 +1,5 @@
 {
-  "policyId": "zoop-gcp-labeling",
+  "policyId": "org-labeling",
   "rules": [
     {
       "id": "label-required-environment",

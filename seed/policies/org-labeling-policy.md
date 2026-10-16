@@ -1,6 +1,6 @@
-# Zoop GCP Resource Labeling Policy
+# Org Labeling Policy
 
-Applies to all projects under the `zoop.one` organization. Effective July 2026. Owned by Infrastructure.
+An example labeling policy for a GCP organization, used as demo data. Owned by the Infrastructure team.
 
 Every resource that supports labels must carry the 5 mandatory labels. This covers VMs, disks, buckets, Cloud SQL, GKE clusters and node pools, Cloud Functions, **Cloud Run services**, Pub/Sub topics, BigQuery datasets and the GCP projects themselves.
 

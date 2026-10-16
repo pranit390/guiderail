@@ -5,7 +5,7 @@ goals: ["deploy", "cloud run", "create service"]
 rules: [label-required-*, env-enum, owner-format, managed-by-enum, label-format, iam-no-owner, sa-no-keys]
 ---
 
-# Deploying a Cloud Run service at Zoop
+# Deploying a Cloud Run service (example org)
 
 1. Region is `us-central1` unless the user says it's for an EU customer.
 2. Use a dedicated service account named `sa-<application>`. Never use the default compute service account.
