@@ -1,0 +1,174 @@
+{
+  "policyId": "zoop-gcp-labeling",
+  "rules": [
+    {
+      "id": "label-required-environment",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "Which environment this resource runs in.",
+        "format": "one of prod, uat, dev, test",
+        "examples": ["environment=dev", "environment=prod"],
+        "suggest": "ask"
+      },
+      "check": { "kind": "label_required", "key": "environment" },
+      "severity": "block",
+      "message": "Add environment: prod, uat, dev or test."
+    },
+    {
+      "id": "env-enum",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "Only the four approved environments are allowed.",
+        "format": "prod | uat | dev | test",
+        "examples": ["environment=uat"],
+        "suggest": "ask"
+      },
+      "check": { "kind": "label_value_enum", "key": "environment", "values": ["prod", "uat", "dev", "test"] },
+      "severity": "block",
+      "message": "environment must be prod, uat, dev or test (e.g. production → prod)."
+    },
+    {
+      "id": "label-required-application",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "The product this resource belongs to. Billing is grouped by it.",
+        "format": "the app's one canonical name, lowercase with hyphens",
+        "examples": ["application=ocr-service"],
+        "suggest": "form.serviceName"
+      },
+      "check": { "kind": "label_required", "key": "application" },
+      "severity": "block",
+      "message": "Add application with the app's canonical name."
+    },
+    {
+      "id": "app-canonical",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "Use exactly the same app name everywhere so billing doesn't split.",
+        "format": "matches the org's canonical app list",
+        "examples": ["ocr-service, not ocr-svc"],
+        "suggest": "org.canonicalApps"
+      },
+      "check": { "kind": "llm_judge", "key": "application", "question": "Is this value one of the org's canonical application names, or an obvious variant of one?" },
+      "severity": "warn",
+      "message": "This looks like a variant of a canonical app name. Use the canonical one."
+    },
+    {
+      "id": "label-required-component",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "What this resource does inside the app.",
+        "format": "prefer api, frontend, backend, db, cache, worker, queue, storage, lb",
+        "examples": ["component=api"],
+        "suggest": "resource.type"
+      },
+      "check": { "kind": "label_required", "key": "component" },
+      "severity": "block",
+      "message": "Add component, e.g. component=api."
+    },
+    {
+      "id": "component-preferred",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "Stick to the standard component names where one fits.",
+        "format": "api | frontend | backend | db | cache | worker | queue | storage | lb",
+        "examples": ["component=worker"],
+        "suggest": "resource.type"
+      },
+      "check": { "kind": "label_value_enum", "key": "component", "values": ["api", "frontend", "backend", "db", "cache", "worker", "queue", "storage", "lb"] },
+      "severity": "warn",
+      "message": "Prefer a standard component name such as api or worker."
+    },
+    {
+      "id": "label-required-owner",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "The team or person responsible for cost, patching and cleanup.",
+        "format": "team name or first name",
+        "examples": ["owner=pranit", "owner=platform-team"],
+        "suggest": "user.firstName"
+      },
+      "check": { "kind": "label_required", "key": "owner" },
+      "severity": "block",
+      "message": "Add owner with your first name or team."
+    },
+    {
+      "id": "owner-format",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "Label values can't hold emails.",
+        "format": "no @ and no dots",
+        "examples": ["owner=pranit"],
+        "suggest": "user.firstName"
+      },
+      "check": { "kind": "label_value_regex", "key": "owner", "pattern": "^[a-z0-9-]+$" },
+      "severity": "block",
+      "message": "Label values can't contain @ or dots. Use a team or first name, e.g. owner=pranit."
+    },
+    {
+      "id": "label-required-managed-by",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "How this resource is managed, so nobody's console edits get overwritten by Terraform.",
+        "format": "terraform, manual or gcp",
+        "examples": ["managed-by=manual"],
+        "suggest": "context.consoleCreate→manual"
+      },
+      "check": { "kind": "label_required", "key": "managed-by" },
+      "severity": "block",
+      "message": "Add managed-by. You're creating this in the console, so use manual."
+    },
+    {
+      "id": "managed-by-enum",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "Only three values are allowed. Ownership goes in owner, not here.",
+        "format": "terraform | manual | gcp",
+        "examples": ["managed-by=manual"],
+        "suggest": "context.consoleCreate→manual"
+      },
+      "check": { "kind": "label_value_enum", "key": "managed-by", "values": ["terraform", "manual", "gcp"] },
+      "severity": "block",
+      "message": "managed-by must be terraform, manual or gcp."
+    },
+    {
+      "id": "label-format",
+      "scope": { "url": "console.cloud.google.com/*", "section": "Labels" },
+      "guide": {
+        "explain": "Keys and values use lowercase letters, numbers and hyphens.",
+        "format": "^[a-z0-9-]{1,63}$, hyphens not underscores",
+        "examples": ["kyc-api, not KYC_API or kycApi"],
+        "suggest": null
+      },
+      "check": { "kind": "label_all_regex", "pattern": "^[a-z0-9-]{1,63}$" },
+      "severity": "block",
+      "message": "Use lowercase letters, numbers and hyphens only (max 63 characters)."
+    },
+    {
+      "id": "iam-no-owner",
+      "scope": { "url": "console.cloud.google.com/iam-admin/*", "section": "Grant access" },
+      "guide": {
+        "explain": "Grant the smallest role that does the job.",
+        "format": "a predefined role, never Owner or Editor",
+        "examples": ["roles/run.developer"],
+        "suggest": "approval.role"
+      },
+      "check": { "kind": "field_value_not_in", "field": "Role", "values": ["Owner", "Editor", "roles/owner", "roles/editor"] },
+      "severity": "block",
+      "message": "Least privilege: don't grant Owner or Editor. Grant the requested role instead."
+    },
+    {
+      "id": "sa-no-keys",
+      "scope": { "url": "console.cloud.google.com/iam-admin/serviceaccounts/*", "section": "Keys" },
+      "guide": {
+        "explain": "Service account keys are long-lived secrets. Cloud Run uses the attached service account instead.",
+        "format": "no key download",
+        "examples": [],
+        "suggest": null
+      },
+      "check": { "kind": "element_interaction", "text": "Add key" },
+      "severity": "warn",
+      "message": "You don't need a key for Cloud Run. Attach the service account to the service instead."
+    }
+  ]
+}

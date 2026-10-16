@@ -1,0 +1,3 @@
+# The side panel, not the background worker, owns the session
+
+The extension's side panel holds the microphone, the Live WebSocket, the policy engine and the Firestore SDK (with its IndexedDB offline cache). The MV3 background worker stays thin: hotkeys, tab and route events, content-script re-injection. Chrome shuts down an idle background worker after about 30 s and the worker can't use Firestore's offline cache, while the side panel is a normal page that stays alive across tab switches. Journey pointers live in `chrome.storage.session`, and voice continuity uses Live API session resumption handles. We considered Pi Durable for durable state and rejected it for the MVP (see `docs/research/competitors.md`).

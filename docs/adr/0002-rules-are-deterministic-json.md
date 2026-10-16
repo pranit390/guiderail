@@ -1,0 +1,3 @@
+# Rules are deterministic JSON, not prompts
+
+A Policy (markdown, for people) is compiled by Gemini into Rules (JSON) that an admin approves. A plain-TypeScript engine checks them locally on every field change. Each Rule has a `guide` (explain, format, examples, suggested value) used *before* the user types, and a `check` used *after*. We rejected letting Gemini read the Policy and judge forms directly: a guard has to give the same answer every time, be allowed to block, and leave an audit trail, and a model's judgement can't do that reliably on camera. Gemini judges only Rules that can't be expressed as JSON (`llm_judge`), with results cached.

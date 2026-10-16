@@ -1,0 +1,550 @@
+<title>GuideRail Blueprint</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a technical blueprint. Sticky section rail on wide screens, single column on phones; each section is a numbered spec chapter because the order is the build order. */
+:root{
+  --bg:#f5f7fa; --surface:#ffffff; --ink:#18212f; --muted:#5a6578; --line:#d9dfe8;
+  --accent:#e0a100; --accent-ink:#5c4100; --accent-soft:#fff4d1;
+  --blue:#2563c9; --blue-soft:#e6eefb;
+  --ok:#1d8a4e; --ok-soft:#e3f4ea; --bad:#c43a2f; --bad-soft:#fbe7e5; --warn:#b26a00; --warn-soft:#fdf0dc;
+  --code-bg:#eef1f6;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"Source Sans 3", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0f141c; --surface:#161d28; --ink:#e6ebf2; --muted:#9aa6b8; --line:#2a3443;
+  --accent:#f2b927; --accent-ink:#ffe39a; --accent-soft:#2e2510;
+  --blue:#7aa7f0; --blue-soft:#17253b;
+  --ok:#4cc483; --ok-soft:#12291d; --bad:#f07468; --bad-soft:#331816; --warn:#f0a64a; --warn-soft:#30220f;
+  --code-bg:#1c2533; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0f141c; --surface:#161d28; --ink:#e6ebf2; --muted:#9aa6b8; --line:#2a3443;
+  --accent:#f2b927; --accent-ink:#ffe39a; --accent-soft:#2e2510;
+  --blue:#7aa7f0; --blue-soft:#17253b;
+  --ok:#4cc483; --ok-soft:#12291d; --bad:#f07468; --bad-soft:#331816; --warn:#f0a64a; --warn-soft:#30220f;
+  --code-bg:#1c2533; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:16px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 64px}
+.wrap{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:200px minmax(0,1fr);gap:40px}
+@media (max-width:900px){.wrap{grid-template-columns:minmax(0,1fr)}.rail{display:none}}
+.rail{position:sticky;top:env(safe-area-inset-top,0px);align-self:start;padding-top:32px;font-size:14px}
+.rail a{display:block;color:var(--muted);text-decoration:none;padding:5px 0 5px 12px;border-left:2px solid var(--line)}
+.rail a:hover,.rail a:focus-visible{color:var(--ink);border-left-color:var(--accent);outline:none}
+.rail .mark{font-family:var(--f-display);font-weight:700;color:var(--ink);font-size:18px;margin-bottom:14px;display:flex;gap:8px;align-items:center}
+main{min-width:0}
+header.hero{padding-block:36px 8px}
+.eyebrow{font-family:var(--f-mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;line-height:1.15;margin:0}
+h1{font-size:clamp(34px,5vw,52px);font-weight:700;margin-top:8px}
+h1 .rail-word{background:linear-gradient(transparent 62%,var(--accent-soft) 62%);}
+.lede{font-size:19px;color:var(--muted);max-width:68ch;margin-top:14px}
+section{padding-top:52px;scroll-margin-top:12px}
+h2{font-size:28px;font-weight:700;display:flex;gap:12px;align-items:baseline}
+h2 .n{font-family:var(--f-mono);font-size:14px;color:var(--accent-ink);background:var(--accent-soft);padding:2px 8px;border-radius:4px;font-weight:600}
+h3{font-size:19px;font-weight:700;margin-top:26px;margin-bottom:8px}
+p{max-width:72ch;margin:10px 0}
+.sub{color:var(--muted);margin-top:6px}
+code,.mono{font-family:var(--f-mono);font-size:.86em}
+code{background:var(--code-bg);padding:1px 5px;border-radius:4px}
+pre.code{background:var(--code-bg);padding:14px 16px;border-radius:8px;overflow-x:auto;font-family:var(--f-mono);font-size:13px;line-height:1.5;margin:12px 0}
+.tbl{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:560px}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:700;background:var(--bg)}
+tr:last-child td{border-bottom:0}
+td code{white-space:nowrap}
+.pill{display:inline-block;font-family:var(--f-mono);font-size:11.5px;padding:1px 7px;border-radius:999px;font-weight:600;white-space:nowrap}
+.p-ok{background:var(--ok-soft);color:var(--ok)} .p-bad{background:var(--bad-soft);color:var(--bad)}
+.p-warn{background:var(--warn-soft);color:var(--warn)} .p-blue{background:var(--blue-soft);color:var(--blue)}
+.p-acc{background:var(--accent-soft);color:var(--accent-ink)}
+.note{border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:14px 16px;margin:16px 0}
+.note.assume{border-color:var(--accent);background:var(--accent-soft)}
+.note h4{margin:0 0 6px;font-family:var(--f-display);font-size:16px}
+.note ul{margin:6px 0 0;padding-left:20px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.grid2,.grid3{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.card h4{margin:0 0 6px;font-family:var(--f-display);font-size:16px}
+.card p,.card li{font-size:14.5px}
+.card ul{margin:4px 0 0;padding-left:18px}
+/* Architecture map */
+.arch{overflow-x:auto;margin:16px 0}
+.arch-inner{min-width:860px;display:grid;grid-template-columns:1fr 1.15fr 1.15fr;gap:14px}
+.zone{border:1.5px dashed var(--line);border-radius:10px;padding:12px;background:var(--surface)}
+.zone>.zt{font-family:var(--f-mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:10px}
+.zone.gcp{border-color:var(--blue)}
+.box{border:1px solid var(--line);border-radius:7px;padding:9px 11px;margin-bottom:9px;background:var(--bg)}
+.box b{font-family:var(--f-display);font-size:14.5px;display:block}
+.box span{font-size:13px;color:var(--muted);display:block;line-height:1.4}
+.box.key{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.box.g{border-color:var(--blue)}
+.wires{font-family:var(--f-mono);font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.7}
+.wires b{color:var(--ink);font-weight:600}
+/* Story timeline */
+.story{list-style:none;padding:0;margin:16px 0;display:grid;gap:10px;counter-reset:s}
+.story li{display:grid;grid-template-columns:44px minmax(0,1fr);gap:12px;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.story li::before{counter-increment:s;content:counter(s);font-family:var(--f-display);font-weight:700;font-size:22px;color:var(--accent-ink);background:var(--accent-soft);border-radius:6px;display:grid;place-items:center;height:40px}
+.story .who{font-family:var(--f-mono);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.story .say{font-style:italic;color:var(--ink);border-left:3px solid var(--accent);padding-left:10px;margin:6px 0}
+.mermaid-box{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px;overflow-x:auto;margin:14px 0}
+pre.mermaid{margin:0;background:transparent;font-size:13px}
+/* State chips row */
+.states{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+.states .arrow{color:var(--muted);font-family:var(--f-mono)}
+.chip{font-family:var(--f-mono);font-size:12.5px;padding:4px 10px;border:1px solid var(--line);border-radius:6px;background:var(--surface)}
+.chip.on{border-color:var(--accent);background:var(--accent-soft);color:var(--accent-ink)}
+.days{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+@media (max-width:760px){.days{grid-template-columns:minmax(0,1fr)}}
+.days .card h4 .mono{color:var(--muted);font-weight:400;font-size:12px;margin-left:6px}
+a{color:var(--blue)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+html{scroll-behavior:smooth}
+</style>
+
+<div class="wrap">
+<nav class="rail" aria-label="Sections">
+  <div class="mark">GuideRail</div>
+  <a href="#decisions">0 · Defaults taken</a>
+  <a href="#language">1 · Language</a>
+  <a href="#arch">2 · Architecture</a>
+  <a href="#mvp">3 · MVP demo flow</a>
+  <a href="#ext">4 · Extension flow</a>
+  <a href="#server">5 · Server flow</a>
+  <a href="#tools">6 · Tool contracts</a>
+  <a href="#rules">7 · Policy rules</a>
+  <a href="#data">8 · Data &amp; storage</a>
+  <a href="#gotchas">9 · Gotchas</a>
+  <a href="#plan">10 · 3-day plan</a>
+</nav>
+
+<main>
+<header class="hero">
+  <div class="eyebrow">AI Builder Cup 2026 · Future of Work &amp; Enterprise Productivity · due 18 Oct, 23:59 IST</div>
+  <h1>Guide<span class="rail-word">Rail</span> blueprint</h1>
+  <div class="eyebrow" style="margin-top:10px;color:var(--accent-ink)">Guide first. Guard second.</div>
+  <p class="lede">A voice coach for Google tools. It points at the next step on the live screen, follows the user across Cloud Console, IAM and Gmail, and checks every form against company policy before they click Create. It never clicks for them.</p>
+</header>
+
+<section id="decisions">
+  <h2><span class="n">0</span>Defaults taken</h2>
+  <p class="sub">The last grilling round (Q1–Q10) has no answers yet, so this blueprint uses the recommended answer for each. Change any of them and the affected sections move with it.</p>
+  <div class="note assume">
+    <ul>
+      <li><b>Q1</b> Goal → Journey → Session → Step. "Tour" and "workflow" are not used.</li>
+      <li><b>Q2</b> A Policy is a document. A Rule is one checkable condition. A Violation is a Rule failing.</li>
+      <li><b>Q3</b> Each Rule has a severity of <code>warn</code> or <code>block</code>. "Block" <em>flags</em> the Create button and never disables Google's real button.</li>
+      <li><b>Q4</b> A fixed list of Blocker types, with Gemini's generic detection as the fallback.</li>
+      <li><b>Q5</b> Requester and Approver are both guided.</li>
+      <li><b>Q6</b> GuideRail drafts messages. The user always clicks Send.</li>
+      <li><b>Q7</b> Two builders. A owns the extension; B owns the server, rules, sandbox and pitch.</li>
+      <li><b>Q8</b> Voice goes through a Cloud Run relay to the Vertex Live API. No API keys anywhere.</li>
+      <li><b>Q9</b> Project <code>zoop-innovation</code>, with every resource carrying Zoop's 5 labels.</li>
+      <li><b>Q10</b> TypeScript everywhere.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="language">
+  <h2><span class="n">1</span>Language</h2>
+  <p class="sub">The words used everywhere: code, UI, pitch.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Term</th><th>Meaning</th><th>Example</th></tr></thead>
+    <tbody>
+      <tr><td><b>Goal</b></td><td>What the user wants, in their own words.</td><td>"Deploy my app to Cloud Run"</td></tr>
+      <tr><td><b>Journey</b></td><td>One attempt to reach a Goal. It spans tabs, apps, days and Detours.</td><td><code>jny_8f2</code>, status <code>active</code></td></tr>
+      <tr><td><b>Detour</b></td><td>A sub-Journey that clears a Blocker, then returns to the main Journey.</td><td>"Request <code>roles/run.developer</code>"</td></tr>
+      <tr><td><b>Session</b></td><td>One connected voice or text conversation. A Journey may use several.</td><td>Reconnected after a page reload</td></tr>
+      <tr><td><b>Step</b></td><td>One highlighted action the user performs.</td><td>"Click <i>Create service</i>"</td></tr>
+      <tr><td><b>Blocker</b></td><td>Something on screen that stops the Journey.</td><td><code>permission_denied</code></td></tr>
+      <tr><td><b>Policy</b></td><td>A human-readable company document.</td><td>Zoop GCP Labeling Policy</td></tr>
+      <tr><td><b>Rule</b></td><td>One requirement from a Policy, in two parts: a <b>guide</b> (what it means, its format, examples, a suggested value) and a <b>check</b> (machine-checkable).</td><td>Label <code>owner</code>: explain, suggest <code>pranit</code>, then check</td></tr>
+      <tr><td><b>Violation</b></td><td>A Rule failing against what's currently on screen.</td><td><code>owner</code> missing, severity block</td></tr>
+      <tr><td><b>Requester / Approver</b></td><td>The person who is blocked, and the person who grants access.</td><td>New engineer / project admin</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="arch">
+  <h2><span class="n">2</span>Architecture</h2>
+  <p class="sub">Three zones. The side panel is the extension's main process. The content script reads the page and draws on it. Cloud Run holds credentials and the model calls.</p>
+
+  <div class="arch"><div class="arch-inner">
+    <div class="zone">
+      <div class="zt">Browser · each Google tab</div>
+      <div class="box key"><b>Content script</b><span>Injected on Google domains. Runs in the page.</span></div>
+      <div class="box"><b>Page reader</b><span>Interactive elements → role, name, value. Password fields left out.</span></div>
+      <div class="box"><b>Element finder</b><span>Visible text → element. Exact match, then fuzzy, then aria-label, then nearby label.</span></div>
+      <div class="box"><b>Overlay</b><span>Isolated layer (Shadow DOM): pulse highlight, Violation badges, flagged Create button.</span></div>
+      <div class="box"><b>Watchers</b><span>Clicks, field input, page changes and route changes. Blocker detection.</span></div>
+    </div>
+    <div class="zone">
+      <div class="zt">Browser · extension</div>
+      <div class="box key"><b>Side panel (main app)</b><span>A normal page. Holds the mic, the WebSocket and Firestore. Chrome doesn't shut it down when idle.</span></div>
+      <div class="box"><b>Voice client</b><span>Mic → PCM16 16 kHz up. 24 kHz audio down. Text box as a fallback.</span></div>
+      <div class="box"><b>Tool router</b><span>Runs Gemini's tool calls in the right tab or engine.</span></div>
+      <div class="box"><b>Policy engine</b><span>Pure TypeScript. Checks JSON Rules on every field change, with no model call.</span></div>
+      <div class="box"><b>Journey store</b><span>Firestore SDK with offline cache (IndexedDB).</span></div>
+      <div class="box"><b>Background worker</b><span>Hotkeys, tab and route events, re-injects the content script. Thin.</span></div>
+      <div class="box"><b>chrome.storage</b><span><code>.managed</code>: Policies from IT. <code>.session</code>: live Journey pointer.</span></div>
+    </div>
+    <div class="zone gcp">
+      <div class="zt">Google Cloud · zoop-innovation</div>
+      <div class="box g key"><b>Cloud Run · guiderail-api</b><span>WebSocket <code>/live</code> relay to the Vertex Live API. REST for compile, judge, approvals, sandbox.</span></div>
+      <div class="box g"><b>Vertex AI</b><span><code>gemini-live-2.5-flash-native-audio</code> (voice + tools). <code>gemini-3.8-flash</code> (compile and judge).</span></div>
+      <div class="box g"><b>ADK agent</b><span>Policy compiler and fuzzy judge, with approval-link tools.</span></div>
+      <div class="box g"><b>Firestore</b><span>Orgs, Policies, Rules, Journeys, audit log, approvals.</span></div>
+      <div class="box g"><b>Firebase Auth + App Check</b><span>Silent anonymous sign-in, optional Google sign-in, reCAPTCHA Enterprise.</span></div>
+      <div class="box g"><b>Firebase Hosting</b><span>Admin dashboard, Approver page, judge sandbox pages.</span></div>
+    </div>
+  </div></div>
+  <div class="wires">
+    <b>content ⇄ side panel</b> chrome.runtime port per tab ·
+    <b>side panel ⇄ Cloud Run</b> WebSocket <code>wss://…/live</code> (Firebase ID token + App Check) ·
+    <b>Cloud Run ⇄ Vertex</b> Live API over WebSocket, service account ·
+    <b>side panel ⇄ Firestore</b> SDK with offline cache
+  </div>
+
+  <h3>Why it's shaped this way</h3>
+  <div class="grid2">
+    <div class="card"><h4>Gemini picks what, code finds where</h4><p>Gemini calls <code>highlight({text:"Create service"})</code>. The content script finds the element in the page. Gemini never returns pixel coordinates, which is the pattern TipTour uses.</p></div>
+    <div class="card"><h4>Policy checks are plain code</h4><p>Rules are JSON and checked locally in about 1 ms on every field change. That keeps the demo reliable on camera. Gemini only compiles Policies and judges the fuzzy rules.</p></div>
+    <div class="card"><h4>The side panel owns state</h4><p>Chrome kills an idle background worker after about 30 s. The side panel stays open across tab switches in the window, so the voice session and Journey live there.</p></div>
+    <div class="card"><h4>No keys, Vertex only</h4><p>The browser never holds a credential. Cloud Run uses its service account to reach Vertex. Zoop's security team has nothing to object to.</p></div>
+  </div>
+</section>
+
+<section id="mvp">
+  <h2><span class="n">3</span>MVP demo flow</h2>
+  <p class="sub">The one end-to-end story we build, rehearse and record. About 3.5 minutes across 4 apps and 2 people.</p>
+  <ol class="story">
+    <li><div><div class="who">Requester · Chrome</div>Installs GuideRail. It signs in anonymously and silently, and a sandbox org is created with Zoop's Policy already loaded.</div></li>
+    <li><div><div class="who">Requester · console.cloud.google.com (signed out)</div>Presses <code>⌘⇧K</code>. The side panel opens and the user says the Goal.<div class="say">"I want to deploy my app to Cloud Run."</div>Blocker <code>not_signed_in</code> is detected, so GuideRail starts a Detour: "First, sign in. Top right." It highlights the button, and the user types their own password.</div></li>
+    <li><div><div class="who">Requester · Cloud Console</div>Project picker, then Cloud Run, then <i>Create service</i>. Each Step is highlighted and spoken, and moves on when the user clicks.</div></li>
+    <li><div><div class="who">Requester · Cloud Run</div>Blocker <code>permission_denied</code> is detected.<div class="say">"You need Cloud Run Developer on this project. I'll draft a request to your admin."</div>Gmail compose opens pre-filled with the role, project, reason and an Approver link. <b>The user clicks Send.</b></div></li>
+    <li><div><div class="who">Approver · second Chrome profile · Gmail → Approver page → IAM</div>Opens the link. GuideRail starts an Approver Journey with the role already chosen. The admin picks <i>Owner</i>.<div class="say">"Hold on. Policy says least privilege. Grant Cloud Run Developer instead."</div>The admin fixes it and grants. The audit log records <code>violation → resolved</code>.</div></li>
+    <li><div><div class="who">Requester · back in Cloud Run</div>The Journey resumes from Firestore.<div class="say">"Access granted. Picking up where we left off."</div>Service account Step: the name must start with <code>sa-</code>, no Owner role, no key download.</div></li>
+    <li><div><div class="who">Requester · Cloud Run create form · Labels step</div><b>Guide first:</b> GuideRail explains the 5 required labels and shows a Suggested labels card (environment asked, application from the service name, component=api, owner=pranit, managed-by=manual) with copy buttons.<div class="say">"Zoop needs 5 labels here. I've suggested values. Is this prod or dev?"</div><b>Then guard:</b> the user skips one and moves toward Create. Five <code>block</code> Violations show. Create is outlined red with the reason, and GuideRail speaks and highlights the Labels section. The user types <code>owner=pranit@zoop.one</code>.<div class="say">"Label values can't contain @ or dots. Use your first name: owner=pranit."</div></div></li>
+    <li><div><div class="who">Requester</div>All Rules pass. "You're good to deploy." <b>The user clicks Create.</b> The Goal is detected (service URL shown) and the Journey completes.</div></li>
+    <li><div><div class="who">Admin dashboard · Firebase Hosting</div>1 Journey, 4 apps, 2 Detours, 4 Violations prevented, about 6 min in total.</div></li>
+  </ol>
+  <div class="note"><h4>Judge path</h4>Judges get the same story on our hosted copies of the Cloud Run form, IAM grant page and a Gmail-style compose page, with no install, GCP account or second person needed. The page loads the same overlay bundle with a <code>&lt;script&gt;</code> tag, and a "Switch to Approver" button stands in for the second profile.</div>
+</section>
+
+<section id="ext">
+  <h2><span class="n">4</span>Extension flow</h2>
+
+  <h3>4.1 Install and boot</h3>
+  <div class="mermaid-box"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant BG as Background worker
+  participant W as Welcome tab
+  participant SP as Side panel
+  participant API as Cloud Run
+  participant FS as Firestore
+  BG->>W: onInstalled opens welcome.html
+  W->>W: getUserMedia (one-time mic grant)
+  W->>SP: user clicks Open GuideRail
+  SP->>SP: Firebase signInAnonymously + App Check token
+  SP->>API: POST /sandbox (ID token)
+  API->>FS: clone seed org to orgs/sbx-uid
+  API-->>SP: orgId, role admin
+  SP->>SP: load Rules (chrome.storage.managed, else Firestore)
+  SP->>FS: listen to orgs/orgId/journeys where uid and status active
+  </pre></div>
+
+  <h3>4.2 Start a Journey</h3>
+  <div class="mermaid-box"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant BG as Background
+  participant SP as Side panel
+  participant CS as Content script
+  participant API as Cloud Run /live
+  participant V as Vertex Live
+  U->>BG: Cmd+Shift+K
+  BG->>SP: sidePanel.open (the hotkey counts as a user action)
+  SP->>API: WebSocket open (ID token, App Check, journeyId?)
+  API->>V: setup (model, voice, tools, system prompt, resumption, compression)
+  API-->>SP: ready
+  U->>SP: speaks Goal (PCM16 16 kHz)
+  SP->>API: audio chunks
+  API->>V: realtimeInput
+  V-->>API: toolCall read_page
+  API-->>SP: toolCall read_page
+  SP->>CS: port.postMessage read_page
+  CS-->>SP: element list (max 150, password fields removed)
+  SP-->>API: toolResponse
+  API->>V: toolResponse
+  V-->>SP: audio "Click Create service" + toolCall highlight
+  SP->>CS: highlight text Create service
+  CS-->>SP: found, element i42
+  SP->>FS: create Journey (goal, steps, status active)
+  </pre></div>
+
+  <h3>4.3 The Step loop</h3>
+  <div class="states">
+    <span class="chip">read_page</span><span class="arrow">→</span>
+    <span class="chip on">highlight</span><span class="arrow">→</span>
+    <span class="chip">speak</span><span class="arrow">→</span>
+    <span class="chip on">wait_for_user</span><span class="arrow">→</span>
+    <span class="chip">complete_step</span><span class="arrow">↺</span>
+  </div>
+  <div class="grid2">
+    <div class="card"><h4>wait_for_user resolves when</h4><ul>
+      <li><code>click</code>: a capture-phase click on the highlighted element or inside it</li>
+      <li><code>url_change</code>: <code>webNavigation.onHistoryStateUpdated</code>, since the console is a single-page app</li>
+      <li><code>element_visible</code>: a MutationObserver sees the expected text appear</li>
+      <li><code>field_value</code>: an input event matches the expected value</li>
+      <li>After a 45 s timeout, GuideRail asks "Stuck? Want me to show it again?"</li>
+    </ul></div>
+    <div class="card"><h4>When highlight returns not_found</h4><ul>
+      <li>Returns the 5 closest names to Gemini, which picks one or rephrases</li>
+      <li>Scrolls through the page's scroll containers and retries once</li>
+      <li>Last resort: a screenshot (<code>tabs.captureVisibleTab</code>) is sent to Gemini, and it answers with a description, not coordinates</li>
+      <li>Never guesses a click target</li>
+    </ul></div>
+  </div>
+
+  <h3>4.4 Policy loop</h3>
+  <div class="mermaid-box"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant CS as Content script
+  participant SP as Side panel engine
+  participant API as Cloud Run
+  participant V as Vertex Live
+  CS->>SP: form snapshot (url, fields) debounced 300 ms
+  SP->>SP: pick Rules whose scope matches url
+  SP->>SP: evaluate JSON Rules (about 1 ms)
+  opt Rule has check llm_judge
+    SP->>API: POST /policy/judge (cached by input hash)
+    API-->>SP: pass or fail + reason
+  end
+  SP->>CS: render badges, flag Create if any block
+  SP->>API: clientContent "new block Violation owner_format"
+  API->>V: injected as a system event
+  V-->>SP: speaks the fix, calls highlight on the Labels section
+  SP->>SP: audit event violation (offline-cached)
+  </pre></div>
+  <p>Only <b>new</b> Violations are spoken. The engine keeps the last Violation set and compares, so typing doesn't trigger repeated warnings. Each Violation is written to the audit log once, and again when it's resolved.</p>
+
+  <h3>4.5 Blockers and Detours</h3>
+  <div class="tbl"><table>
+    <thead><tr><th>Blocker</th><th>Detected by</th><th>Detour plan</th></tr></thead>
+    <tbody>
+      <tr><td><code>not_signed_in</code></td><td>URL is <code>accounts.google.com/*signin*</code>, or the console shows a "Sign in" button and no avatar</td><td>Highlight Sign in. Pause while the user is on the password page (no page reading). Resume on redirect back.</td></tr>
+      <tr><td><code>permission_denied</code></td><td>Text such as "You don't have permission", "Permission denied" or "required permission(s)"; the role is pulled from the text when shown</td><td>Server <code>lookup_role</code> finds the least-privilege role. <code>create_approval</code> makes a link. Gmail compose opens pre-filled. The user sends. The Journey goes to <code>waiting_approval</code>.</td></tr>
+      <tr><td><code>needs_approval</code></td><td>"Request access" buttons, Drive "You need access"</td><td>Highlight the product's own Request button. Suggest the reason text.</td></tr>
+      <tr><td><code>api_disabled</code></td><td>"API has not been used" or an "Enable" button on an API page</td><td>Highlight Enable, then wait for the "API enabled" text.</td></tr>
+      <tr><td><i>unknown</i></td><td>Gemini reads the page and calls <code>report_blocker</code></td><td>Generic guidance, logged for the admin.</td></tr>
+    </tbody>
+  </table></div>
+  <p>Gmail compose opens by URL, so GuideRail never types into Gmail:</p>
+  <pre class="code">https://mail.google.com/mail/?view=cm&amp;to=admin@zoop.one
+  &amp;su=Access request: roles/run.developer on zoop-innovation
+  &amp;body=…reason…%0A%0AApprove with GuideRail: https://guiderail.web.app/a/apr_91c</pre>
+
+  <h3>4.6 Journey states</h3>
+  <div class="mermaid-box"><pre class="mermaid">
+stateDiagram-v2
+  [*] --> active: Goal spoken
+  active --> detour: Blocker detected
+  detour --> active: Blocker cleared
+  detour --> waiting_approval: request sent
+  waiting_approval --> active: approval granted (Firestore listener)
+  active --> paused: tab closed or idle 10 min
+  paused --> active: user returns (resume)
+  active --> completed: Goal detected
+  active --> abandoned: user says stop
+  completed --> [*]
+  abandoned --> [*]
+  </pre></div>
+
+  <h3>4.7 Tab switch, reload and resume</h3>
+  <div class="grid3">
+    <div class="card"><h4>Tab switch</h4><p><code>tabs.onActivated</code>: the background worker tells the side panel. The router re-points to the new tab's port, injecting the content script if it's missing, and the Journey continues.</p></div>
+    <div class="card"><h4>Page reload</h4><p>The content script reloads. On load it asks the side panel "active Journey?", gets the current Step and highlights it again. Voice is unaffected.</p></div>
+    <div class="card"><h4>Side panel closed or next day</h4><p>A new WebSocket sends the stored <code>resumptionHandle</code>. If it has expired, the server opens a fresh session and seeds it with a Journey summary from Firestore.</p></div>
+  </div>
+</section>
+
+<section id="server">
+  <h2><span class="n">5</span>Server flow</h2>
+  <p class="sub">One Cloud Run service, <code>guiderail-api</code> (Node 22, TypeScript). Auth middleware on every route: verify the Firebase ID token and App Check token, load <code>users/{uid}</code>, check the rate limit.</p>
+
+  <div class="tbl"><table>
+    <thead><tr><th>Route</th><th>Does</th><th>Model / store</th></tr></thead>
+    <tbody>
+      <tr><td><code>WS /live</code></td><td>Relays audio and messages between the side panel and Vertex Live. Adds the system prompt, current Rules and Journey summary. Runs server-side tools itself and forwards client tools to the side panel. Passes resumption handles back. Limited to 10 min per session and 10 sessions per hour per user.</td><td><code>gemini-live-2.5-flash-native-audio</code> through <code>@google/genai</code> with <code>vertexai:true</code></td></tr>
+      <tr><td><code>POST /policies/compile</code></td><td>Policy text in, <code>Rule[]</code> out using a response schema. Validated with zod and saved as a draft for the admin to publish.</td><td><code>gemini-3.8-flash</code>, ADK agent</td></tr>
+      <tr><td><code>POST /policy/judge</code></td><td>Judges Rules that can't be expressed as JSON ("is this a canonical app name?"). Results cached by input hash.</td><td><code>gemini-3.8-flash</code></td></tr>
+      <tr><td><code>POST /approvals</code></td><td>Creates an approval (requester, role, resource, reason, expires in 24 h) and returns a short link.</td><td>Firestore</td></tr>
+      <tr><td><code>GET /a/:id</code></td><td>Approver page on Firebase Hosting. Starts an Approver Journey with the role already chosen.</td><td>Firestore</td></tr>
+      <tr><td><code>POST /sandbox</code></td><td>For an anonymous user, copies the seed org to <code>orgs/sbx-{uid}</code> and sets role admin. A TTL of 7 days cleans it up.</td><td>Firestore</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3>5.1 The /live relay</h3>
+  <div class="mermaid-box"><pre class="mermaid">
+sequenceDiagram
+  autonumber
+  participant SP as Side panel
+  participant R as Cloud Run relay
+  participant V as Vertex Live
+  participant FS as Firestore
+  SP->>R: connect (ID token, journeyId, resumptionHandle?)
+  R->>FS: load Journey summary + published Rules
+  R->>V: live.connect (tools, system prompt, sessionResumption, contextWindowCompression)
+  loop conversation
+    SP->>R: audio / text
+    R->>V: realtimeInput
+    V-->>R: audio, transcript, toolCall
+    alt client tool (read_page, highlight, wait_for_user)
+      R-->>SP: toolCall
+      SP-->>R: toolResponse
+    else server tool (lookup_role, create_approval, judge)
+      R->>R: run in ADK tool layer
+    end
+    R->>V: toolResponse
+    V-->>R: sessionResumptionUpdate
+    R-->>SP: new handle (saved in chrome.storage.session)
+  end
+  </pre></div>
+
+  <h3>5.2 Deploy</h3>
+  <pre class="code">gcloud run deploy guiderail-api --source api/ --region us-central1 \
+  --service-account sa-guiderail-api@zoop-innovation.iam.gserviceaccount.com \
+  --timeout 3600 --session-affinity --min-instances 1 --concurrency 40 \
+  --labels environment=dev,application=guiderail,component=api,owner=pranit,managed-by=gcp</pre>
+  <p>The service account has <code>roles/aiplatform.user</code> and <code>roles/datastore.user</code> and nothing else. <code>--timeout 3600</code> keeps the WebSocket open for long sessions. <code>--min-instances 1</code> avoids a cold start during judging.</p>
+</section>
+
+<section id="tools">
+  <h2><span class="n">6</span>Tool contracts</h2>
+  <p class="sub">The functions Gemini Live may call. Kept small on purpose.</p>
+  <div class="tbl"><table>
+    <thead><tr><th>Tool</th><th>Runs in</th><th>Input</th><th>Returns</th></tr></thead>
+    <tbody>
+      <tr><td><code>read_page</code></td><td>Content script</td><td>none</td><td><code>{url, title, elements:[{i, role, name, value?, section?}], blockers:[]}</code></td></tr>
+      <tr><td><code>highlight</code></td><td>Content script</td><td><code>{text, role?, near?}</code></td><td><code>{found, i?, alternatives?[]}</code></td></tr>
+      <tr><td><code>wait_for_user</code></td><td>Content script</td><td><code>{expect: click|url_change|element_visible|field_value, value?}</code></td><td><code>{done, observed}</code> or <code>{timeout}</code></td></tr>
+      <tr><td><code>get_guidance</code></td><td>Side panel</td><td><code>{section?}</code></td><td><code>{rules:[{ruleId, explain, format, examples, suggested}]}</code>. Shows the Suggested card.</td></tr>
+      <tr><td><code>check_policy</code></td><td>Side panel</td><td>none</td><td><code>{violations:[{ruleId, field, message, severity}]}</code></td></tr>
+      <tr><td><code>open_url</code></td><td>Background</td><td><code>{url, reason}</code> (Google domains only)</td><td><code>{tabId}</code></td></tr>
+      <tr><td><code>draft_message</code></td><td>Background</td><td><code>{channel: gmail, to, subject, body}</code></td><td>Compose opens. The user sends.</td></tr>
+      <tr><td><code>complete_step</code></td><td>Side panel</td><td><code>{summary}</code></td><td>Step saved to the Journey</td></tr>
+      <tr><td><code>report_blocker</code></td><td>Side panel</td><td><code>{type, evidence}</code></td><td>Detour started</td></tr>
+      <tr><td><code>lookup_role</code></td><td>Server</td><td><code>{permission | action}</code></td><td>Least-privilege role ID</td></tr>
+      <tr><td><code>create_approval</code></td><td>Server</td><td><code>{role, resource, reason}</code></td><td><code>{url}</code></td></tr>
+    </tbody>
+  </table></div>
+  <p>There is deliberately no <code>click</code>, <code>type</code> or <code>send</code> tool. GuideRail can't perform an action, only show it. That's the product's main promise and it's enforced by which tools exist.</p>
+</section>
+
+<section id="rules">
+  <h2><span class="n">7</span>Policy rules (seeded)</h2>
+  <p class="sub">From the Zoop GCP Resource Labeling Policy (effective July 2026) plus two IAM rules for the Approver scene.</p>
+  <div class="note"><h4>Guide before guard</h4>Every Rule carries a <code>guide</code> as well as a <code>check</code>. When the user reaches a Rule's section, GuideRail first <b>explains and suggests</b> (format, examples, a value worked out from context). The <code>check</code> runs afterwards on every change and only speaks when something is wrong. Suggestions: <code>owner</code> from the user's first name or team, <code>managed-by=manual</code> for console creates, <code>application</code> from the service name matched to canonical apps, <code>component</code> from the resource type, and <code>environment</code> always asked.</div>
+  <div class="tbl"><table>
+    <thead><tr><th>Rule</th><th>Scope</th><th>Check</th><th>Severity</th></tr></thead>
+    <tbody>
+      <tr><td><code>label-required-*</code> ×5</td><td>Any create form with a Labels section</td><td><code>environment</code>, <code>application</code>, <code>component</code>, <code>owner</code> and <code>managed-by</code> present</td><td><span class="pill p-bad">block</span></td></tr>
+      <tr><td><code>env-enum</code></td><td>Labels</td><td><code>environment</code> ∈ prod, uat, dev, test</td><td><span class="pill p-bad">block</span></td></tr>
+      <tr><td><code>managed-by-enum</code></td><td>Labels</td><td><code>managed-by</code> ∈ terraform, manual, gcp (<code>manual</code> when created in the console)</td><td><span class="pill p-bad">block</span></td></tr>
+      <tr><td><code>owner-format</code></td><td>Labels</td><td>No <code>@</code> and no dots. Team or first name.</td><td><span class="pill p-bad">block</span></td></tr>
+      <tr><td><code>label-format</code></td><td>Labels</td><td><code>^[a-z0-9-]{1,63}$</code>, so hyphens, not underscores</td><td><span class="pill p-bad">block</span></td></tr>
+      <tr><td><code>component-preferred</code></td><td>Labels</td><td>Prefer api, frontend, backend, db, cache, worker, queue, storage, lb</td><td><span class="pill p-warn">warn</span></td></tr>
+      <tr><td><code>app-canonical</code></td><td>Labels</td><td><code>llm_judge</code> against the org's list of canonical app names</td><td><span class="pill p-warn">warn</span></td></tr>
+      <tr><td><code>iam-no-owner</code></td><td>IAM grant</td><td>Role ≠ <code>roles/owner</code> or <code>roles/editor</code></td><td><span class="pill p-bad">block</span></td></tr>
+      <tr><td><code>sa-no-keys</code></td><td>Service account keys tab</td><td>Warn before "Add key"</td><td><span class="pill p-warn">warn</span></td></tr>
+    </tbody>
+  </table></div>
+  <pre class="code">{ "id": "owner-format", "policyId": "zoop-gcp-labels",
+  "scope": { "url": "console.cloud.google.com/run/create*", "section": "Labels" },
+  "guide": { "explain": "Team or person responsible for cost and cleanup.",
+             "format": "lowercase first name or team, no @ or dots",
+             "examples": ["owner=pranit", "owner=platform-team"],
+             "suggest": "user.firstName" },
+  "check": { "kind": "label_value_regex", "key": "owner", "pattern": "^[a-z0-9-]+$" },
+  "severity": "block",
+  "message": "Label values can't contain @ or dots. Use a team or first name, e.g. owner=pranit." }</pre>
+</section>
+
+<section id="data">
+  <h2><span class="n">8</span>Data and storage</h2>
+  <div class="grid2">
+    <div class="card"><h4>Firestore</h4>
+<pre class="code">orgs/{orgId}
+  policies/{id}   name, sourceText, published
+  rules/{id}      scope, check, severity, message
+  journeys/{id}   uid, goal, status, steps[], detours[],
+                  resumption?, updatedAt
+  audit/{id}      journeyId, type(step|violation|resolved
+                  |blocker), ruleId?, app, ts
+  approvals/{id}  requester, approver?, role, resource,
+                  reason, status, expiresAt
+users/{uid}       orgId, role(admin|member), anonymous</pre></div>
+    <div class="card"><h4>In the browser</h4><ul>
+      <li><code>chrome.storage.managed</code>: Rules pushed by IT through Google Admin (mocked with a local file in the demo)</li>
+      <li><code>chrome.storage.session</code>: <code>{journeyId, stepIndex, resumptionHandle}</code></li>
+      <li>Firestore offline cache (IndexedDB, side panel): Journeys and audit, synced when online</li>
+      <li>Transcripts stay local. Only Steps and audit events sync, which is the privacy point in the pitch.</li>
+    </ul>
+    <h4 style="margin-top:12px">Security rules</h4><ul>
+      <li>Members read their own org's Rules and write only their own Journeys and audit events</li>
+      <li>Only admins write Policies and Rules</li>
+      <li>Approvals are read by link ID and written only by the server</li>
+    </ul></div>
+  </div>
+</section>
+
+<section id="gotchas">
+  <h2><span class="n">9</span>Gotchas to plan for</h2>
+  <div class="tbl"><table>
+    <thead><tr><th>Issue</th><th>What happens</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Mic in the side panel</td><td>The side panel often can't show Chrome's mic permission prompt</td><td>Grant it once from <code>welcome.html</code> in a normal tab. The permission is shared by the whole extension.</td></tr>
+      <tr><td>Console is a single-page app</td><td>No page load between Steps</td><td><code>webNavigation.onHistoryStateUpdated</code> plus a MutationObserver</td></tr>
+      <tr><td>Console uses iframes and Shadow DOM</td><td>The page reader misses some elements</td><td><code>all_frames:true</code> on Google domains, and walk open shadow roots</td></tr>
+      <tr><td>Label editor is dynamic</td><td>Key and value inputs are added row by row</td><td>Read the section by its "Labels" heading and pair inputs by row</td></tr>
+      <tr><td>Password pages</td><td>Privacy and trust</td><td>Never read <code>input[type=password]</code>. Pause reading on <code>accounts.google.com</code> challenge pages.</td></tr>
+      <tr><td>Live session limits</td><td>Audio sessions are capped and the context fills up</td><td>Context window compression plus resumption handles, and a 10-min cap with a smooth reconnect</td></tr>
+      <tr><td>Cloud Run WebSocket</td><td>Default request timeout is 5 min, and cold starts happen</td><td><code>--timeout 3600</code>, session affinity, min instances 1</td></tr>
+      <tr><td>Console UI changes</td><td>Button labels drift</td><td>Gemini rephrases from the <code>alternatives</code> list, and Rules match by section heading, not CSS</td></tr>
+      <tr><td>Demo account permissions</td><td>The real <code>permission_denied</code> needs a weaker test account</td><td>Use a second test Google account with only Viewer on a demo project</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="plan">
+  <h2><span class="n">10</span>3-day plan</h2>
+  <p class="sub">A = extension, B = server, rules and pitch. Each day ends with something that runs.</p>
+  <div class="days">
+    <div class="card"><h4>Day 1 <span class="mono">16 Oct</span></h4><ul>
+      <li><b>A</b> MV3 skeleton, side panel, welcome mic grant, page reader, element finder, overlay highlight</li>
+      <li><b>B</b> Enable Run, Firestore and Firebase. <code>/live</code> relay with one test tool. Seed Rules and the policy engine with tests.</li>
+      <li><b>Done when:</b> speaking "where is Create service" pulses the right button</li>
+    </ul></div>
+    <div class="card"><h4>Day 2 <span class="mono">17 Oct</span></h4><ul>
+      <li><b>A</b> Step loop, form watcher, Violation badges, tab and reload resume, Gmail draft</li>
+      <li><b>B</b> Blocker detection, approvals and Approver page, anonymous sandbox, App Check, judge sandbox pages</li>
+      <li><b>Done when:</b> the full story runs once from end to end</li>
+    </ul></div>
+    <div class="card"><h4>Day 3 <span class="mono">18 Oct</span></h4><ul>
+      <li><b>A + B</b> Polish, admin dashboard, fix rough edges</li>
+      <li>Record the video by 18:00. Deck PDF on their template. 1024-char description. README with the "no login" line.</li>
+      <li><b>Submit by 22:00 IST</b>, which leaves 2 hours of buffer</li>
+    </ul></div>
+  </div>
+  <div class="note"><h4>Out of the MVP (pitch only)</h4>Autopilot clicks, other Policies, Chrome Enterprise rollout, BigQuery analytics, uploading arbitrary Policy files, Gemini Nano on-device checks, Google Chat approvals.</div>
+</section>
+</main>
+</div>
