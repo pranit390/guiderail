@@ -1,6 +1,6 @@
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@google/genai";
 import type { WebSocket } from "ws";
-import { systemInstruction, tools } from "./tools.ts";
+import { runServerTool, SERVER_TOOLS, systemInstruction, tools } from "./tools.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
 // 16 kHz from the client, 24 kHz to the client.
@@ -45,7 +45,7 @@ export async function relay(client: WebSocket, resumptionHandle?: string) {
         contextWindowCompression: { slidingWindow: {} },
       },
       callbacks: {
-        onmessage: (msg) => forward(msg, send),
+        onmessage: (msg) => forward(msg, send, session),
         onerror: (e) => send({ type: "error", message: String(e.message ?? e) }),
         onclose: () => client.close(),
       },
@@ -91,9 +91,18 @@ export async function relay(client: WebSocket, resumptionHandle?: string) {
   });
 }
 
-function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void) {
+function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, session: Session) {
   for (const call of msg.toolCall?.functionCalls ?? []) {
-    send({ type: "tool_call", id: call.id ?? "", name: call.name ?? "", args: (call.args ?? {}) as Record<string, unknown> });
+    const name = call.name ?? "";
+    const args = (call.args ?? {}) as Record<string, unknown>;
+    // Server tools run here and answer the model directly; the client never sees them.
+    if (SERVER_TOOLS.has(name)) {
+      void runServerTool(name, args)
+        .catch((err: Error) => ({ error: err.message }))
+        .then((response) => session.sendToolResponse({ functionResponses: [{ id: call.id, name, response }] }));
+      continue;
+    }
+    send({ type: "tool_call", id: call.id ?? "", name, args });
   }
   const content = msg.serverContent;
   if (content) {
