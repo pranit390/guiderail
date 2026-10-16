@@ -27,11 +27,13 @@ export type Context = { firstName?: string; consoleCreate: boolean };
 
 const globToRegex = (glob: string) => new RegExp("^" + glob.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
 
-export function rulesFor(rules: Rule[], form: Pick<FormState, "url" | "sections">, section?: string): Rule[] {
+// Checks need the section on screen; guidance doesn't (a form may have no Labels field
+// even though the resource still needs labels, e.g. Cloud Run's create form).
+export function rulesFor(rules: Rule[], form: Pick<FormState, "url" | "sections">, section?: string, onScreen = true): Rule[] {
   return rules.filter(
     (r) =>
       globToRegex(r.scope.url).test(form.url) &&
-      form.sections.includes(r.scope.section) &&
+      (!onScreen || form.sections.includes(r.scope.section)) &&
       (!section || r.scope.section.toLowerCase() === section.toLowerCase()),
   );
 }
@@ -91,7 +93,7 @@ function suggest(source: string | null, form: FormState, ctx: Context): string |
 // What to tell the user before they fill a section in: one entry per label key.
 export function guidance(rules: Rule[], form: FormState, ctx: Context, section = "Labels"): Suggestion[] {
   const byKey = new Map<string, Suggestion>();
-  for (const r of rulesFor(rules, form, section)) {
+  for (const r of rulesFor(rules, form, section, false)) {
     const key = "key" in r.check ? r.check.key : null;
     if (!key) continue;
     const s = byKey.get(key) ?? { key, explain: "", format: "", examples: [], suggested: null, ask: false };

@@ -1,5 +1,7 @@
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@google/genai";
 import type { WebSocket } from "ws";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { runServerTool, SERVER_TOOLS, systemInstruction, tools } from "./tools.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
@@ -28,6 +30,14 @@ const MAX_SESSION_MS = 10 * 60 * 1000;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 
+// Playbooks: how this org does things and where things live in each tool. Appended to the instruction.
+const PLAYBOOKS = join(import.meta.dirname, "..", "..", "seed", "playbooks");
+const playbooks = readdirSync(PLAYBOOKS)
+  .filter((f) => f.endsWith(".md"))
+  .map((f) => readFileSync(join(PLAYBOOKS, f), "utf8"))
+  .join("\n\n---\n\n");
+const instruction = `${systemInstruction}\n\n# Playbooks\n\n${playbooks}`;
+
 export async function relay(client: WebSocket, resumptionHandle?: string) {
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
@@ -37,7 +47,7 @@ export async function relay(client: WebSocket, resumptionHandle?: string) {
       model,
       config: {
         responseModalities: [Modality.AUDIO],
-        systemInstruction,
+        systemInstruction: instruction,
         tools: [{ functionDeclarations: tools }],
         inputAudioTranscription: {},
         outputAudioTranscription: {},

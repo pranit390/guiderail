@@ -118,7 +118,8 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       const form = await toPage<FormState>({ kind: "read_form" });
       const items = guidance(rules, form, { firstName, consoleCreate: true }, args.section ?? "Labels");
       renderGuidance(items);
-      return { section: args.section ?? "Labels", requirements: items };
+      const section = args.section ?? "Labels";
+      return { section, onScreen: form.sections.includes(section), requirements: items };
     }
     case "check_policy": {
       const form = await toPage<FormState>({ kind: "read_form" });

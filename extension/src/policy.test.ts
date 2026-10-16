@@ -131,4 +131,15 @@ describe("guidance", () => {
     expect(byKey.application?.suggested).toBe("ocr-service");
     expect(byKey.environment).toMatchObject({ ask: true, suggested: null });
   });
+
+  it("still returns the label policy when the page has no Labels section (real Cloud Run create form)", () => {
+    const form: FormState = { url: "console.cloud.google.com/run/create", labels: {}, fields: { "Service name": "ocr-service" }, sections: [] };
+    const keys = guidance(rules, form, { firstName: "Pranit", consoleCreate: true }, "Labels").map((s) => s.key);
+    expect(keys).toEqual(["environment", "application", "component", "owner", "managed-by"]);
+  });
+
+  it("returns nothing for pages outside the Rules' URL scope", () => {
+    const form: FormState = { url: "mail.google.com/mail/compose", labels: {}, fields: {}, sections: [] };
+    expect(guidance(rules, form, { consoleCreate: false }, "Labels")).toEqual([]);
+  });
 });
