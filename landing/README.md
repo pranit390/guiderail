@@ -23,7 +23,7 @@ npm run preview
 
 ## Placeholder link
 
-`src/content/guiderail.ts` exports `cta`. Every button reads `cta.label` and `cta.href`. The URL is a placeholder until the install or demo address exists. Leave `cta.placeholder` true until you replace `cta.href`, so the page keeps the note that the address is not live.
+`src/content/guiderail.ts` exports `cta`. Every button reads `cta.label` and `cta.href`. The URL is a placeholder until the install or demo address exists. While `cta.placeholder` is true, the page shows `cta.note` under the hero button and the closing section says the link is a placeholder. Set it to false only after you replace `cta.href`; that hides the note and switches the closing section to install copy.
 
 ## Deploy later
 
