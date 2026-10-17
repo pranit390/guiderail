@@ -3,6 +3,7 @@ import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, type Rule, type Violation } from "./policy.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
+import { PanelScroll } from "./panelscroll.ts";
 import { SessionLog } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 
@@ -11,12 +12,12 @@ const HTTP = "http://localhost:8787";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
-const scroll = $("#scroll");
 const status = $("#status");
 const card = $("#guidance");
 const issues = $("#issues");
 const input = $<HTMLInputElement>("#text");
 const talk = $<HTMLButtonElement>("#talk");
+const panel = new PanelScroll($("#scroll"), log, input, $<HTMLButtonElement>("#newcards"));
 
 let ws: WebSocket | undefined;
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
@@ -70,17 +71,17 @@ function setStatus(text: string, state: "on" | "off" | "busy") {
 let open: { role: string; el: HTMLElement } | null = null;
 
 function say(role: "user" | "model" | "system" | "step", text: string) {
-  if (open && open.role === role && role !== "system" && role !== "step") {
-    open.el.textContent += text;
-  } else {
-    const el = document.createElement("p");
-    el.className = `msg ${role}`;
-    el.textContent = text;
-    log.append(el);
-    open = role === "system" || role === "step" ? null : { role, el };
-  }
-  // Follow new conversation text without jumping past the draft/cards below it.
-  scroll.scrollTop += log.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom;
+  panel.append(() => {
+    if (open && open.role === role && role !== "system" && role !== "step") {
+      open.el.textContent += text;
+    } else {
+      const el = document.createElement("p");
+      el.className = `msg ${role}`;
+      el.textContent = text;
+      log.append(el);
+      open = role === "system" || role === "step" ? null : { role, el };
+    }
+  });
 }
 
 // ---------- Connection to the relay ----------
@@ -215,6 +216,10 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
 // ---------- Guide: suggested values before the user types ----------
 
 function renderGuidance(items: ReturnType<typeof guidance>) {
+  panel.update(card, () => "New: suggested labels", () => fillGuidance(items));
+}
+
+function fillGuidance(items: ReturnType<typeof guidance>) {
   card.hidden = items.length === 0;
   card.replaceChildren();
   const h = document.createElement("h2");
@@ -244,15 +249,21 @@ async function updateViolations(form: FormState) {
   violations = evaluate(rules, form);
   const blocking = violations.filter((v) => v.severity === "block");
   await toPage({ kind: "show_violations", fields: [...new Set(blocking.map((v) => v.field))], submitLabel: "Create" }).catch(() => {});
-  issues.hidden = violations.length === 0;
-  issues.replaceChildren(
-    ...violations.map((v) => {
-      const li = document.createElement("li");
-      li.dataset.severity = v.severity;
-      li.textContent = v.message;
-      return li;
-    }),
-  );
+  showViolations();
+}
+
+function showViolations() {
+  panel.update(issues, () => `New: ${violations.length} to fix`, () => {
+    issues.hidden = violations.length === 0;
+    issues.replaceChildren(
+      ...violations.map((v) => {
+        const li = document.createElement("li");
+        li.dataset.severity = v.severity;
+        li.textContent = v.message;
+        return li;
+      }),
+    );
+  });
 }
 
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string };
@@ -324,8 +335,7 @@ async function setTeach(on: boolean) {
   ws?.close();
   if (on) {
     violations = [];
-    issues.hidden = true;
-    issues.replaceChildren();
+    showViolations();
     await toPage({ kind: "show_violations", fields: [] }).catch(() => {});
   }
   await toPage({ kind: "teach", on }).catch(() => {});
@@ -419,8 +429,8 @@ async function stopAndDraft() {
     return label;
   }));
   $("#draft").hidden = false;
-  $("#draft").scrollIntoView({ block: "nearest" });
   say("system", "Draft ready below. Review it, untick any Rules you don't want, then click Publish.");
+  panel.reveal($("#draft"));
   appEvent(`Playbook draft ready: "${draft.title}". It is shown below the chat for the user to review; they still need to click Publish. Draft:\n${String(draft.markdown).slice(0, 1200)}`);
 }
 
