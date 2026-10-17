@@ -44,6 +44,30 @@ describe("parseDraft", () => {
     d.suggestedRules.push({ ...d.suggestedRules[0], id: "bad", check: { kind: "run_shell" } });
     expect(parseDraft(JSON.stringify(d)).suggestedRules.map((r) => r.id)).toEqual(["region-us"]);
   });
+  it.each([["null", "null"], ["an array", "[]"], ["a number", "123"], ["a string", '"text"']])("rejects %s with a DraftError", (_n, raw) => {
+    expect(() => parseDraft(raw)).toThrow(DraftError);
+  });
+  it("rejects a numeric title with a DraftError", () => {
+    expect(() => parseDraft(JSON.stringify({ ...JSON.parse(good), title: 5 }))).toThrow(DraftError);
+  });
+  it("rejects a title that slugs to nothing", () => {
+    expect(() => parseDraft(JSON.stringify({ ...JSON.parse(good), id: "", title: "!!!" }))).toThrow(/letters or numbers/);
+  });
+  it("drops a field_value_not_in rule without values", () => {
+    const d = JSON.parse(good);
+    d.suggestedRules[0].check = { kind: "field_value_not_in", field: "Region" };
+    expect(parseDraft(JSON.stringify(d)).suggestedRules).toEqual([]);
+  });
+  it("drops a label_value_regex rule with an invalid pattern", () => {
+    const d = JSON.parse(good);
+    d.suggestedRules[0].check = { kind: "label_value_regex", key: "owner", pattern: "(" };
+    expect(parseDraft(JSON.stringify(d)).suggestedRules).toEqual([]);
+  });
+  it("normalises a non-string guide.suggest to null", () => {
+    const d = JSON.parse(good);
+    d.suggestedRules[0].guide.suggest = 5;
+    expect(parseDraft(JSON.stringify(d)).suggestedRules[0].guide.suggest).toBeNull();
+  });
   it("slugs the id", () => {
     expect(parseDraft(JSON.stringify({ ...JSON.parse(good), id: "Cloud Run Deploy!" })).id).toBe("cloud-run-deploy");
   });

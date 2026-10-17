@@ -23,23 +23,51 @@ ${p.events.map((e) => JSON.stringify(e)).join("\n")}`;
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
 
+const isStr = (v: unknown): v is string => typeof v === "string";
+const isStrArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr);
+const compiles = (p: unknown) => {
+  if (!isStr(p)) return false;
+  try { new RegExp(p); return true; } catch { return false; }
+};
+
+function validCheck(c: Record<string, unknown>): boolean {
+  switch (c.kind) {
+    case "label_required": return isStr(c.key);
+    case "label_value_enum": return isStr(c.key) && isStrArray(c.values);
+    case "label_value_regex": return isStr(c.key) && compiles(c.pattern);
+    case "label_all_regex": return compiles(c.pattern);
+    case "field_value_not_in": return isStr(c.field) && isStrArray(c.values);
+    default: return false;
+  }
+}
+
 function isRule(r: unknown): r is Rule {
   const x = r as Rule;
-  return !!x && typeof x.id === "string" && !!x.scope?.url && !!x.guide && !!x.check && RUNNABLE_CHECKS.has(x.check.kind) &&
-    (x.severity === "block" || x.severity === "warn") && typeof x.message === "string";
+  if (!x || typeof x !== "object" || !isStr(x.id) || !x.scope || !x.scope.url || !isStr(x.scope.section)) return false;
+  if (!x.guide || !isStr(x.guide.explain) || !isStr(x.guide.format) || !Array.isArray(x.guide.examples)) return false;
+  if (!x.check || typeof x.check !== "object" || !RUNNABLE_CHECKS.has(x.check.kind) || !validCheck(x.check)) return false;
+  if (!(x.severity === "block" || x.severity === "warn") || !isStr(x.message)) return false;
+  if (!isStr(x.guide.suggest)) x.guide.suggest = null;
+  return true;
 }
 
 export function parseDraft(raw: string): PlaybookDraft {
-  let d: Partial<PlaybookDraft>;
+  let parsed: unknown;
   try {
-    d = JSON.parse(raw);
+    parsed = JSON.parse(raw);
   } catch {
     throw new DraftError("The model didn't return JSON for the Playbook draft.");
   }
-  if (!d.title) throw new DraftError("The Playbook draft has no title.");
-  if (!d.markdown) throw new DraftError("The Playbook draft has no markdown body.");
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new DraftError("The model returned JSON, but not a Playbook draft object.");
+  }
+  const d = parsed as Record<string, unknown>;
+  if (!isStr(d.title) || !d.title) throw new DraftError("The Playbook draft has no title.");
+  if (!isStr(d.markdown) || !d.markdown) throw new DraftError("The Playbook draft has no markdown body.");
+  const id = slug(String(d.id ?? "") || d.title);
+  if (!id) throw new DraftError("The Playbook draft needs a title with letters or numbers.");
   return {
-    id: slug(d.id || d.title),
+    id,
     title: d.title,
     appliesTo: Array.isArray(d.appliesTo) ? d.appliesTo.map(String) : [],
     goals: Array.isArray(d.goals) ? d.goals.map(String) : [],
