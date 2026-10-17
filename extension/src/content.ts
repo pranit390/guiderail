@@ -1,6 +1,8 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage } from "./messages.ts";
+import { allElements, CUSTOM_FIELD, effectiveUrl, findSection, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf } from "./page.ts";
+import { startRecording, stopRecording } from "./teach/recorder.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -12,87 +14,6 @@ let warnedSubmitAt = 0;
 
 // ---------- Reading the page ----------
 
-const INTERACTIVE =
-  'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
-
-function effectiveUrl(): string {
-  // Sandbox pages declare which Google page they stand in for.
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="guiderail-url"]');
-  return meta?.content ?? location.host + location.pathname;
-}
-
-function allElements(root: Document | ShadowRoot = document): Element[] {
-  const out: Element[] = [];
-  for (const el of root.querySelectorAll("*")) {
-    if (el.matches(INTERACTIVE)) out.push(el);
-    if (el.shadowRoot) out.push(...allElements(el.shadowRoot));
-  }
-  return out;
-}
-
-function isVisible(el: Element): boolean {
-  const r = el.getBoundingClientRect();
-  if (r.width === 0 && r.height === 0) return false;
-  const s = getComputedStyle(el);
-  return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0;
-}
-
-function textOf(el: Element | null): string {
-  return (el?.textContent ?? "").replace(/\s+/g, " ").trim();
-}
-
-function nameOf(el: Element): string {
-  const aria = el.getAttribute("aria-label");
-  if (aria) return aria.trim();
-  const labelledBy = el.getAttribute("aria-labelledby");
-  if (labelledBy) {
-    const t = labelledBy.split(/\s+/).map((id) => textOf(document.getElementById(id))).join(" ").trim();
-    if (t) return t;
-  }
-  if (el.id) {
-    const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-    if (label) return textOf(label);
-  }
-  const wrapping = el.closest("label");
-  if (wrapping && wrapping !== el) return textOf(wrapping);
-  const placeholder = el.getAttribute("placeholder");
-  if (placeholder) return placeholder;
-  const t = textOf(el);
-  if (t) return t.slice(0, 80);
-  return el.getAttribute("title") ?? "";
-}
-
-function roleOf(el: Element): string {
-  const explicit = el.getAttribute("role");
-  if (explicit) return explicit;
-  const tag = el.tagName.toLowerCase();
-  if (/^h[1-4]$/.test(tag) || tag === "legend") return "heading";
-  if (tag === "a") return "link";
-  if (tag === "select") return "combobox";
-  if (tag === "textarea") return "textbox";
-  if (tag === "summary") return "button";
-  if (tag === "section") return "region";
-  if (tag === "input") {
-    const type = (el as HTMLInputElement).type;
-    return type === "checkbox" || type === "radio" ? type : type === "submit" || type === "button" ? "button" : "textbox";
-  }
-  return tag;
-}
-
-function sectionOf(el: Element): string | undefined {
-  const region = el.closest("section[aria-label],[role=region][aria-label],fieldset");
-  if (region) {
-    const legend = region.querySelector("legend");
-    return region.getAttribute("aria-label") ?? (legend ? textOf(legend) : undefined);
-  }
-  const labelled = el.closest("section[aria-labelledby]");
-  if (labelled) return textOf(document.getElementById(labelled.getAttribute("aria-labelledby")!));
-  return undefined;
-}
-
-function isSecret(el: Element): boolean {
-  return el instanceof HTMLInputElement && (el.type === "password" || el.autocomplete.includes("password"));
-}
 
 function readPage(): PageSnapshot {
   indexed = new Map();
@@ -105,9 +26,8 @@ function readPage(): PageSnapshot {
     const i = elements.length + 1;
     indexed.set(i, el);
     const item: PageElement = { i, role: roleOf(el), name };
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
-      if (el.value) item.value = el.value.slice(0, 60);
-    }
+    const value = valueOf(el);
+    if (value) item.value = value.slice(0, 60);
     const section = sectionOf(el);
     if (section && section !== name) item.section = section;
     elements.push(item);
@@ -116,8 +36,6 @@ function readPage(): PageSnapshot {
 }
 
 // ---------- Finding an element by its text ----------
-
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 
 function score(target: string, name: string): number {
   const t = norm(target), n = norm(name);
@@ -156,10 +74,15 @@ shadow.innerHTML = `<style>
   .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #161d28; color: #fff;
            font: 600 14px/1.4 system-ui, sans-serif; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #e5484d;
            box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
+  .rec { position: fixed; left: 16px; bottom: 16px; background: #000; color: #fff; border: 2px solid #fff;
+         font: 600 13px/1.2 system-ui, sans-serif; padding: 6px 10px; border-radius: 999px; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+  .rec .dot { color: #ff5c5c; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(242,185,39,0); } }
   @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
 </style><div class="layer"></div>`;
 const layer = shadow.querySelector(".layer")!;
+// A copy left by a previous version of the extension (after a reload) is replaced.
+document.querySelectorAll("guiderail-overlay").forEach((old) => old.remove());
 document.documentElement.append(host);
 
 const ring = document.createElement("div");
@@ -195,13 +118,22 @@ function toast(text: string) {
   setTimeout(() => t.remove(), 5000);
 }
 
-// ---------- Forms ----------
+// The expert always sees when Teach is recording this page.
+const badge = document.createElement("div");
+badge.className = "rec";
+badge.setAttribute("role", "status");
+badge.setAttribute("aria-live", "polite");
+badge.hidden = true;
+layer.append(badge);
 
-function findSection(title: string): Element | null {
-  const heading = allElements().find((el) => roleOf(el) === "heading" && norm(textOf(el)) === norm(title));
-  if (heading) return heading.closest("section,fieldset,[role=region]") ?? heading.parentElement;
-  return document.querySelector(`section[aria-label="${title}"],[role=region][aria-label="${title}"]`);
+function setRecording(on: boolean) {
+  if (on) startRecording((event) => send({ kind: "teach_event", event }));
+  else stopRecording();
+  badge.hidden = !on;
+  badge.innerHTML = on ? `<span class="dot" aria-hidden="true">●</span> GuideRail is recording` : "";
 }
+
+// ---------- Forms ----------
 
 function readForm(): FormState {
   const labels: Record<string, string> = {};
@@ -216,10 +148,10 @@ function readForm(): FormState {
     }
   }
   const fields: Record<string, string> = {};
-  for (const el of document.querySelectorAll("input,select,textarea")) {
+  for (const el of document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD}`)) {
     if (labelInputs.has(el) || isSecret(el)) continue;
     const name = nameOf(el);
-    const value = (el as HTMLInputElement).value;
+    const value = valueOf(el);
     if (name && value) fields[name] = value;
   }
   const sections = section ? ["Labels"] : [];
@@ -256,15 +188,27 @@ function showViolations(fields: string[], submitLabel?: string) {
 
 // ---------- Watching the user ----------
 
-const send = (msg: FromPage) => chrome.runtime.sendMessage(msg).catch(() => {});
+// After the extension is reloaded, this copy of the script is orphaned: chrome.runtime calls
+// throw "Extension context invalidated". It then shuts itself down quietly.
+const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
+
+function send(msg: FromPage) {
+  if (!alive()) return shutdown();
+  try {
+    chrome.runtime.sendMessage(msg).catch(() => {});
+  } catch {
+    shutdown();
+  }
+}
 
 let formTimer: ReturnType<typeof setTimeout> | undefined;
-document.addEventListener("input", () => {
+function onInput() {
   clearTimeout(formTimer);
   formTimer = setTimeout(() => send({ kind: "form_changed", form: readForm() }), 300);
-}, true);
+}
+document.addEventListener("input", onInput, true);
 
-document.addEventListener("click", (e) => {
+function onClick(e: MouseEvent) {
   const target = e.target as Element;
   const button = target.closest('button,[role=button],input[type=submit]');
   if (button && SUBMIT_WORDS.test(nameOf(button))) {
@@ -282,10 +226,11 @@ document.addEventListener("click", (e) => {
     send({ kind: "page_event", text: `User clicked "${nameOf(highlighted)}".` });
     highlighted = null;
   }
-}, true);
+}
+document.addEventListener("click", onClick, true);
 
 let lastUrl = location.href;
-setInterval(() => {
+const urlTimer = setInterval(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
     send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).` });
@@ -301,6 +246,28 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "read_form": reply(readForm()); break;
     case "show_violations": showViolations(msg.fields, msg.submitLabel); reply({ ok: true }); break;
     case "clear": highlighted = null; showViolations([]); reply({ ok: true }); break;
+    case "teach":
+      setRecording(msg.on);
+      reply({ ok: true });
+      break;
   }
   return false;
 });
+
+function shutdown() {
+  document.removeEventListener("input", onInput, true);
+  document.removeEventListener("click", onClick, true);
+  clearInterval(urlTimer);
+  clearTimeout(formTimer);
+  setRecording(false);
+  host.remove();
+}
+
+// A page loaded mid-Teach (navigation, reload, new tab) picks recording back up.
+try {
+  chrome.runtime.sendMessage({ kind: "teach_status" } satisfies FromPage)
+    .then((res: { on?: boolean } | undefined) => { if (res?.on) setRecording(true); })
+    .catch(() => {});
+} catch {
+  shutdown();
+}

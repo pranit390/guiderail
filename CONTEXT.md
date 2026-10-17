@@ -53,3 +53,21 @@ _Avoid_: User (when the role matters)
 **Approver**:
 The person who grants what the Requester needs.
 _Avoid_: Admin (when the role matters)
+
+### Modes and knowledge
+
+**Teach mode**:
+The mode in which an expert performs a task while GuideRail records what they do and asks why, to produce a Playbook.
+_Avoid_: Record mode, expert mode, training
+
+**Guide mode**:
+The mode in which GuideRail coaches someone through a task using published Playbooks and Rules.
+_Avoid_: Learner mode, help mode
+
+**Teach session**:
+One recording of an expert performing a Goal in Teach mode, made of steps, narration and answers.
+_Avoid_: Recording, capture
+
+**Playbook**:
+Published, human-readable knowledge of how the org does a task and where things are in each tool, used to guide.
+_Avoid_: Skill, tour, workflow, SOP

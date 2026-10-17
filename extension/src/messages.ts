@@ -1,4 +1,5 @@
 // Messages between the side panel and the content script.
+import type { TeachEvent } from "./teach/events.ts";
 
 export type PageElement = { i: number; role: string; name: string; value?: string; section?: string };
 
@@ -16,11 +17,14 @@ export type ToPage =
   | { kind: "highlight"; text: string; role?: string }
   | { kind: "read_form" }
   | { kind: "show_violations"; fields: string[]; submitLabel?: string }
-  | { kind: "clear" };
+  | { kind: "clear" }
+  | { kind: "teach"; on: boolean };
 
 export type FromPage =
   | { kind: "page_event"; text: string }
   | { kind: "form_changed"; form: FormState }
-  | { kind: "submit_intent"; label: string; form: FormState };
+  | { kind: "submit_intent"; label: string; form: FormState }
+  | { kind: "teach_event"; event: TeachEvent }
+  | { kind: "teach_status" }; // a freshly loaded page asks whether to record; the side panel replies { on }
 
 export type HighlightResult = { found: true; i: number; name: string } | { found: false; alternatives: string[] };
