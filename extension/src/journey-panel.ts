@@ -12,6 +12,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
   const status = container.querySelector<HTMLElement>("[data-status]")!;
   const result = container.querySelector<HTMLElement>("[data-result]")!;
   const links = container.querySelector<HTMLElement>("[data-links]")!;
+  let enabled = true;
   PUBLIC_DOCS.forEach((url, i) => {
     const a = document.createElement("a");
     a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
@@ -39,7 +40,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
       status.textContent = `${error instanceof Error ? error.message : "Compilation failed."} Retry, or open the official docs above.`;
       compile.textContent = "Retry reading docs";
     } finally {
-      compile.disabled = false;
+      compile.disabled = !enabled;
       container.removeAttribute("aria-busy");
     }
   });
@@ -48,9 +49,9 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     status.textContent = "Reading the visible document…";
     try { await options.brief(); status.textContent = "Briefing requested. You can type follow-up questions below."; }
     catch (error) { status.textContent = `${error instanceof Error ? error.message : "Couldn't brief this page."} Open a public doc above and retry.`; }
-    finally { brief.disabled = false; }
+    finally { brief.disabled = !enabled; }
   });
-  return { setEnabled(enabled: boolean) { compile.disabled = !enabled; brief.disabled = !enabled; } };
+  return { setEnabled(on: boolean) { enabled = on; compile.disabled = !on; brief.disabled = !on; } };
 }
 function appendCitation(parent: HTMLElement, item: Citation) {
   const p = document.createElement("p"); p.textContent = item.explanation;
