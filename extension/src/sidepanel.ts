@@ -262,8 +262,9 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   } catch {
     tabId = null;
   }
-  const decision = authorizeTarget({ text, role, citation, snapshot: bound, stale: boundStale, tabId });
-  if (!actionAuthorized(decision) || !bound) {
+  const snap = bound;
+  const decision = authorizeTarget({ text, role, citation, snapshot: snap, stale: boundStale, tabId });
+  if (!actionAuthorized(decision)) {
     say("system", highlightOutcome(decision));
     return highlightResult(decision);
   }
@@ -271,16 +272,14 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     kind: "highlight",
     text: decision.name,
     role,
-    generation: bound.generation,
+    generation: snap!.generation,
     index: decision.i,
     name: decision.name,
-  }, bound.tabId);
+  }, snap!.tabId);
   if (!live.found) {
     if (live.reason === "stale") boundStale = true;
     say("system", live.reason === "ambiguous" ? live.ask : live.reason === "missing" ? live.mismatch : highlightOutcome({ authorized: false, reason: live.reason }));
-    return live;
   }
-  say("system", highlightOutcome(decision));
   return live;
 }
 
