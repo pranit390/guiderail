@@ -244,7 +244,7 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   }, bound.tabId);
   if (!live.found) {
     if (live.reason === "stale") boundStale = true;
-    say("system", live.reason === "ambiguous" ? live.ask : live.reason === "missing" ? live.mismatch : highlightOutcome({ authorized: false, reason: "stale" }));
+    say("system", live.reason === "ambiguous" ? live.ask : live.reason === "missing" ? live.mismatch : highlightOutcome({ authorized: false, reason: live.reason }));
     return live;
   }
   say("system", highlightOutcome(decision));
