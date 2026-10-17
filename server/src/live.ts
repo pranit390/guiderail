@@ -43,32 +43,49 @@ async function buildInstruction(mode: Mode, goal?: string, goalId?: string): Pro
 export async function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string, goalId?: string) {
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
-  let session: Session;
+  let session: Session | undefined;
+  const started = Date.now();
+  let audioBytes = 0;
+  let textChars = 0;
+  let turns = 0;
+  const cap = setTimeout(() => client.close(4000, "session limit"), MAX_SESSION_MS);
+  client.once("close", () => {
+    clearTimeout(cap);
+    session?.close();
+  });
   try {
     session = await ai.live.connect({
       model,
       config: {
         responseModalities: [Modality.AUDIO],
+        maxOutputTokens: 512,
         systemInstruction: await buildInstruction(mode, goal, goalId),
         tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         sessionResumption: resumptionHandle ? { handle: resumptionHandle } : {},
-        contextWindowCompression: { slidingWindow: {} },
+        contextWindowCompression: { triggerTokens: "8192", slidingWindow: { targetTokens: "4096" } },
       },
       callbacks: {
-        onmessage: (msg) => forward(msg, send, session),
+        onmessage: (msg) => {
+          forward(msg, send, session);
+          if (msg.serverContent?.turnComplete && ++turns >= 8) {
+            send({ type: "error", message: "This demo session reached its eight-reply allowance. Reconnect if today's allowance remains." });
+            client.close(4000, "reply allowance reached");
+          }
+        },
         onerror: (e) => send({ type: "error", message: String(e.message ?? e) }),
         onclose: () => client.close(),
       },
     });
   } catch (err) {
+    clearTimeout(cap);
     send({ type: "error", message: `Couldn't reach the voice model: ${(err as Error).message}` });
     client.close();
     return;
   }
 
-  const cap = setTimeout(() => client.close(4000, "session limit"), MAX_SESSION_MS);
+  if (client.readyState !== client.OPEN) { clearTimeout(cap); session.close(); return; }
   send({ type: "ready" });
 
   client.on("message", (raw) => {
@@ -76,6 +93,17 @@ export async function relay(client: WebSocket, resumptionHandle?: string, mode: 
     try {
       msg = JSON.parse(String(raw));
     } catch {
+      return;
+    }
+    if (!session || !msg || typeof msg !== "object") return;
+    if ("text" in msg && (typeof msg.text !== "string" || msg.text.length > 4000)) return;
+    if (msg.type === "audio" && (typeof msg.data !== "string" || msg.data.length > 48_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(msg.data))) return;
+    if (msg.type === "tool_result" && (typeof msg.id !== "string" || typeof msg.name !== "string" || !msg.response || typeof msg.response !== "object")) return;
+    if ("text" in msg) textChars += msg.text.length;
+    if (msg.type === "audio") audioBytes += Buffer.byteLength(msg.data, "base64");
+    if (textChars > 24_000 || audioBytes > (Date.now() - started) * 32 + 64_000) {
+      send({ type: "error", message: "This demo session reached its input allowance." });
+      client.close(4000, "input allowance reached");
       return;
     }
     switch (msg.type) {
@@ -107,13 +135,9 @@ export async function relay(client: WebSocket, resumptionHandle?: string, mode: 
     }
   });
 
-  client.on("close", () => {
-    clearTimeout(cap);
-    session.close();
-  });
 }
 
-function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, session: Session) {
+function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, session: Session | undefined) {
   for (const call of msg.toolCall?.functionCalls ?? []) {
     const name = call.name ?? "";
     const args = (call.args ?? {}) as Record<string, unknown>;
@@ -121,7 +145,7 @@ function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, sessi
     if (SERVER_TOOLS.has(name)) {
       void runServerTool(name, args)
         .catch((err: Error) => ({ error: err.message }))
-        .then((response) => session.sendToolResponse({ functionResponses: [{ id: call.id, name, response }] }));
+        .then((response) => session?.sendToolResponse({ functionResponses: [{ id: call.id, name, response }] }));
       continue;
     }
     send({ type: "tool_call", id: call.id ?? "", name, args });
