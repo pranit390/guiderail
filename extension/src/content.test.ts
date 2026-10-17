@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import seed from "../../seed/rules/org-labeling-rules.json";
-import type { FormState, ToPage } from "./messages.ts";
+import type { FormState, PageSnapshot, ToPage } from "./messages.ts";
 import { evaluate, type Rule } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
@@ -12,6 +12,13 @@ function request(msg: ToPage | { kind: "customize"; preset: unknown }): unknown 
   const reply = vi.fn();
   listener(msg, {}, reply);
   return reply.mock.calls[0][0];
+}
+
+// The side panel always pins a highlight to the latest read; an unpinned one is refused.
+function highlightLabels(): unknown {
+  const snap = request({ kind: "read_page" }) as PageSnapshot;
+  const el = snap.elements.find((e) => e.role === "heading" && e.name === "Labels")!;
+  return request({ kind: "highlight", text: "Labels", role: "heading", generation: snap.generation, index: el.i, name: el.name });
 }
 
 function form(): FormState {
@@ -53,7 +60,7 @@ describe("calmer content messages", () => {
     const before = form();
     const violations = evaluate(rules, before);
     expect(violations.length).toBeGreaterThan(0);
-    expect(request({ kind: "highlight", text: "Labels", role: "heading" })).toMatchObject({ found: true });
+    expect(highlightLabels()).toMatchObject({ found: true });
     request({ kind: "customize", preset: "calm" });
     request({ kind: "show_violations", fields: violations.map((v) => v.field), submitLabel: "Create" });
     vi.advanceTimersByTime(20);
@@ -74,7 +81,7 @@ describe("calmer content messages", () => {
 
   it("clears the spotlight when a Step finishes without turning off the kept preset", () => {
     request({ kind: "customize", preset: "calm" });
-    request({ kind: "highlight", text: "Labels", role: "heading" });
+    highlightLabels();
     request({ kind: "clear" });
     vi.advanceTimersByTime(20);
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
