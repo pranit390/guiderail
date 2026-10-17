@@ -257,6 +257,7 @@ async function followTab(tabId: number) {
 
 async function setTeach(on: boolean) {
   mode = on ? "teach" : "guide";
+  showTeachButton(on);
   ws?.close();
   if (on) {
     violations = [];
@@ -265,15 +266,26 @@ async function setTeach(on: boolean) {
     await toPage({ kind: "show_violations", fields: [] }).catch(() => {});
   }
   await toPage({ kind: "teach", on }).catch(() => {});
-  $("#teach").toggleAttribute("data-on", on);
   $("#teachbar").hidden = !on;
   connect();
 }
 
+// The Teach button is a toggle and shows its state at once, before the mode switch finishes.
+function showTeachButton(on: boolean) {
+  const button = $<HTMLButtonElement>("#teach");
+  button.toggleAttribute("data-on", on);
+  button.setAttribute("aria-pressed", String(on));
+  button.textContent = on ? "● Teaching" : "Teach";
+  button.title = on ? "Stop teaching and draft a Playbook" : "Show GuideRail how your team does a task";
+}
+
 $("#teach").addEventListener("click", async () => {
-  if (mode === "teach") return;
-  const goal = input.value.trim();
-  if (!goal) { say("system", "Type the task you're teaching in the box, then press Teach."); return; }
+  if (mode === "teach") {
+    $("#teachstop").click();
+    return;
+  }
+  showTeachButton(true);
+  const goal = input.value.trim() || "Untitled task (name it from what the expert did)";
   input.value = "";
   teach = new TeachSession(goal);
   pendingPayload = null;
