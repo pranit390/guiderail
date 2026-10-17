@@ -1,6 +1,6 @@
 // Records what the expert does, by meaning. Never reads passwords; masks secret-looking values.
 import { effectiveUrl, isSecret, nameOf, roleOf, sectionOf } from "../page.ts";
-import { maskValue, type Target, type TeachEvent } from "./events.ts";
+import { isSecretField, MASK, maskValue, type Target, type TeachEvent } from "./events.ts";
 
 const CLICKABLE = 'button,a[href],summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=option],[role=checkbox],[role=switch],h1,h2,h3,h4';
 
@@ -27,7 +27,8 @@ function onChange(e: Event) {
   const el = e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
   if (!emit || ours(el) || isSecret(el) || !("value" in el)) return;
   const value = el instanceof HTMLSelectElement ? el.selectedOptions[0]?.textContent?.trim() ?? el.value : el.value;
-  emit({ t: "field", at: Date.now(), url: effectiveUrl(), target: describe(el), value: maskValue(value) });
+  const target = describe(el);
+  emit({ t: "field", at: Date.now(), url: effectiveUrl(), target, value: isSecretField(target) ? MASK : maskValue(value) });
 }
 
 export function startRecording(send: (e: TeachEvent) => void) {

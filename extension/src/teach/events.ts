@@ -11,17 +11,30 @@ export type TeachEvent =
 export const MASK = "«masked»";
 export const MAX_EVENTS = 500;
 
+// Matched anywhere in the value, so a secret pasted inside a longer command or sentence is still caught.
 const SECRET_PATTERNS = [
-  /^sk-[A-Za-z0-9_-]{16,}/, // API secret keys
-  /^AIza[0-9A-Za-z_-]{20,}/, // Google API keys
-  /^eyJ[\w-]+\.[\w-]+\.[\w-]+/, // JWTs
+  /\bsk-[A-Za-z0-9_-]{16,}/, // API secret keys
+  /\bsk_(live|test)_[A-Za-z0-9]{8,}/, // Stripe keys
+  /\bAIza[0-9A-Za-z_-]{20,}/, // Google API keys
+  /\bAKIA[0-9A-Z]{16}/, // AWS access key ids
+  /\bgh[pousr]_[A-Za-z0-9]{20,}/, // GitHub tokens
+  /\bxox[abpr]-[A-Za-z0-9-]{10,}/, // Slack tokens
+  /Bearer\s+\S{12,}/i, // Authorization headers
+  /:\/\/[^/\s:@]+:[^@\s]+@/, // credentials in a URL
+  /\beyJ[\w-]+\.[\w-]+\.[\w-]+/, // JWTs
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/, // PEM
-  /^[A-Fa-f0-9]{32,}$/, // long hex tokens
-  /^[A-Za-z0-9+/=_-]{40,}$/, // long base64-ish tokens with no spaces
+  /(?:^|\s)[A-Fa-f0-9]{32,}(?=\s|$)/, // long hex tokens
+  /(?:^|\s)[A-Za-z0-9+/=_-]{40,}(?=\s|$)/, // long base64-ish tokens, as a whole word
 ];
 
 export function maskValue(value: string): string {
-  return SECRET_PATTERNS.some((p) => p.test(value.trim())) ? MASK : value;
+  return SECRET_PATTERNS.some((p) => p.test(value)) ? MASK : value;
+}
+
+// Fields whose value is always secret, whatever it looks like.
+const SECRET_FIELD = /pass(word)?|secret|token|credential|api[ _-]?key/i;
+export function isSecretField(target: { name: string; section?: string }): boolean {
+  return SECRET_FIELD.test(target.name) || SECRET_FIELD.test(target.section ?? "") || target.section === "Variables & Secrets";
 }
 
 const sameTarget = (a: TeachEvent, b: TeachEvent) =>

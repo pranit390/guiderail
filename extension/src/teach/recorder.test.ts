@@ -11,6 +11,8 @@ beforeEach(() => {
     <label for="svc">Service name</label><input id="svc">
     <label for="tok">Token</label><input id="tok">
     <input type="password" id="pw" aria-label="Password">
+    <label for="key">API key</label><input id="key">
+    <section aria-label="Variables &amp; Secrets"><label for="val">Value 1</label><input id="val"></section>
     <guiderail-overlay><button id="ours">Copy</button></guiderail-overlay>`;
   events = [];
   startRecording((e) => events.push(e));
@@ -34,6 +36,14 @@ describe("recorder", () => {
   });
   it("masks secret-looking values", () => {
     change("tok", "AIzaSyD-abcdefghijklmnopqrstuvwxyz12345");
+    expect(events[0]).toMatchObject({ t: "field", value: "«masked»" });
+  });
+  it("masks any value typed into a secret-named field", () => {
+    change("key", "hello");
+    expect(events[0]).toMatchObject({ t: "field", target: { name: "API key" }, value: "«masked»" });
+  });
+  it("masks any value in the Variables & Secrets section", () => {
+    change("val", "plain-looking");
     expect(events[0]).toMatchObject({ t: "field", value: "«masked»" });
   });
   it("never records password fields", () => {
