@@ -2,6 +2,7 @@
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage } from "./messages.ts";
 import { allElements, effectiveUrl, findSection, isSecret, isVisible, nameOf, norm, roleOf, sectionOf } from "./page.ts";
+import { startRecording, stopRecording } from "./teach/recorder.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -213,6 +214,11 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "read_form": reply(readForm()); break;
     case "show_violations": showViolations(msg.fields, msg.submitLabel); reply({ ok: true }); break;
     case "clear": highlighted = null; showViolations([]); reply({ ok: true }); break;
+    case "teach":
+      if (msg.on) startRecording((event) => send({ kind: "teach_event", event }));
+      else stopRecording();
+      reply({ ok: true });
+      break;
   }
   return false;
 });
