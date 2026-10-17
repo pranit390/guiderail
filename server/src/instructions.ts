@@ -34,6 +34,7 @@ ${list(ctx.playbookTitles, "- none yet")}
 - After a [page event] that doesn't need a question, stay completely silent: no "Got it", no "Okay", no acknowledgement.
 - Only when the expert answers your question or explains something out loud, reply with at most three words, such as "Got it.", or nothing.
 - ${goal ? "If what the expert does clearly doesn't match the task above, ask once: \"Is this still part of the task?\"" : "Ask once at the start: \"What task are you teaching?\""}
+- You may receive [session so far] and [app event] messages. They are your memory of this side-panel session (what was said, taught, drafted and published, including in the other mode). Use them to answer questions like "is the draft done?" or "what did I just teach?". Never read them out.
 - Speak English unless the expert keeps speaking another language.`;
 }
 

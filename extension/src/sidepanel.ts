@@ -3,6 +3,7 @@ import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, type Rule, type Violation } from "./policy.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
+import { SessionLog } from "./sessionlog.ts";
 
 const SERVER = "ws://localhost:8787";
 const HTTP = "http://localhost:8787";
@@ -18,6 +19,15 @@ const talk = $<HTMLButtonElement>("#talk");
 let ws: WebSocket | undefined;
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
+// Memory for this side-panel session, given to every new Live connection (e.g. after Teach ↔ Guide).
+const memory = new SessionLog();
+let turnText = { user: "", model: "" };
+
+// Something the app did that the model should know about (drafting, publishing…).
+function appEvent(text: string) {
+  memory.add("app", text);
+  sendServer({ type: "app", text });
+}
 // The last message sent in the text box, so Teach can use it as the goal.
 let lastSent: { text: string; at: number } | null = null;
 let resumeHandle: string | undefined;
@@ -94,7 +104,10 @@ const sendServer = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send
 
 async function onServer(msg: any) {
   switch (msg.type) {
-    case "ready": setStatus("Ready", "on"); break;
+    case "ready":
+      setStatus("Ready", "on");
+      if (memory.size) sendServer({ type: "session", text: memory.summary() });
+      break;
     case "audio":
       if (mode === "teach") held.audio.push(msg.data);
       else speaker.play(msg.data);
@@ -102,6 +115,7 @@ async function onServer(msg: any) {
     case "interrupted": speaker.interrupt(); held.audio = []; break;
     case "transcript":
       teach?.heard(msg.role, msg.text);
+      if (msg.role === "user" || mode !== "teach") turnText[msg.role as "user" | "model"] += msg.text;
       if (mode === "teach" && msg.role === "model") held.text += msg.text;
       else {
         if (msg.role === "user") held.expertSpoke = true;
@@ -112,10 +126,14 @@ async function onServer(msg: any) {
       if (mode === "teach") {
         if (shouldSpeak(held.text, held.expertSpoke)) {
           say("model", held.text.trim());
+          turnText.model = held.text;
           held.audio.forEach((a) => speaker.play(a));
         }
         held = { audio: [], text: "", expertSpoke: false };
       }
+      memory.add("user", turnText.user);
+      memory.add("model", turnText.model);
+      turnText = { user: "", model: "" };
       open = null;
       teach?.endTurn("user");
       teach?.endTurn("model");
@@ -266,7 +284,10 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply
       if (!teach) break;
       teach.add(msg.event);
       $("#teachcount").textContent = String(teach.count);
-      { const line = describeForModel(msg.event); if (line) say("step", `✓ ${line.replace(/^Expert /, "")}`); }
+      {
+        const line = describeForModel(msg.event);
+        if (line) { say("step", `✓ ${line.replace(/^Expert /, "")}`); memory.add("step", line.replace(/^Expert /, "")); }
+      }
       {
         // Only the expert's choices invite a reply (a possible "why?"); clicks and page changes are context.
         const text = describeForModel(msg.event);
@@ -325,6 +346,7 @@ $("#teach").addEventListener("click", async () => {
   teach = new TeachSession(goal);
   pendingPayload = null;
   say("system", `Teach mode: showing "${goal}". Do the task normally and say why as you go.`);
+  memory.add("app", `Teach mode started. Task being taught: "${goal}"`);
   await setTeach(true);
 });
 
@@ -351,6 +373,7 @@ async function stopAndDraft() {
     await setTeach(false);
   }
   say("system", "Drafting a Playbook from what you showed. This takes about 15 seconds…");
+  appEvent(`Teach mode stopped; drafting a Playbook from ${pendingPayload?.events.length ?? 0} recorded events (takes about 15 seconds)`);
   let res: Response;
   try {
     res = await fetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
@@ -384,6 +407,7 @@ async function stopAndDraft() {
   $("#draft").hidden = false;
   $("#draft").scrollIntoView({ block: "nearest" });
   say("system", "Draft ready below. Review it, untick any Rules you don't want, then click Publish.");
+  appEvent(`Playbook draft ready: "${draft.title}". It is shown below the chat for the user to review; they still need to click Publish. Draft:\n${String(draft.markdown).slice(0, 1200)}`);
 }
 
 $("#publish").addEventListener("click", async () => {
@@ -399,6 +423,7 @@ $("#publish").addEventListener("click", async () => {
   if (!res.ok) { say("system", `Publishing failed: ${await errorText(res)}. Your draft is still here; press Publish to try again.`); return; }
   $("#draft").hidden = true;
   say("system", `Published "${draft.title}". New hires will be guided by it from their next session.`);
+  memory.add("app", `Playbook "${draft.title}" was published and is now used for guiding`);
   draft = null;
   await loadRules();
   // Start a fresh Guide session so the relay loads the new Playbook.
@@ -418,6 +443,7 @@ $("#form").addEventListener("submit", (e) => {
   say("user", text);
   open = null;
   lastSent = { text, at: Date.now() };
+  memory.add("user", text);
   sendServer({ type: "text", text });
   input.value = "";
 });

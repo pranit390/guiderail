@@ -11,6 +11,8 @@ export type ClientMessage =
   | { type: "audio_end" }
   | { type: "text"; text: string }
   | { type: "event"; text: string } // a page event the model should respond to, e.g. a new Violation or an expert choice
+  | { type: "session"; text: string } // summary of this side-panel session, sent once when a connection opens
+  | { type: "app"; text: string } // something the app did, e.g. a Playbook draft is ready
   | { type: "context"; text: string } // a page event the model should only know about, with no reply, e.g. a click while teaching
   | { type: "tool_result"; id: string; name: string; response: Record<string, unknown> };
 
@@ -87,6 +89,12 @@ export async function relay(client: WebSocket, resumptionHandle?: string, mode: 
         break;
       case "event":
         session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: true });
+        break;
+      case "session":
+        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[session so far]\n${msg.text}` }] }], turnComplete: false });
+        break;
+      case "app":
+        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[app event] ${msg.text}` }] }], turnComplete: false });
         break;
       case "context":
         // Context only: the model takes it in without starting a reply.
