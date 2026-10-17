@@ -2,6 +2,8 @@
 /// <reference types="node" />
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fixtureDraft } from "../../server/src/journeys/fixture.ts";
+import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 
 const audio = vi.hoisted(() => ({ setMuted:vi.fn(), play:vi.fn(), beginTurn:vi.fn(), turnEnded:vi.fn(), interrupt:vi.fn() }));
 vi.mock("./audio.ts", () => ({ Mic: class {}, Speaker: class {
@@ -14,11 +16,15 @@ class Socket {
   static OPEN = 1;
   readyState = Socket.OPEN;
   onmessage: ((event: { data: string }) => Promise<void>) | undefined;
+  onclose: (() => void) | undefined;
   send = vi.fn();
-  constructor() { sockets.push(this); }
+  close = vi.fn(() => { this.readyState = 3; this.onclose?.(); });
+  constructor(public url: string) { sockets.push(this); }
+  get params() { return new URL(this.url).searchParams; }
 }
 let sockets: Socket[];
 const sendMessage = vi.fn().mockResolvedValue({ ok: true });
+const session = { set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) };
 
 beforeEach(async () => {
   vi.resetModules();
@@ -31,7 +37,7 @@ beforeEach(async () => {
   vi.stubGlobal("WebSocket", Socket);
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ rules: [] }) }));
   vi.stubGlobal("chrome", {
-    storage: { local: { get:vi.fn().mockImplementation(async () => ({ voiceOut:savedVoice })), set:storageSet } },
+    storage: { local: { get:vi.fn().mockImplementation(async () => ({ voiceOut:savedVoice })), set:storageSet }, session },
     identity: { AccountStatus: { ANY: "ANY" }, getProfileUserInfo: vi.fn().mockResolvedValue({}) },
     runtime: { onMessage: { addListener: vi.fn() } },
     tabs: { query: vi.fn().mockResolvedValue([{ id: 1 }]), sendMessage },
@@ -101,5 +107,32 @@ describe("spoken replies", () => {
     chromeListener({ kind:"toggle_voice" }, {}, vi.fn());
     expect(document.querySelector("#voice")!.getAttribute("aria-pressed")).toBe("false");
     expect(audio.setMuted).toHaveBeenLastCalledWith(true);
+  });
+});
+
+describe("compile during Teach", () => {
+  it("leaves Teach connected and starts Guide fresh with the compiled Goal", async () => {
+    const compiled = { cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 100, compiledAt: "2026-10-17T23:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } };
+    let respond!: (response: Response) => void;
+    vi.mocked(fetch).mockImplementation(async (url) => String(url).endsWith("/journeys/compile")
+      ? new Promise<Response>((resolve) => { respond = resolve; })
+      : new Response(JSON.stringify({ error: "offline" }), { status: 503 }));
+    await sockets[0].onmessage?.({ data: JSON.stringify({ type: "resumption", handle: "pre-compile" }) });
+    expect(session.set).toHaveBeenCalledWith({ resumeHandle: "pre-compile" });
+
+    document.querySelector<HTMLButtonElement>("[data-compile]")!.click();
+    document.querySelector<HTMLButtonElement>("#teach")!.click();
+    await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("teach"));
+    const teach = sockets.at(-1)!;
+
+    respond(new Response(JSON.stringify(compiled)));
+    await vi.waitFor(() => expect(document.querySelector("[data-status]")!.textContent).toContain("from cache"));
+    expect(sockets.at(-1)).toBe(teach);
+    expect(teach.close).not.toHaveBeenCalled();
+
+    document.querySelector<HTMLButtonElement>("#teachstop")!.click();
+    await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("guide"));
+    expect(sockets.at(-1)!.params.get("goalId")).toBe(FIRESTORE_GOAL.id);
+    expect(sockets.at(-1)!.params.has("resume")).toBe(false);
   });
 });

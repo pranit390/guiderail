@@ -30,10 +30,10 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   http: HTTP,
   compiled() {
     compiledGoal = true;
-    if (mode !== "guide") return;
-    docsTabId = undefined;
     resumeHandle = undefined;
     void chrome.storage.session.remove("resumeHandle");
+    if (mode !== "guide") return;
+    docsTabId = undefined;
     ws?.close();
     connect();
   },
