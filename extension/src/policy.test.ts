@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import seed from "../../seed/rules/org-labeling-rules.json";
 import type { FormState } from "./messages.ts";
-import { evaluate, guidance, rulesFor, type Rule, type Violation } from "./policy.ts";
+import { evaluate, guidance, rulesFor, summarizeViolations, type Rule, type Violation } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
 
@@ -105,6 +105,18 @@ describe("evaluate", () => {
     const owner = evaluate(rules, iam("Owner"));
     expect(owner).toEqual([expect.objectContaining({ ruleId: "iam-no-owner", field: "Role", severity: "block" })]);
     expect(evaluate(rules, iam("Cloud Run Developer"))).toEqual([]);
+  });
+});
+
+describe("summarizeViolations", () => {
+  it("counts unique fields primary and Rules secondary (panel/page agreement)", () => {
+    const vs: Violation[] = [
+      { ruleId: "a", field: "label:owner", message: "m1", severity: "block" },
+      { ruleId: "b", field: "label:owner", message: "m2", severity: "block" },
+      { ruleId: "c", field: "label:environment", message: "m3", severity: "warn" },
+    ];
+    expect(summarizeViolations(vs)).toEqual({ fields: ["label:owner", "label:environment"], fieldCount: 2, ruleCount: 3, blockingFields: ["label:owner"], blockingFieldCount: 1, blockingRuleCount: 2 });
+    expect(summarizeViolations([])).toMatchObject({ fieldCount: 0, ruleCount: 0 });
   });
 });
 

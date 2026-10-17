@@ -23,6 +23,14 @@ export type Violation = { ruleId: string; field: string; message: string; severi
 
 export type Suggestion = { key: string; explain: string; format: string; examples: string[]; suggested: string | null; ask: boolean };
 
+/** Panel and page must agree: unique fields are primary, Rule count is secondary. */
+export function summarizeViolations(violations: Violation[]) {
+  const fields = [...new Set(violations.map((v) => v.field))];
+  const blocking = violations.filter((v) => v.severity === "block");
+  const blockingFields = [...new Set(blocking.map((v) => v.field))];
+  return { fields, fieldCount: fields.length, ruleCount: violations.length, blockingFields, blockingFieldCount: blockingFields.length, blockingRuleCount: blocking.length };
+}
+
 export type Context = { firstName?: string; consoleCreate: boolean };
 
 const globToRegex = (glob: string) => new RegExp("^" + glob.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
