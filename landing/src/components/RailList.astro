@@ -1,0 +1,23 @@
+---
+import type { RailStop } from "../kit/types";
+
+interface Props {
+  label: string;
+  stops: RailStop[];
+}
+const { label, stops } = Astro.props;
+---
+
+<ol class="rail-list" aria-label={label}>
+  {
+    stops.map((stop) => (
+      <li>
+        <span class="rail-cell" aria-hidden="true"><span class="rail-dot"></span></span>
+        <div class="rail-copy">
+          <h3>{stop.title}</h3>
+          {stop.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+        </div>
+      </li>
+    ))
+  }
+</ol>
