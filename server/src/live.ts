@@ -1,8 +1,8 @@
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@google/genai";
 import type { WebSocket } from "ws";
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { runServerTool, SERVER_TOOLS, systemInstruction, tools } from "./tools.ts";
+import { runServerTool, SERVER_TOOLS, tools } from "./tools.ts";
+import { instructionFor, type Mode } from "./instructions.ts";
+import { loadPlaybooks } from "./playbooks/load.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
 // 16 kHz from the client, 24 kHz to the client.
@@ -30,15 +30,7 @@ const MAX_SESSION_MS = 10 * 60 * 1000;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 
-// Playbooks: how this org does things and where things live in each tool. Appended to the instruction.
-const PLAYBOOKS = join(import.meta.dirname, "..", "..", "seed", "playbooks");
-const playbooks = readdirSync(PLAYBOOKS)
-  .filter((f) => f.endsWith(".md"))
-  .map((f) => readFileSync(join(PLAYBOOKS, f), "utf8"))
-  .join("\n\n---\n\n");
-const instruction = `${systemInstruction}\n\n# Playbooks\n\n${playbooks}`;
-
-export async function relay(client: WebSocket, resumptionHandle?: string) {
+export async function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide") {
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
   let session: Session;
@@ -47,8 +39,8 @@ export async function relay(client: WebSocket, resumptionHandle?: string) {
       model,
       config: {
         responseModalities: [Modality.AUDIO],
-        systemInstruction: instruction,
-        tools: [{ functionDeclarations: tools }],
+        systemInstruction: instructionFor(mode, await loadPlaybooks()),
+        tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
         sessionResumption: resumptionHandle ? { handle: resumptionHandle } : {},

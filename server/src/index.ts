@@ -180,8 +180,9 @@ function approverPage(approval?: Approval) {
 
 const wss = new WebSocketServer({ server, path: "/live" });
 wss.on("connection", (client, req) => {
-  const handle = new URL(req.url ?? "", "http://x").searchParams.get("resume") ?? undefined;
-  void relay(client, handle);
+  const params = new URL(req.url ?? "", "http://x").searchParams;
+  const mode = params.get("mode") === "teach" ? "teach" : "guide";
+  void relay(client, params.get("resume") ?? undefined, mode);
 });
 
 server.listen(PORT, () => console.log(`GuideRail server on http://localhost:${PORT}  (ws /live, /rules, /approvals, /a/, /role, /sandbox/)`));
