@@ -1,9 +1,10 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
-import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
+import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, textOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
 import { liveHighlight } from "./resolve.ts";
+import { readDocument, findDocumentHeading } from "./document.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
@@ -36,7 +37,7 @@ function readPage(): PageSnapshot {
     if (control.section) item.section = control.section;
     elements.push(item);
   }
-  return { url: effectiveUrl(), title: document.title, elements, generation };
+  return { url: effectiveUrl(), title: document.title, elements, generation, document: readDocument() };
 }
 
 // ---------- Pointing at a pinned element ----------
@@ -177,6 +178,10 @@ function placeCue(el: Element) {
 }
 
 function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
+  // Firebase's wizard uses the browser top layer; z-index outside it cannot
+  // draw over the form. Keep our pointer in the target's own overlay surface.
+  const surface = el.closest("[popover],dialog[open]") ?? document.documentElement;
+  if (host.parentElement !== surface) surface.append(host);
   highlighted = el;
   applyTheme(ring, el);
   applyTheme(cue, el);
@@ -364,12 +369,25 @@ const urlTimer = setInterval(() => {
 // ---------- Requests from the side panel ----------
 
 chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
+  if (msg.expectedUrl && msg.expectedUrl !== location.href) {
+    reply({ error: "The page changed before the command. Re-read the bound Journey tab." });
+    return;
+  }
   switch (msg.kind) {
     case "customize":
       try { reply(calm.set(parseCalmPreset(msg.preset))); startFollow(); }
       catch (err) { reply({ error: err instanceof Error ? err.message : "Invalid preset." }); }
       break;
     case "read_page": reply(readPage()); break;
+    case "read_document": reply(readDocument() ?? { error: "Open one of the pinned public docs pages first." }); break;
+    case "highlight_document": {
+      const heading = findDocumentHeading(msg.heading);
+      highlighted = null;
+      ring.hidden = true;
+      if (heading) pointAt(heading, { scroll: !interacting() });
+      reply(heading ? { found: true, name: textOf(heading) } : { found: false, error: "That section is absent, hidden or ambiguous on this page." });
+      break;
+    }
     case "highlight": reply(highlightRequest(msg)); break;
     case "clear_highlight": clearHighlight(); reply({ ok: true }); break;
     case "read_form": reply(readForm()); break;

@@ -3,6 +3,8 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
+import { CompileError, parseCompileRequest } from "../../shared/journey.ts";
+import { journeyCompiler, CompileBusyError } from "./journeys/compile.ts";
 import { draftPlaybook, DraftError, isRule } from "./playbooks/draft.ts";
 import { isAllowedOrigin } from "./origin.ts";
 import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
@@ -36,7 +38,7 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown> |
   }
 }
 
-const WRITE_ROUTES = new Set(["/playbooks/draft", "/playbooks", "/approvals"]);
+const WRITE_ROUTES = new Set(["/journeys/compile", "/playbooks/draft", "/playbooks", "/approvals"]);
 
 const server = createServer(async (req, res) => {
   try {
@@ -64,6 +66,20 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (url.pathname === "/rules") {
     const seed = JSON.parse(await readFile(join(ROOT, "seed", "rules", "org-labeling-rules.json"), "utf8"));
     return json(res, 200, { rules: [...seed.rules, ...(await ruleStore.all())] });
+  }
+
+  if (url.pathname === "/journeys/compile" && req.method === "POST") {
+    try { parseCompileRequest(await readJson(req)); }
+    catch (err) {
+      if (!(err instanceof CompileError)) throw err;
+      return json(res, 400, { error: err.message });
+    }
+    try { return json(res, 200, await journeyCompiler.compile()); }
+    catch (err) {
+      if (err instanceof CompileBusyError) return json(res, 429, { error: err.message });
+      if (err instanceof CompileError) return json(res, 502, { error: err.message });
+      throw err;
+    }
   }
 
   if (url.pathname === "/playbooks/draft" && req.method === "POST") {
@@ -223,7 +239,7 @@ wss.on("connection", (client, req) => {
   const params = new URL(req.url ?? "", "http://x").searchParams;
   const mode = params.get("mode") === "teach" ? "teach" : "guide";
   const goal = params.get("goal")?.slice(0, 200) || undefined;
-  void relay(client, params.get("resume") ?? undefined, mode, goal);
+  void relay(client, params.get("resume") ?? undefined, mode, goal, params.get("goalId") ?? undefined);
 });
 
 server.listen(PORT, () => console.log(`GuideRail server on http://localhost:${PORT}  (ws /live, /rules, /approvals, /a/, /role, /sandbox/)`));

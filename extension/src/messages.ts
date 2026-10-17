@@ -1,10 +1,11 @@
 // Messages between the side panel and the content script.
+import type { DocumentSnapshot } from "./document.ts";
 import type { TeachEvent } from "./teach/events.ts";
 import type { CalmPreset } from "./calm.ts";
 
 export type PageElement = { i: number; role: string; name: string; value?: string; section?: string };
 
-export type PageSnapshot = { url: string; title: string; elements: PageElement[]; generation: number };
+export type PageSnapshot = { url: string; title: string; elements: PageElement[]; generation: number; document?: DocumentSnapshot };
 
 export type FormState = {
   url: string;
@@ -15,8 +16,10 @@ export type FormState = {
 
 export type ViolationDetail = { field: string; message: string; severity: "block" | "warn" };
 
-export type ToPage =
+export type ToPage = (
   | { kind: "read_page" }
+  | { kind: "read_document" }
+  | { kind: "highlight_document"; heading: string }
   | { kind: "highlight"; text: string; role?: string; section?: string; generation?: number; index?: number; name?: string }
   | { kind: "clear_highlight" }
   | { kind: "customize"; preset: CalmPreset }
@@ -24,7 +27,8 @@ export type ToPage =
   | { kind: "show_violations"; violations: ViolationDetail[] }
   | { kind: "show_field"; field: string }
   | { kind: "clear" }
-  | { kind: "teach"; on: boolean };
+  | { kind: "teach"; on: boolean }
+) & { expectedUrl?: string };
 
 export type FromPage =
   | { kind: "customize_event"; text: string }

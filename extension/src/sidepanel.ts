@@ -1,10 +1,15 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
+import { JourneyBinding } from "./journey-binding.ts";
+import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
+import { mountJourneyPanel } from "./journey-panel.ts";
+import { briefPrompt, isPublicDoc, routePageTool, type DocumentSnapshot } from "./document.ts";
+import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, HighlightResult, PageSnapshot, ToPage } from "./messages.ts";
 import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
 import { violationFieldLabel } from "./page.ts";
-import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, type BoundSnapshot } from "./resolve.ts";
+import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, resolutionResult, type BoundSnapshot } from "./resolve.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
 import { SessionLog } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
@@ -24,6 +29,46 @@ let ws: WebSocket | undefined;
 // Latest read of the tab this session is coaching. Highlight and Assist fill may use only these names.
 let bound: BoundSnapshot | null = null;
 let boundStale = false;
+let liveReady = false;
+let compiledGoal = false;
+let docsTabId: number | undefined;
+const binding = new JourneyBinding();
+const journeyPanel = mountJourneyPanel($("#journey"), {
+  http: HTTP,
+  open: () => binding.open({ goalId: FIRESTORE_GOAL.id }),
+  read: async () => readSnapshot(await binding.tab()),
+  point: (text, role) => runHighlight({ text, role }),
+  changed: appEvent,
+  reset() { binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
+  compiled() {
+    compiledGoal = true;
+    resumeHandle = undefined;
+    void chrome.storage.session.remove("resumeHandle");
+    if (mode !== "guide") return;
+    docsTabId = undefined;
+    ws?.close();
+    connect();
+  },
+  async brief() {
+    if (binding.tabId !== undefined) throw new Error("End the console Journey before briefing another tab.");
+    if (!liveReady || ws?.readyState !== WebSocket.OPEN) throw new Error("The coach is not ready. Reconnect and retry.");
+    const tab = await activeTab();
+    if (!tab.url || !isPublicDoc(tab.url)) throw new Error("Choose the Firestore or IAM public docs tab.");
+    const doc = await toPage<DocumentSnapshot | { error: string }>({ kind: "read_document" }, tab.id);
+    if ("error" in doc) throw new Error(doc.error);
+    if (!doc.text || !doc.headings.length) throw new Error("No visible document section was found.");
+    docsTabId = tab.id;
+    const preferred = doc.headings.find((h) => /^(Create a database|Grant access|Grant a single IAM role|Required roles and permissions)$/i.test(h)) ?? doc.headings[0];
+    const highlight = await toPage<unknown>({ kind: "highlight_document", heading: preferred }, docsTabId);
+    if (!highlight || typeof highlight !== "object" || !("found" in highlight) || highlight.found !== true) {
+      docsTabId = undefined;
+      throw new Error(`Couldn't point to “${preferred}” on this page.`);
+    }
+    sendServer({ type: "text", text: briefPrompt(doc) });
+    say("user", "Brief me from this page.");
+    open = null;
+  },
+});
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
 // Memory for this side-panel session, given to every new Live connection (e.g. after Teach ↔ Guide).
@@ -115,8 +160,10 @@ function say(role: "user" | "model" | "system" | "step", text: string) {
 // ---------- Connection to the relay ----------
 
 function connect() {
+  liveReady = false;
   setStatus("Connecting…", "busy");
   const params = new URLSearchParams({ mode });
+  if (mode === "guide" && compiledGoal) params.set("goalId", FIRESTORE_GOAL.id);
   if (mode === "guide" && resumeHandle) params.set("resume", resumeHandle);
   if (mode === "teach" && teach) params.set("goal", teach.goal);
   const sock = new WebSocket(`${SERVER}/live?${params}`);
@@ -124,6 +171,7 @@ function connect() {
   sock.onmessage = (e) => { if (ws === sock) void onServer(JSON.parse(e.data)); };
   sock.onclose = () => {
     if (ws !== sock) return;
+    liveReady = false;
     setStatus("Disconnected. Click to reconnect", "off");
     speaker.interrupt();
     speaker.turnEnded();
@@ -140,6 +188,7 @@ const sendServer = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send
 async function onServer(msg: any) {
   switch (msg.type) {
     case "ready":
+      liveReady = true;
       setStatus("Ready", "on");
       if (memory.size) sendServer({ type: "session", text: memory.summary() });
       break;
@@ -196,29 +245,58 @@ async function activeTab(): Promise<chrome.tabs.Tab> {
 }
 
 async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
-  const tab = tabId === undefined ? await activeTab() : await chrome.tabs.get(tabId);
+  const generation = binding.generation;
+  const wasBound = binding.tabId !== undefined;
+  const tab = wasBound
+    ? await binding.tab()
+    : tabId === undefined ? await activeTab() : await chrome.tabs.get(tabId);
+  if (generation !== binding.generation) throw new Error("The Journey changed. Re-read the page.");
+  if (wasBound && tabId !== undefined && tabId !== tab.id) throw new Error("Journey paused: that is not the bound tab.");
+  if (tab.url && new URL(tab.url).hostname === "accounts.google.com") throw new Error("Sign-in pages are never read.");
+  const command = wasBound ? { ...msg, expectedUrl: tab.url } : msg;
+  let result: T;
   try {
-    return await chrome.tabs.sendMessage(tab.id!, msg);
+    if (generation !== binding.generation) throw new Error("The Journey changed. Re-read the page.");
+    result = await chrome.tabs.sendMessage(tab.id!, command);
   } catch {
-    // The tab was open before GuideRail was installed: inject the content script and retry once.
+    // A tab open before installation needs the content script once.
+    if (generation !== binding.generation) throw new Error("The Journey changed. Re-read the page.");
+    if (wasBound) await binding.tab();
     await chrome.scripting.executeScript({ target: { tabId: tab.id! }, files: ["content.js"] }).catch(() => {
-      throw new Error("GuideRail can't see this tab. Ask the user to open a Google page.");
+      throw new Error("GuideRail can't see this tab. Open a supported Google page.");
     });
-    return chrome.tabs.sendMessage(tab.id!, msg);
+    if (generation !== binding.generation) throw new Error("The Journey changed. Re-read the page.");
+    if (wasBound) await binding.tab();
+    result = await chrome.tabs.sendMessage(tab.id!, command);
   }
+  if (generation !== binding.generation) throw new Error("The Journey changed. Re-read the page.");
+  if (binding.tabId !== undefined) {
+    const current = await binding.tab();
+    if (current.url !== tab.url) throw new Error("The page changed. Re-read the bound Journey tab.");
+  }
+  if (result && typeof result === "object" && "error" in result) throw new Error(String(result.error));
+  return result;
 }
 
 async function runTool(name: string, args: Record<string, any>): Promise<Record<string, unknown>> {
   switch (name) {
-    case "read_page": {
-      const tab = await activeTab();
-      const snap = await toPage<PageSnapshot>({ kind: "read_page" }, tab.id);
-      bound = { tabId: tab.id!, url: snap.url, generation: snap.generation, elements: snap.elements };
-      boundStale = false;
-      return snap;
+    case "open_page":
+      parseCompileRequest(args);
+      await journeyPanel.openJourney();
+      return { opened: true, goalId: FIRESTORE_GOAL.id, note: "Journey bound. Choose your project yourself; Guide never clicks or fills." };
+    case "read_page":
+    case "highlight_document":
+    case "highlight": {
+      const tab = binding.tabId !== undefined ? await binding.tab() : await activeTab();
+      const route = routePageTool(name, args, docsTabId, tab);
+      if (route.ended) {
+        docsTabId = undefined;
+        appEvent(`The briefing ended: the person left the public docs. ${compiledGoal ? "Continue the compiled Firestore Journey" : "Continue guiding"} on the current page.`);
+      }
+      if (route.message.kind === "read_page") return readSnapshot(tab);
+      if (route.message.kind === "highlight") return runHighlight(args);
+      return toPage(route.message, tab.id);
     }
-    case "highlight":
-      return runHighlight(args);
     case "customize":
       return toPage({ kind: "customize", preset: parseCalmPreset(args.preset) });
     case "get_guidance": {
@@ -244,12 +322,20 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       return { opened: true, note: "The user must review and click Send." };
     }
     case "complete_step":
+      if (binding.tabId !== undefined) return { error: "Use the Journey's explicit Next or Skip control. A model cannot verify a Step or database creation." };
       say("step", `Done · ${args.summary}`);
       log.lastElementChild?.prepend(stateGlyph("go"));
       return { ok: true };
     default:
       return { error: `Unknown tool ${name}` };
   }
+}
+
+async function readSnapshot(tab: chrome.tabs.Tab): Promise<PageSnapshot> {
+  const snap = await toPage<PageSnapshot>({ kind: "read_page" }, tab.id);
+  bound = { tabId: tab.id!, url: snap.url, generation: snap.generation, elements: snap.elements };
+  boundStale = false;
+  return snap;
 }
 
 async function runHighlight(args: Record<string, unknown>): Promise<HighlightResult> {
@@ -259,12 +345,16 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   const citation = args.citation == null || args.citation === "" ? undefined : String(args.citation);
   let tabId: number | null = null;
   try {
-    tabId = (await activeTab()).id ?? null;
+    tabId = (binding.tabId !== undefined ? await binding.tab() : await activeTab()).id ?? null;
   } catch {
     tabId = null;
   }
   const snap = bound;
-  const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
+  let decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
+  // A bound Journey points only at an exact accessible name, never a fuzzy match.
+  if (binding.tabId !== undefined && actionAuthorized(decision) && decision.confidence < 1) {
+    decision = { authorized: false, ...(resolutionResult(text, { status: "missing", alternatives: [decision.name] }, citation) as Extract<HighlightResult, { found: false }>) };
+  }
   if (!actionAuthorized(decision)) {
     say("system", highlightOutcome(decision));
     await clearBoundHighlight();
@@ -358,17 +448,36 @@ async function updateViolations(form: FormState) {
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply) => {
+  if (msg.kind === "teach_status") { reply({ on: mode === "teach" && binding.tabId === undefined }); return; }
+  if (msg.kind === "tab_changed" || msg.kind === "toggle_voice") { handlePageMessage(msg, sender); return; }
+  if (sender.frameId && sender.frameId !== 0) return;
+  if (binding.tabId !== undefined) {
+    if (!sender.tab || !binding.accepts({ id: sender.tab.id, url: sender.url })) return;
+    const generation = binding.generation;
+    void binding.tab().then((tab) => {
+      if (generation !== binding.generation || sender.tab?.id !== tab.id || sender.url !== tab.url) return;
+      const url = new URL(tab.url!);
+      if ((msg.kind === "form_changed" || msg.kind === "submit_intent") && msg.form.url !== url.host + url.pathname) return;
+      handlePageMessage(msg, sender);
+    }).catch(() => {});
+    return;
+  }
+  if (sender.url && new URL(sender.url).hostname === "accounts.google.com") return;
+  handlePageMessage(msg, sender);
+});
+
+function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | TabChanged, sender: chrome.runtime.MessageSender) {
   switch (msg.kind) {
     case "toggle_voice": toggleVoice(); break;
     case "customize_event":
       say("system", msg.text);
       appEvent(msg.text);
       break;
-    case "teach_status":
-      reply({ on: mode === "teach" });
-      break;
     case "tab_changed":
-      if (mode === "teach") void followTab(msg.tabId);
+      if (binding.tabId !== undefined) {
+        journeyPanel.invalidate("The tab changed. Return to the bound Firestore tab and re-read this Step.");
+        card.hidden = true; issues.hidden = true;
+      } else if (mode === "teach") void followTab(msg.tabId);
       // A reload of the coached tab drops the content script's generation counter, so the old snapshot cannot authorize a target.
       if (bound && msg.tabId === bound.tabId && msg.url) {
         boundStale = true;
@@ -376,6 +485,7 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
       }
       break;
     case "page_event":
+      if (binding.tabId !== undefined) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.");
       if (bound && sender.tab?.id === bound.tabId && msg.generation !== undefined && msg.generation !== bound.generation) {
         boundStale = true;
         void clearBoundHighlight();
@@ -414,7 +524,7 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
       }
       break;
   }
-});
+}
 
 // ---------- Teach ----------
 
@@ -429,7 +539,10 @@ async function followTab(tabId: number) {
 }
 
 async function setTeach(on: boolean) {
+  if (on && binding.tabId !== undefined) journeyPanel.endJourney();
   mode = on ? "teach" : "guide";
+  docsTabId = undefined;
+  journeyPanel.setEnabled(!on);
   showTeachButton(on);
   ws?.close();
   if (on) {

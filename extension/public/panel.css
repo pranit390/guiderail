@@ -64,3 +64,15 @@ button:disabled { opacity: .5; cursor: default; }
 #draftrules label { display: block; font-size: 13px; padding: 2px 0; }
 .page-look { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; }
 .page-look span { flex: 1; color: var(--muted); font-size: 12px; }
+
+/* The docs card shares the existing surface, typography and focus tokens. */
+#journey { margin: 0; max-height: none; flex-shrink: 0; }
+#journey p { margin: 6px 0; }
+#journey button { margin: 4px 0; width: 100%; }
+#journey a { color: var(--ink); text-decoration: underline; overflow-wrap: anywhere; }
+#journey li { margin-bottom: 12px; }
+#journey [data-status] { color: var(--muted); }
+
+#journey .citation { display: inline-block; padding: 2px 6px; border: 1px solid var(--line); border-radius: 6px; font-size: 12px; }
+#journey li[data-current] { background: var(--accent-soft); }
+[hidden] { display: none !important; }

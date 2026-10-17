@@ -38,9 +38,9 @@ ${list(ctx.playbookTitles, "- none yet")}
 - Speak English unless the expert keeps speaking another language.`;
 }
 
-export function instructionFor(mode: Mode, playbooks: string[], ctx: TeachContext = {}): string {
+export function instructionFor(mode: Mode, playbooks: string[], ctx: TeachContext = {}, vendorJourney?: string): string {
   if (mode === "teach") return teachInstructionFor(ctx);
-  return `${systemInstruction}\n\n# Playbooks\n\n${playbooks.join("\n\n---\n\n")}`;
+  return `${systemInstruction}\n\n# Playbooks\n\n${playbooks.join("\n\n---\n\n")}\n\n${vendorJourney ?? ""}`;
 }
 
 // The first markdown heading of a Playbook, used as its title.
