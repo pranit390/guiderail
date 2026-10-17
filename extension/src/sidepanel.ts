@@ -57,15 +57,15 @@ function setStatus(text: string, state: "on" | "off" | "busy") {
 
 let open: { role: string; el: HTMLElement } | null = null;
 
-function say(role: "user" | "model" | "system", text: string) {
-  if (open && open.role === role && role !== "system") {
+function say(role: "user" | "model" | "system" | "step", text: string) {
+  if (open && open.role === role && role !== "system" && role !== "step") {
     open.el.textContent += text;
   } else {
     const el = document.createElement("p");
     el.className = `msg ${role}`;
     el.textContent = text;
     log.append(el);
-    open = role === "system" ? null : { role, el };
+    open = role === "system" || role === "step" ? null : { role, el };
   }
   log.scrollTop = log.scrollHeight;
 }
@@ -266,6 +266,7 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply
       if (!teach) break;
       teach.add(msg.event);
       $("#teachcount").textContent = String(teach.count);
+      { const line = describeForModel(msg.event); if (line) say("step", `✓ ${line.replace(/^Expert /, "")}`); }
       {
         // Only the expert's choices invite a reply (a possible "why?"); clicks and page changes are context.
         const text = describeForModel(msg.event);
@@ -333,7 +334,15 @@ async function errorText(res: Response): Promise<string> {
   try { return (await res.json()).error ?? res.statusText; } catch { return res.statusText; }
 }
 
+let drafting = false;
+
 $("#teachstop").addEventListener("click", async () => {
+  if (!teach || drafting) return;
+  drafting = true;
+  try { await stopAndDraft(); } finally { drafting = false; }
+});
+
+async function stopAndDraft() {
   if (!teach) return;
   if (!pendingPayload) {
     teach.endTurn("user");
@@ -341,7 +350,7 @@ $("#teachstop").addEventListener("click", async () => {
     pendingPayload = teach.payload();
     await setTeach(false);
   }
-  say("system", "Drafting a Playbook from what you showed…");
+  say("system", "Drafting a Playbook from what you showed. This takes about 15 seconds…");
   let res: Response;
   try {
     res = await fetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
@@ -373,7 +382,9 @@ $("#teachstop").addEventListener("click", async () => {
     return label;
   }));
   $("#draft").hidden = false;
-});
+  $("#draft").scrollIntoView({ block: "nearest" });
+  say("system", "Draft ready below. Review it, untick any Rules you don't want, then click Publish.");
+}
 
 $("#publish").addEventListener("click", async () => {
   if (!draft) return;
