@@ -23,12 +23,17 @@ export type Violation = { ruleId: string; field: string; message: string; severi
 
 export type Suggestion = { key: string; explain: string; format: string; examples: string[]; suggested: string | null; ask: boolean };
 
-/** Panel and page must agree: unique fields are primary, Rule count is secondary. */
-export function summarizeViolations(violations: Violation[]) {
-  const fields = [...new Set(violations.map((v) => v.field))];
-  const blocking = violations.filter((v) => v.severity === "block");
-  const blockingFields = [...new Set(blocking.map((v) => v.field))];
-  return { fields, fieldCount: fields.length, ruleCount: violations.length, blockingFields, blockingFieldCount: blockingFields.length, blockingRuleCount: blocking.length };
+/** Panel and page must agree: unique fields are primary (blocking = to fix, warn = to check), Rule count is secondary. */
+export function summarizeViolations(violations: Pick<Violation, "field" | "severity">[]) {
+  const blockingFields = [...new Set(violations.filter((v) => v.severity === "block").map((v) => v.field))];
+  const checkFields = [...new Set(violations.filter((v) => v.severity === "warn" && !blockingFields.includes(v.field)).map((v) => v.field))];
+  return { blockingFields, fixCount: blockingFields.length, checkCount: checkFields.length, ruleCount: violations.length };
+}
+
+/** One wording for the panel heading, the page toast and the model: e.g. "1 to fix · 1 to check (2 Rules)". */
+export function violationCountText(summary: ReturnType<typeof summarizeViolations>): string {
+  const parts = [summary.fixCount && `${summary.fixCount} to fix`, summary.checkCount && `${summary.checkCount} to check`].filter(Boolean);
+  return `${parts.join(" · ")} (${summary.ruleCount} Rule${summary.ruleCount === 1 ? "" : "s"})`;
 }
 
 export type Context = { firstName?: string; consoleCreate: boolean };

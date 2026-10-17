@@ -1,7 +1,8 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
-import { allElements, CUSTOM_FIELD, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
+import { allElements, BAD_DARK, BAD_LIGHT, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
+import { summarizeViolations, violationCountText } from "./policy.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 
 const MAX_ELEMENTS = 150;
@@ -9,9 +10,9 @@ const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
 
 let indexed = new Map<number, Element>();
 let highlighted: Element | null = null;
-let blockingFields: string[] = [];
-let blockingRuleCount = 0;
+let violationSummary = summarizeViolations([]);
 let warnedSubmitAt = 0;
+let lastInputAt = 0;
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------- Reading the page ----------
@@ -57,7 +58,7 @@ function findElement(text: string, role?: string): HighlightResult {
     .sort((a, b) => b.s - a.s);
   const best = ranked[0];
   if (best && best.s >= 0.6) {
-    pointAt(indexed.get(best.e.i)!);
+    pointAt(indexed.get(best.e.i)!, { scroll: !interacting() });
     return { found: true, i: best.e.i, name: best.e.name };
   }
   return { found: false, alternatives: ranked.slice(0, 5).filter((r) => r.s > 0).map((r) => r.e.name) };
@@ -68,14 +69,18 @@ function findElement(text: string, role?: string): HighlightResult {
 const host = document.createElement("guiderail-overlay");
 const shadow = host.attachShadow({ mode: "open" });
 shadow.innerHTML = `<style>
-  :host { all: initial; --gr-edge:#805b00; --gr-halo:rgba(224,161,0,.20); --gr-bad:#c43a2f; }
-  :host([data-theme="dark"]) { --gr-edge:#f2b927; --gr-halo:rgba(242,185,39,.22); --gr-bad:#f07468; }
+  :host { all: initial; --gr-edge:${EDGE_LIGHT}; --gr-halo:rgba(224,161,0,.20); --gr-bad:${BAD_LIGHT}; }
+  :host([data-theme="dark"]) { --gr-edge:${EDGE_DARK}; --gr-halo:rgba(242,185,39,.22); --gr-bad:${BAD_DARK}; }
   .layer { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
   .ring { position: fixed; border-radius: 6px; outline: 2px solid var(--gr-edge); outline-offset: 2px;
           box-shadow: 0 0 10px 3px var(--gr-halo); transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease; }
   .ring.pulse { animation: gr-pulse 1.4s ease-in-out 2; }
   @keyframes gr-pulse { 0%,100% { box-shadow: 0 0 6px 2px var(--gr-halo); } 50% { box-shadow: 0 0 16px 6px var(--gr-halo); } }
   .bad { position: fixed; border-radius: 6px; outline: 2px solid var(--gr-bad); outline-offset: 1px; background: transparent; }
+  .cue { position: fixed; left: 50%; transform: translateX(-50%); background: #161d28; color: #fff; font: 600 12px/1.3 system-ui, sans-serif;
+         padding: 4px 10px; border-radius: 999px; border: 2px solid var(--gr-edge); }
+  .cue.above { top: 12px; }
+  .cue.below { bottom: 12px; }
   .chip { position: fixed; max-width: 260px; background: #161d28; color: #fff; font: 500 11px/1.3 system-ui, sans-serif;
           padding: 4px 7px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
   .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #161d28; color: #fff;
@@ -88,7 +93,7 @@ shadow.innerHTML = `<style>
   @media (forced-colors: active) {
     .ring { outline: 2px solid Highlight; box-shadow: none; forced-color-adjust: none; }
     .bad { outline: 2px solid Highlight; forced-color-adjust: none; }
-    .chip { forced-color-adjust: auto; }
+    .chip, .cue { forced-color-adjust: auto; }
   }
 </style><div class="layer"></div>`;
 const layer = shadow.querySelector(".layer")!;
@@ -101,9 +106,11 @@ ring.className = "ring";
 ring.hidden = true;
 ring.setAttribute("aria-hidden", "true");
 layer.append(ring);
+const cue = document.createElement("div");
+cue.hidden = true;
+layer.append(cue);
 let badBoxes: { el: Element; box: HTMLDivElement; chip: HTMLDivElement }[] = [];
 let followRunning = false;
-let staleNotified = false;
 
 function place(box: HTMLElement, el: Element, pad: number) {
   const r = el.getBoundingClientRect();
@@ -121,23 +128,45 @@ function applyTheme(el: Element) {
   host.dataset.theme = isDarkSurrounding(el) ? "dark" : "light";
 }
 
+// The person is interacting: an editable field has focus, or they typed in the last 2 seconds.
+function interacting() {
+  const active = document.activeElement;
+  const editable = !!active && (active.matches("input,select,textarea") || (active as HTMLElement).isContentEditable);
+  return editable || Date.now() - lastInputAt < 2000;
+}
+
+function offscreen(el: Element): "above" | "below" | null {
+  const r = el.getBoundingClientRect();
+  return r.bottom < 0 ? "above" : r.top > window.innerHeight ? "below" : null;
+}
+
+function placeCue(el: Element) {
+  const side = offscreen(el);
+  cue.hidden = !side;
+  if (!side) return;
+  cue.className = `cue ${side}`;
+  cue.textContent = side === "above" ? "↑ Step is above" : "↓ Step is below";
+}
+
 function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   highlighted = el;
-  staleNotified = false;
   applyTheme(el);
   ring.hidden = false;
   place(ring, el, 4);
   // Pulse twice (~1.4s each) then settle; never under reduced motion.
   ring.classList.remove("pulse");
   if (!reducedMotion()) { void ring.offsetWidth; ring.classList.add("pulse"); }
-  // No unsolicited scrolling: only an explicit Show-field action scrolls, and never smoothly under reduced motion.
-  if (opts.scroll) el.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+  // No unsolicited scrolling while the person interacts; an off-screen Step gets a cue instead. Never smooth under reduced motion.
+  if (opts.scroll && offscreen(el)) el.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
+  placeCue(el);
   startFollow();
 }
 
 function showField(field: string) {
   const el = violationFieldElement(field);
-  if (el) pointAt(el, { scroll: true });
+  if (!el) return;
+  pointAt(el);
+  el.scrollIntoView({ block: "center", behavior: reducedMotion() ? "auto" : "smooth" });
 }
 
 function startFollow() {
@@ -148,13 +177,10 @@ function startFollow() {
 
 function follow() {
   if (highlighted) {
-    if (highlighted.isConnected && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; }
-    else {
-      ring.hidden = true;
-      highlighted = null;
-      if (!staleNotified) { staleNotified = true; send({ kind: "page_event", text: "The highlighted field is no longer on screen." }); }
-    }
+    if (highlighted.isConnected && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); }
+    else { ring.hidden = true; highlighted = null; }
   } else ring.hidden = true;
+  if (!highlighted) cue.hidden = true;
   badBoxes = badBoxes.filter(({ el, box, chip }) => {
     if (!el.isConnected || !isVisible(el)) { box.remove(); chip.remove(); return false; }
     place(box, el, 3);
@@ -217,18 +243,19 @@ function readForm(): FormState {
   return { url: effectiveUrl(), labels, fields, sections };
 }
 
-function showViolations(violations: ViolationDetail[]) {
-  const blocking = violations.filter((v) => v.severity === "block");
-  blockingFields = [...new Set(blocking.map((v) => v.field))];
-  blockingRuleCount = blocking.length;
+/** Marks each Violation's exact field and returns the fields it could mark on this page. */
+function showViolations(violations: ViolationDetail[]): string[] {
+  violationSummary = summarizeViolations(violations);
   for (const { box, chip } of badBoxes) { box.remove(); chip.remove(); }
   badBoxes = [];
   // One box per unique field; chips carry every Rule message for that field. Never the whole section, never the submit button.
   const byField = new Map<string, ViolationDetail[]>();
   for (const v of violations) byField.set(v.field, [...(byField.get(v.field) ?? []), v]);
+  const shown: string[] = [];
   for (const [field, items] of byField) {
     const el = violationFieldElement(field);
     if (!el) continue;
+    shown.push(field);
     applyTheme(el);
     const box = document.createElement("div");
     box.className = "bad";
@@ -242,6 +269,7 @@ function showViolations(violations: ViolationDetail[]) {
     placeChip(chip, el);
   }
   if (badBoxes.length) startFollow();
+  return shown;
 }
 
 // ---------- Watching the user ----------
@@ -261,6 +289,7 @@ function send(msg: FromPage) {
 
 let formTimer: ReturnType<typeof setTimeout> | undefined;
 function onInput() {
+  lastInputAt = Date.now();
   clearTimeout(formTimer);
   formTimer = setTimeout(() => send({ kind: "form_changed", form: readForm() }), 300);
 }
@@ -272,11 +301,11 @@ function onClick(e: MouseEvent) {
   if (button && SUBMIT_WORDS.test(nameOf(button))) {
     send({ kind: "submit_intent", label: nameOf(button), form: readForm() });
     // Soft guard: the first attempt with blocking Violations is held; a second click goes through.
-    if (blockingFields.length && Date.now() - warnedSubmitAt > 10_000) {
+    if (violationSummary.fixCount && Date.now() - warnedSubmitAt > 10_000) {
       warnedSubmitAt = Date.now();
       e.preventDefault();
       e.stopImmediatePropagation();
-      toast(`GuideRail: ${blockingFields.length} field(s) to fix (${blockingRuleCount} Rule(s)). Click again to continue anyway.`);
+      toast(`GuideRail: ${violationCountText(violationSummary)}. Click again to continue anyway.`);
       return;
     }
   }
@@ -302,9 +331,9 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "read_page": reply(readPage()); break;
     case "highlight": reply(findElement(msg.text, msg.role)); break;
     case "read_form": reply(readForm()); break;
-    case "show_violations": showViolations(msg.violations); reply({ ok: true }); break;
+    case "show_violations": reply({ shown: showViolations(msg.violations) }); break;
     case "show_field": showField(msg.field); reply({ ok: true }); break;
-    case "clear": highlighted = null; ring.hidden = true; showViolations([]); reply({ ok: true }); break;
+    case "clear": highlighted = null; ring.hidden = true; cue.hidden = true; showViolations([]); reply({ ok: true }); break;
     case "teach":
       setRecording(msg.on);
       reply({ ok: true });
