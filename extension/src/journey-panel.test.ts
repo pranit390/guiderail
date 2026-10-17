@@ -8,8 +8,8 @@ afterEach(() => { vi.unstubAllGlobals(); document.body.replaceChildren(); });
 function mount() {
   const container = document.createElement("section"); document.body.append(container);
   const compiled = vi.fn();
-  mountJourneyPanel(container, { http: "http://localhost:8826", compiled, brief: async () => { throw new Error("No visible document section was found."); } });
-  return { container, compiled, button: container.querySelector<HTMLButtonElement>("[data-compile]")! };
+  const panel = mountJourneyPanel(container, { http: "http://localhost:8826", compiled, brief: async () => { throw new Error("No visible document section was found."); } });
+  return { container, compiled, panel, button: container.querySelector<HTMLButtonElement>("[data-compile]")! };
 }
 describe("Journey panel", () => {
   it("shows loading, validated cited Steps and cache status", async () => {
@@ -42,6 +42,19 @@ describe("Journey panel", () => {
     await vi.waitFor(() => expect(button.textContent).toBe("Retry reading docs"));
     expect(compiled).not.toHaveBeenCalled();
     expect(container.querySelectorAll("li")).toHaveLength(0);
+  });
+  it("keeps controls disabled when Teach starts while a compile is pending", async () => {
+    let respond!: (response: Response) => void;
+    vi.stubGlobal("fetch", vi.fn().mockReturnValue(new Promise<Response>((resolve) => { respond = resolve; })));
+    const { container, compiled, panel, button } = mount();
+    button.click();
+    panel.setEnabled(false);
+    respond(new Response(JSON.stringify(fixture)));
+    await vi.waitFor(() => expect(compiled).toHaveBeenCalledOnce());
+    expect(button.disabled).toBe(true);
+    expect(container.querySelector<HTMLButtonElement>("[data-brief]")!.disabled).toBe(true);
+    panel.setEnabled(true);
+    expect(button.disabled).toBe(false);
   });
   it("reports absent public text without inventing a briefing", async () => {
     const { container } = mount(); container.querySelector<HTMLButtonElement>("[data-brief]")!.click();
