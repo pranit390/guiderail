@@ -179,10 +179,15 @@ export const content: LandingContent = {
       },
     ],
   },
-  close: {
-    heading: "The demo link is a placeholder",
-    lede: "When the install or sandbox URL is published, this button will go there. Until then the address is a placeholder, and the note under the button says so.",
-  },
+  close: cta.placeholder
+    ? {
+        heading: "The demo link is a placeholder",
+        lede: "When the install or sandbox URL is published, this button will go there. Until then the address is a placeholder, and the note under the button says so.",
+      }
+    : {
+        heading: "Try GuideRail on your own console",
+        lede: "Install the extension and walk one Goal with the coach. You keep every click.",
+      },
   footer:
     "GuideRail. A Chrome extension for the Hack2skill AI Builder Cup 2026, Future of Work and Enterprise Productivity. Guide first. Guard second.",
 };

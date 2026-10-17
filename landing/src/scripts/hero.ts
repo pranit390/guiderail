@@ -163,6 +163,7 @@ export function startHero(root: HTMLElement): void {
 
   policyBtn.addEventListener("click", () => {
     policy.hidden = false;
+    (badBtn.disabled ? saveBtn : badBtn).focus();
     policyBtn.disabled = true;
     policyBtn.textContent = hero.actions.policyOpen;
     if (phase === "labels" || phase === "shown") setPhase("policy");
@@ -173,9 +174,10 @@ export function startHero(root: HTMLElement): void {
     verdict.hidden = false;
     verdict.dataset.kind = "bad";
     verdict.textContent = hero.violation;
-    badBtn.disabled = true;
     fixBtn.disabled = false;
     saveBtn.disabled = false;
+    fixBtn.focus();
+    badBtn.disabled = true;
     saveStrikes = 0;
     setPhase("violation");
   });
@@ -185,8 +187,9 @@ export function startHero(root: HTMLElement): void {
     verdict.hidden = false;
     verdict.dataset.kind = "ok";
     verdict.textContent = hero.matched;
-    fixBtn.disabled = true;
     saveBtn.disabled = false;
+    saveBtn.focus();
+    fixBtn.disabled = true;
     saveStrikes = 0;
     setPhase("corrected");
   });

@@ -23,6 +23,6 @@ const { name, nav, cta } = Astro.props;
     <nav class="site-nav" aria-label="Page">
       {nav.map((item) => <a href={item.href}>{item.label}</a>)}
     </nav>
-    <a class="button header-cta" href={cta.href} aria-describedby="cta-note">{cta.label}</a>
+    <a class="button header-cta" href={cta.href} aria-describedby={cta.placeholder ? "cta-note" : undefined}>{cta.label}</a>
   </div>
 </header>

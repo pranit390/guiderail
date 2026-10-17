@@ -14,8 +14,8 @@ const { cta } = Astro.props;
     <p class="dek">{hero.dek}</p>
     <p class="lede">{hero.lede}</p>
     <div class="cta-row">
-      <a class="button" href={cta.href} aria-describedby="cta-note">{cta.label}</a>
-      <p class="cta-note" id="cta-note">{cta.note}</p>
+      <a class="button" href={cta.href} aria-describedby={cta.placeholder ? "cta-note" : undefined}>{cta.label}</a>
+      {cta.placeholder && <p class="cta-note" id="cta-note">{cta.note}</p>}
     </div>
   </div>
 

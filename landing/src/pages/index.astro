@@ -44,7 +44,7 @@ import { content, nav, pageDescription, pageTitle } from "../content/guiderail";
         <h2 id="close-heading">{content.close.heading}</h2>
         <p class="section-lede">{content.close.lede}</p>
         <div class="cta-row">
-          <a class="button" href={content.cta.href} aria-describedby="cta-note">{content.cta.label}</a>
+          <a class="button" href={content.cta.href} aria-describedby={content.cta.placeholder ? "cta-note" : undefined}>{content.cta.label}</a>
         </div>
       </div>
     </section>
