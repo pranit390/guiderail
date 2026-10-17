@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,6 +26,15 @@ describe("stores", () => {
     await r.replace("cloud-run-deploy", [rule("a"), rule("b")]);
     await r.replace("cloud-run-deploy", [rule("c")]);
     expect((await r.all()).map((x) => x.id)).toEqual(["c"]);
+  });
+  it("refuses an unsafe id and writes nothing", async () => {
+    const root = mkdtempSync(join(tmpdir(), "unsafe-"));
+    const dir = join(root, "pb");
+    await expect(new FilePlaybookStore(dir).publish({ ...draft, id: "../x" })).rejects.toThrow(/Invalid Playbook id/);
+    await expect(new FileRuleStore(dir).replace("../x", [])).rejects.toThrow(/Invalid Playbook id/);
+    expect(existsSync(join(root, "x.md"))).toBe(false);
+    expect(existsSync(join(root, "x.json"))).toBe(false);
+    expect(existsSync(dir)).toBe(false);
   });
   it("returns nothing from an empty directory that doesn't exist yet", async () => {
     expect(await new FilePlaybookStore(join(tmpdir(), "missing-" + Date.now())).list()).toEqual([]);

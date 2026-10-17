@@ -4,7 +4,7 @@ import { extname, join, normalize } from "node:path";
 import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
 import { draftPlaybook, DraftError } from "./playbooks/draft.ts";
-import { FilePlaybookStore, FileRuleStore } from "./playbooks/store.ts";
+import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { approvals, approvalUrl, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
 
@@ -55,12 +55,28 @@ const server = createServer(async (req, res) => {
   }
 
   if (url.pathname === "/playbooks" && req.method === "POST") {
-    const body = (await readJson(req)) as { draft?: PlaybookDraft; ruleIds?: string[] } | undefined;
-    if (!body?.draft?.id || !body.draft.markdown) return json(res, 400, { error: "Send the draft to publish." });
-    const keep = new Set(body.ruleIds ?? []);
-    await playbookStore.publish(body.draft);
-    await ruleStore.replace(body.draft.id, body.draft.suggestedRules.filter((r) => keep.has(r.id)));
-    return json(res, 201, { id: body.draft.id });
+    const body = (await readJson(req)) as { draft?: Partial<PlaybookDraft>; ruleIds?: unknown } | undefined;
+    const d = body?.draft;
+    if (!d || typeof d !== "object") return json(res, 400, { error: "Send the draft to publish." });
+    if (!isSafeId(d.id)) return json(res, 400, { error: "The draft id must be lowercase letters, numbers and dashes." });
+    if (typeof d.title !== "string" || typeof d.markdown !== "string" || !d.markdown) {
+      return json(res, 400, { error: "The draft needs a title and markdown." });
+    }
+    if (!Array.isArray(d.appliesTo) || !Array.isArray(d.goals) || !Array.isArray(d.suggestedRules)) {
+      return json(res, 400, { error: "The draft needs appliesTo, goals and suggestedRules arrays." });
+    }
+    if (body?.ruleIds !== undefined && !(Array.isArray(body.ruleIds) && body.ruleIds.every((x) => typeof x === "string"))) {
+      return json(res, 400, { error: "ruleIds must be an array of strings." });
+    }
+    const draft = d as PlaybookDraft;
+    const keep = new Set((body?.ruleIds as string[] | undefined) ?? []);
+    try {
+      await playbookStore.publish(draft);
+      await ruleStore.replace(draft.id, draft.suggestedRules.filter((r) => keep.has(r?.id)));
+    } catch (err) {
+      return json(res, 500, { error: (err as Error).message });
+    }
+    return json(res, 201, { id: draft.id });
   }
 
   if (url.pathname === "/playbooks" && req.method === "GET") {
