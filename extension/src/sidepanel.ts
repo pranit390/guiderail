@@ -2,8 +2,10 @@
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, type Rule, type Violation } from "./policy.ts";
+import { describeForModel, TeachSession } from "./teach/session.ts";
 
 const SERVER = "ws://localhost:8787";
+const HTTP = "http://localhost:8787";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
@@ -18,6 +20,9 @@ let resumeHandle: string | undefined;
 let rules: Rule[] = [];
 let firstName: string | undefined;
 let violations: Violation[] = [];
+let mode: "guide" | "teach" = "guide";
+let teach: TeachSession | null = null;
+let draft: any = null;
 const mic = new Mic();
 const speaker = new Speaker();
 let talking = false;
@@ -25,10 +30,18 @@ let talking = false;
 // ---------- Startup ----------
 
 async function init() {
-  rules = (await (await fetch(chrome.runtime.getURL("rules.json"))).json()).rules;
+  await loadRules();
   const profile = await chrome.identity.getProfileUserInfo({ accountStatus: chrome.identity.AccountStatus.ANY }).catch(() => null);
   firstName = profile?.email ? profile.email.split("@")[0].split(/[._-]/)[0] : undefined;
   connect();
+}
+
+async function loadRules() {
+  try {
+    rules = (await (await fetch(`${HTTP}/rules`)).json()).rules;
+  } catch {
+    rules = (await (await fetch(chrome.runtime.getURL("rules.json"))).json()).rules;
+  }
 }
 
 function setStatus(text: string, state: "on" | "off" | "busy") {
@@ -57,13 +70,15 @@ function say(role: "user" | "model" | "system", text: string) {
 
 function connect() {
   setStatus("Connecting…", "busy");
-  ws = new WebSocket(`${SERVER}/live${resumeHandle ? `?resume=${encodeURIComponent(resumeHandle)}` : ""}`);
-  ws.onmessage = (e) => onServer(JSON.parse(e.data));
-  ws.onclose = () => {
+  const sock = new WebSocket(`${SERVER}/live?mode=${mode}${resumeHandle && mode === "guide" ? `&resume=${encodeURIComponent(resumeHandle)}` : ""}`);
+  ws = sock;
+  sock.onmessage = (e) => { if (ws === sock) void onServer(JSON.parse(e.data)); };
+  sock.onclose = () => {
+    if (ws !== sock) return;
     setStatus("Disconnected. Click to reconnect", "off");
     if (talking) stopTalking();
   };
-  ws.onerror = () => setStatus("Can't reach the GuideRail server on localhost:8787", "off");
+  sock.onerror = () => { if (ws === sock) setStatus("Can't reach the GuideRail server on localhost:8787", "off"); };
 }
 
 status.addEventListener("click", () => ws?.readyState !== WebSocket.OPEN && connect());
@@ -75,9 +90,11 @@ async function onServer(msg: any) {
     case "ready": setStatus("Ready", "on"); break;
     case "audio": speaker.play(msg.data); break;
     case "interrupted": speaker.interrupt(); break;
-    case "transcript": say(msg.role, msg.text); break;
-    case "turn_complete": open = null; break;
-    case "resumption": resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); break;
+    case "transcript": say(msg.role, msg.text); teach?.heard(msg.role, msg.text); break;
+    case "turn_complete": open = null; teach?.endTurn("user"); teach?.endTurn("model"); break;
+    case "resumption":
+      if (mode === "guide") { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
+      break;
     case "error": say("system", msg.message); break;
     case "tool_call": {
       const response = await runTool(msg.name, msg.args).catch((err: Error) => ({ error: err.message }));
@@ -206,7 +223,99 @@ chrome.runtime.onMessage.addListener((msg: FromPage | { kind: "tab_changed" }) =
         sendServer({ type: "event", text });
       });
       break;
+    case "teach_event":
+      if (!teach) break;
+      teach.add(msg.event);
+      $("#teachcount").textContent = String(teach.count);
+      { const text = describeForModel(msg.event); if (text) sendServer({ type: "event", text }); }
+      break;
   }
+});
+
+// ---------- Teach ----------
+
+async function setTeach(on: boolean) {
+  mode = on ? "teach" : "guide";
+  ws?.close();
+  await toPage({ kind: "teach", on }).catch(() => {});
+  $("#teach").toggleAttribute("data-on", on);
+  $("#teachbar").hidden = !on;
+  connect();
+}
+
+$("#teach").addEventListener("click", async () => {
+  if (mode === "teach") return;
+  const goal = input.value.trim();
+  if (!goal) { say("system", "Type the task you're teaching in the box, then press Teach."); return; }
+  input.value = "";
+  teach = new TeachSession(goal);
+  say("system", `Teach mode: showing "${goal}". Do the task normally and say why as you go.`);
+  await setTeach(true);
+});
+
+let pendingPayload: ReturnType<TeachSession["payload"]> | null = null;
+
+async function errorText(res: Response): Promise<string> {
+  try { return (await res.json()).error ?? res.statusText; } catch { return res.statusText; }
+}
+
+$("#teachstop").addEventListener("click", async () => {
+  if (!teach) return;
+  if (!pendingPayload) {
+    teach.endTurn("user");
+    teach.endTurn("model");
+    pendingPayload = teach.payload();
+    await setTeach(false);
+  }
+  say("system", "Drafting a Playbook from what you showed…");
+  let res: Response;
+  try {
+    res = await fetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
+  } catch {
+    say("system", "Couldn't reach the GuideRail server on localhost:8787. Press \"Stop and draft Playbook\" to try again.");
+    $("#teachbar").hidden = false;
+    return;
+  }
+  if (!res.ok) {
+    say("system", `Couldn't draft the Playbook: ${await errorText(res)}. Press "Stop and draft Playbook" to try again.`);
+    $("#teachbar").hidden = false;
+    return;
+  }
+  let body: any;
+  try { body = await res.json(); } catch {
+    say("system", `Couldn't draft the Playbook: ${res.statusText || "bad response"}. Press "Stop and draft Playbook" to try again.`);
+    $("#teachbar").hidden = false;
+    return;
+  }
+  teach = null;
+  pendingPayload = null;
+  draft = body;
+  $("#draftmd").textContent = draft.markdown;
+  $("#draftrules").replaceChildren(...draft.suggestedRules.map((r: any) => {
+    const label = document.createElement("label");
+    label.innerHTML = `<input type="checkbox" checked> <span></span>`;
+    label.querySelector("input")!.value = r.id;
+    label.querySelector("span")!.textContent = `Rule: ${r.message} (${r.severity})`;
+    return label;
+  }));
+  $("#draft").hidden = false;
+});
+
+$("#publish").addEventListener("click", async () => {
+  if (!draft) return;
+  const ruleIds = [...document.querySelectorAll<HTMLInputElement>("#draftrules input:checked")].map((i) => i.value);
+  let res: Response;
+  try {
+    res = await fetch(`${HTTP}/playbooks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft, ruleIds }) });
+  } catch {
+    say("system", "Couldn't reach the GuideRail server on localhost:8787. Your draft is still here; press Publish to try again.");
+    return;
+  }
+  if (!res.ok) { say("system", `Publishing failed: ${await errorText(res)}. Your draft is still here; press Publish to try again.`); return; }
+  $("#draft").hidden = true;
+  say("system", `Published "${draft.title}". New hires will be guided by it from their next session.`);
+  draft = null;
+  await loadRules();
 });
 
 // ---------- Input ----------
