@@ -3,11 +3,16 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
+import { draftPlaybook, DraftError } from "./playbooks/draft.ts";
+import { FilePlaybookStore, FileRuleStore } from "./playbooks/store.ts";
+import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { approvals, approvalUrl, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOT = join(import.meta.dirname, "..", "..");
 const SANDBOX = join(ROOT, "sandbox");
+export const playbookStore = new FilePlaybookStore(join(ROOT, "data", "playbooks"));
+export const ruleStore = new FileRuleStore(join(ROOT, "data", "rules"));
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
 const json = (res: ServerResponse, status: number, body: unknown) =>
@@ -33,9 +38,33 @@ const server = createServer(async (req, res) => {
   if (url.pathname === "/health") return void res.end("ok");
 
   if (url.pathname === "/rules") {
-    const rules = await readFile(join(ROOT, "seed", "rules", "org-labeling-rules.json"), "utf8");
-    res.setHeader("Content-Type", "application/json");
-    return void res.end(rules);
+    const seed = JSON.parse(await readFile(join(ROOT, "seed", "rules", "org-labeling-rules.json"), "utf8"));
+    return json(res, 200, { rules: [...seed.rules, ...(await ruleStore.all())] });
+  }
+
+  if (url.pathname === "/playbooks/draft" && req.method === "POST") {
+    const body = (await readJson(req)) as TeachPayload | undefined;
+    if (!body?.goal || !Array.isArray(body.events) || body.events.length === 0) {
+      return json(res, 400, { error: "Send a goal and at least one event." });
+    }
+    try {
+      return json(res, 200, await draftPlaybook(body));
+    } catch (err) {
+      return json(res, err instanceof DraftError ? 502 : 500, { error: (err as Error).message });
+    }
+  }
+
+  if (url.pathname === "/playbooks" && req.method === "POST") {
+    const body = (await readJson(req)) as { draft?: PlaybookDraft; ruleIds?: string[] } | undefined;
+    if (!body?.draft?.id || !body.draft.markdown) return json(res, 400, { error: "Send the draft to publish." });
+    const keep = new Set(body.ruleIds ?? []);
+    await playbookStore.publish(body.draft);
+    await ruleStore.replace(body.draft.id, body.draft.suggestedRules.filter((r) => keep.has(r.id)));
+    return json(res, 201, { id: body.draft.id });
+  }
+
+  if (url.pathname === "/playbooks" && req.method === "GET") {
+    return json(res, 200, { playbooks: await playbookStore.list() });
   }
 
   if (url.pathname === "/role") {

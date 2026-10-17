@@ -7,3 +7,4 @@ dist/
 .firebase/
 service-account*.json
 .superpowers/
+data/
