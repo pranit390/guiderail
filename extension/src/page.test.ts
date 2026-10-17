@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
-import { findSection, isSecret, nameOf, roleOf, sectionOf } from "./page.ts";
+import { findSection, isSecret, nameOf, roleOf, sectionOf, valueOf } from "./page.ts";
 
 beforeEach(() => {
   document.body.innerHTML = `
@@ -33,5 +33,18 @@ describe("page helpers", () => {
   it("finds a section that is a selected tab's panel", () => {
     document.querySelector("section")!.remove();
     expect(findSection("Labels")?.id).toBe("p1");
+  });
+
+  it("reads values a person can see, including custom controls", () => {
+    document.body.insertAdjacentHTML("beforeend", `
+      <span id="rl">Region</span><div id="cb" role="combobox" aria-labelledby="rl">europe-west1 (Belgium)</div>
+      <select id="sel"><option>us-central1</option><option selected>asia-south1</option></select>
+      <div id="sw" role="switch" aria-label="Public" aria-checked="true"></div>
+      <input id="r1" type="radio" name="a"><div id="sl" role="slider" aria-label="CPU" aria-valuetext="2 vCPU"></div>`);
+    expect(valueOf(document.getElementById("cb")!)).toBe("europe-west1 (Belgium)");
+    expect(valueOf(document.getElementById("sel")!)).toBe("asia-south1");
+    expect(valueOf(document.getElementById("sw")!)).toBe("checked");
+    expect(valueOf(document.getElementById("r1")!)).toBeUndefined();
+    expect(valueOf(document.getElementById("sl")!)).toBe("2 vCPU");
   });
 });

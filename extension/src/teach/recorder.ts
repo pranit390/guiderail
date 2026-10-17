@@ -1,5 +1,5 @@
 // Records what the expert does, by meaning. Never reads passwords; masks secret-looking values.
-import { effectiveUrl, isSecret, nameOf, roleOf, sectionOf } from "../page.ts";
+import { effectiveUrl, fieldForOption, isSecret, nameOf, roleOf, sectionOf, textOf } from "../page.ts";
 import { isSecretField, MASK, maskValue, type Target, type TeachEvent } from "./events.ts";
 
 const CLICKABLE = 'button,a[href],summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=option],[role=checkbox],[role=switch],h1,h2,h3,h4';
@@ -17,9 +17,40 @@ export function describe(el: Element): Target {
 
 const ours = (el: Element) => !!el.closest("guiderail-overlay");
 
+const DROPDOWN = '[role=combobox],[aria-haspopup=listbox],[aria-haspopup=true],[aria-haspopup=menu]';
+const TOGGLE = '[role=checkbox],[role=switch],[role=radio]';
+let lastDropdown: Element | null = null; // the custom dropdown the expert last opened
+
+function choice(field: Element, value: string) {
+  const target = describe(field);
+  const secret = isSecretField(target);
+  emit?.({ t: "field", at: Date.now(), url: effectiveUrl(), target, value: secret ? MASK : maskValue(value) });
+}
+
 function onClick(e: Event) {
-  const el = (e.target as Element).closest(CLICKABLE);
-  if (!emit || !el || ours(el)) return;
+  const clicked = e.target as Element;
+  if (!emit || ours(clicked)) return;
+
+  // Picking from a custom dropdown (a list of options, not a <select>) is a choice, like a field change.
+  const option = clicked.closest("[role=option],[role=menuitemradio],[role=listbox] li");
+  if (option) {
+    const field = fieldForOption(option) ?? lastDropdown;
+    lastDropdown = null;
+    if (field) return choice(field, textOf(option));
+  }
+
+  // A custom toggle (not a native checkbox/radio) reports its new state once the click has applied.
+  const toggle = clicked.closest(TOGGLE);
+  if (toggle && !(toggle instanceof HTMLInputElement)) {
+    setTimeout(() => choice(toggle, toggle.getAttribute("aria-checked") === "true" ? "checked" : "unchecked"), 0);
+    return;
+  }
+
+  const dropdown = clicked.closest(DROPDOWN);
+  if (dropdown) lastDropdown = dropdown;
+
+  const el = clicked.closest(CLICKABLE);
+  if (!el) return;
   emit({ t: "click", at: Date.now(), url: effectiveUrl(), title: document.title, target: describe(el) });
 }
 

@@ -90,3 +90,40 @@ export function findSection(title: string): Element | null {
   if (panelId) return document.getElementById(panelId);
   return document.querySelector(`section[aria-label="${title}"],[role=region][aria-label="${title}"]`);
 }
+
+// Controls whose value is shown on screen but that aren't native form fields (custom dropdowns,
+// toggles, sliders). If it's visible, GuideRail should be able to read it.
+export const CUSTOM_FIELD =
+  '[role=combobox],[aria-haspopup=listbox],[role=spinbutton],[role=slider],[role=checkbox],[role=radio],[role=switch]';
+
+// The value a person sees in a control, or undefined if it shows none.
+export function valueOf(el: Element): string | undefined {
+  if (el instanceof HTMLSelectElement) return el.selectedOptions[0]?.textContent?.trim() || el.value || undefined;
+  if (el instanceof HTMLInputElement) {
+    if (el.type === "checkbox" || el.type === "radio") return el.checked ? "checked" : undefined;
+    return el.value || undefined;
+  }
+  if (el instanceof HTMLTextAreaElement) return el.value || undefined;
+  const checked = el.getAttribute("aria-checked");
+  if (checked !== null) return checked === "true" ? "checked" : undefined;
+  const valueText = el.getAttribute("aria-valuetext") ?? el.getAttribute("aria-valuenow");
+  if (valueText) return valueText;
+  if (el.matches(CUSTOM_FIELD)) {
+    const shown = textOf(el);
+    const name = nameOf(el);
+    const value = name && shown.startsWith(name) ? shown.slice(name.length).trim() : shown;
+    return value && value !== name ? value.slice(0, 80) : undefined;
+  }
+  return undefined;
+}
+
+// The field a dropdown option belongs to: the control that owns its listbox.
+export function fieldForOption(option: Element): Element | null {
+  const list = option.closest("[role=listbox]");
+  const id = list?.id;
+  if (id) {
+    const owner = document.querySelector(`[aria-controls~="${CSS.escape(id)}"],[aria-owns~="${CSS.escape(id)}"]`);
+    if (owner) return owner;
+  }
+  return null;
+}

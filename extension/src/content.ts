@@ -1,7 +1,7 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage } from "./messages.ts";
-import { allElements, effectiveUrl, findSection, isSecret, isVisible, nameOf, norm, roleOf, sectionOf } from "./page.ts";
+import { allElements, CUSTOM_FIELD, effectiveUrl, findSection, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf } from "./page.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 
 const MAX_ELEMENTS = 150;
@@ -26,9 +26,8 @@ function readPage(): PageSnapshot {
     const i = elements.length + 1;
     indexed.set(i, el);
     const item: PageElement = { i, role: roleOf(el), name };
-    if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement) {
-      if (el.value) item.value = el.value.slice(0, 60);
-    }
+    const value = valueOf(el);
+    if (value) item.value = value.slice(0, 60);
     const section = sectionOf(el);
     if (section && section !== name) item.section = section;
     elements.push(item);
@@ -149,10 +148,10 @@ function readForm(): FormState {
     }
   }
   const fields: Record<string, string> = {};
-  for (const el of document.querySelectorAll("input,select,textarea")) {
+  for (const el of document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD}`)) {
     if (labelInputs.has(el) || isSecret(el)) continue;
     const name = nameOf(el);
-    const value = (el as HTMLInputElement).value;
+    const value = valueOf(el);
     if (name && value) fields[name] = value;
   }
   const sections = section ? ["Labels"] : [];

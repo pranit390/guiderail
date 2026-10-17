@@ -71,4 +71,34 @@ describe("recorder", () => {
       vi.useRealTimers();
     }
   });
+
+  it("records picking from a custom dropdown as a choice on that field", () => {
+    document.body.insertAdjacentHTML("beforeend", `
+      <span id="rl">Region</span>
+      <div role="combobox" aria-labelledby="rl" aria-controls="lb" tabindex="0">us-central1</div>
+      <div role="listbox" id="lb"><div role="option">europe-west1 (Belgium)</div></div>`);
+    events.length = 0;
+    (document.querySelector('[role=option]') as HTMLElement).click();
+    expect(events).toEqual([expect.objectContaining({ t: "field", target: expect.objectContaining({ name: "Region" }), value: "europe-west1 (Belgium)" })]);
+  });
+
+  it("links an option to the dropdown opened last when the list isn't linked", () => {
+    document.body.insertAdjacentHTML("beforeend", `
+      <button aria-haspopup="listbox" aria-label="Authentication">Require authentication</button>
+      <ul role="listbox"><li role="option">Allow public access</li></ul>`);
+    (document.querySelector('[aria-haspopup]') as HTMLElement).click();
+    events.length = 0;
+    (document.querySelector('[role=listbox] li') as HTMLElement).click();
+    expect(events).toEqual([expect.objectContaining({ t: "field", target: expect.objectContaining({ name: "Authentication" }), value: "Allow public access" })]);
+  });
+
+  it("records a custom toggle's new state", async () => {
+    document.body.insertAdjacentHTML("beforeend", `<div role="switch" aria-label="Allow unauthenticated" aria-checked="false"></div>`);
+    const sw = document.querySelector('[role=switch]') as HTMLElement;
+    sw.addEventListener("click", () => sw.setAttribute("aria-checked", "true"));
+    events.length = 0;
+    sw.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(events).toEqual([expect.objectContaining({ t: "field", target: expect.objectContaining({ name: "Allow unauthenticated" }), value: "checked" })]);
+  });
 });
