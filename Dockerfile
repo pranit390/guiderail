@@ -1,12 +1,12 @@
 FROM node:24-bookworm-slim
 WORKDIR /app
-COPY package.json package-lock.json ./
-COPY server/package.json server/package.json
-COPY extension/package.json extension/package.json
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node server/package.json server/package.json
+COPY --chown=node:node extension/package.json extension/package.json
 RUN npm ci --no-audit --no-fund && npm cache clean --force
-COPY server server
-COPY seed seed
-COPY sandbox sandbox
+COPY --chown=node:node server server
+COPY --chown=node:node seed seed
+COPY --chown=node:node sandbox sandbox
 RUN mkdir data && chown node:node data
 USER node
 ENV NODE_ENV=production PORT=8080
