@@ -50,13 +50,15 @@ describe("recorder", () => {
     expect(events).toHaveLength(0);
   });
   it("does not leave navigation timers when recording starts twice", () => {
-    vi.useFakeTimers();
-    startRecording((e) => events.push(e));
-    startRecording((e) => events.push(e));
     stopRecording();
-    window.history.pushState({}, "", "/other");
-    vi.advanceTimersByTime(500);
-    expect(events).toHaveLength(0);
-    vi.useRealTimers();
+    vi.useFakeTimers();
+    try {
+      startRecording((e) => events.push(e));
+      startRecording((e) => events.push(e));
+      stopRecording();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

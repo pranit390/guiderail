@@ -26,6 +26,18 @@ describe("TeachSession", () => {
   });
 });
 
+describe("TeachSession flush", () => {
+  it("includes pending speech in the payload only after endTurn, and flushing twice is harmless", () => {
+    const s = new TeachSession("Deploy");
+    s.heard("user", "I pick us-central1 for latency");
+    expect(s.payload().events).toHaveLength(0);
+    s.endTurn("user");
+    s.endTurn("model");
+    s.endTurn("user");
+    expect(s.payload().events).toMatchObject([{ t: "narration", text: "I pick us-central1 for latency" }]);
+  });
+});
+
 describe("describeForModel", () => {
   it("describes clicks and fields for the Teach-mode model", () => {
     expect(describeForModel({ t: "click", at: 0, url: "u", title: "", target: { role: "tab", name: "Labels", section: "Info panel" } }))
