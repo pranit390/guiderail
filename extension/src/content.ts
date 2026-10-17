@@ -194,12 +194,12 @@ function follow() {
     placeChip(chip, el);
     return true;
   });
-  if (!highlighted && badBoxes.length === 0 && ring.hidden) { followRunning = false; return; }
-  if (highlighted || badBoxes.length) requestAnimationFrame(follow);
+  if (!highlighted && badBoxes.length === 0 && ring.hidden && !calm.active) { followRunning = false; return; }
+  if (highlighted || badBoxes.length || calm.active) requestAnimationFrame(follow);
   else followRunning = false;
 }
-window.addEventListener("resize", () => { if (highlighted || badBoxes.length) startFollow(); });
-document.addEventListener("scroll", () => { if (highlighted || badBoxes.length) startFollow(); }, true);
+window.addEventListener("resize", () => { if (highlighted || badBoxes.length || calm.active) startFollow(); });
+document.addEventListener("scroll", () => { if (highlighted || badBoxes.length || calm.active) startFollow(); }, true);
 
 function toast(text: string) {
   const t = document.createElement("div");

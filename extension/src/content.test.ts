@@ -55,21 +55,22 @@ describe("calmer content messages", () => {
     expect(violations.length).toBeGreaterThan(0);
     expect(request({ kind: "highlight", text: "Labels", role: "heading" })).toMatchObject({ found: true });
     request({ kind: "customize", preset: "calm" });
-    request({ kind: "show_violations", fields: violations.map((v) => v.field), submitLabel: "Create" });
+    request({ kind: "show_violations", violations });
     vi.advanceTimersByTime(20);
     expect(form()).toEqual(before);
     expect(evaluate(rules, form())).toEqual(violations);
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
     const shade = shadow.querySelector<HTMLElement>(".gr-shade")!;
     expect(shade.hidden).toBe(false);
-    expect(shadow.querySelectorAll(".bad")).toHaveLength(2);
+    // Exact-field marking: only environment has a value input on this page; missing keys mark nothing, and Save is never boxed.
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(1);
     expect(shade.parentElement?.firstElementChild).toBe(shade);
     expect(shadow.querySelector<HTMLElement>(".ring")?.hidden).toBe(false);
     request({ kind: "customize", preset: null });
     expect(shade.hidden).toBe(true);
     expect(form()).toEqual(before);
     expect(evaluate(rules, form())).toEqual(violations);
-    expect(shadow.querySelectorAll(".bad")).toHaveLength(2);
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(1);
   });
 
   it("clears the spotlight when a Step finishes without turning off the kept preset", () => {
