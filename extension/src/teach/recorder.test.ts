@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TeachEvent } from "./events.ts";
 import { startRecording, stopRecording } from "./recorder.ts";
 
@@ -48,5 +48,15 @@ describe("recorder", () => {
     stopRecording();
     document.querySelector("button")!.click();
     expect(events).toHaveLength(0);
+  });
+  it("does not leave navigation timers when recording starts twice", () => {
+    vi.useFakeTimers();
+    startRecording((e) => events.push(e));
+    startRecording((e) => events.push(e));
+    stopRecording();
+    window.history.pushState({}, "", "/other");
+    vi.advanceTimersByTime(500);
+    expect(events).toHaveLength(0);
+    vi.useRealTimers();
   });
 });

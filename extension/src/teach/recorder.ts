@@ -31,6 +31,7 @@ function onChange(e: Event) {
 }
 
 export function startRecording(send: (e: TeachEvent) => void) {
+  stopRecording();
   emit = send;
   lastUrl = location.href;
   document.addEventListener("click", onClick, true);
