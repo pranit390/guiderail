@@ -7,7 +7,7 @@ const VIEW = 100;
 const LINE = 20;
 const CARD = 200;
 let top = 0;
-let scroll: HTMLElement, log: HTMLElement, issues: HTMLElement, input: HTMLInputElement, chip: HTMLButtonElement;
+let scroll: HTMLElement, log: HTMLElement, issues: HTMLElement, guide: HTMLElement, input: HTMLInputElement, chip: HTMLButtonElement;
 let panel: PanelScroll;
 let reduced = false;
 
@@ -18,12 +18,13 @@ const line = (text = "x") => () => log.append(Object.assign(document.createEleme
 
 beforeEach(() => {
   document.body.innerHTML = `
-    <main id="scroll"><div id="log"></div><ul id="issues" hidden></ul></main>
+    <main id="scroll"><div id="log"></div><ul id="issues" hidden></ul><section id="guidance" hidden></section></main>
     <button id="newcards" type="button" hidden></button>
     <input id="text">`;
   scroll = document.getElementById("scroll")!;
   log = document.getElementById("log")!;
   issues = document.getElementById("issues")!;
+  guide = document.getElementById("guidance")!;
   input = document.getElementById("text") as HTMLInputElement;
   chip = document.getElementById("newcards") as HTMLButtonElement;
   top = 0;
@@ -31,6 +32,7 @@ beforeEach(() => {
   scroll.getBoundingClientRect = () => ({ top: 0, bottom: VIEW }) as DOMRect;
   log.getBoundingClientRect = () => ({ top: -top, bottom: logHeight() - top }) as DOMRect;
   issues.scrollIntoView = vi.fn();
+  guide.scrollIntoView = vi.fn();
   reduced = false;
   vi.stubGlobal("matchMedia", (q: string) => ({ matches: reduced && q.includes("reduce") }));
   panel = new PanelScroll(scroll, log, input, chip);
@@ -42,6 +44,17 @@ const violate = (...messages: string[]) =>
     issues.hidden = messages.length === 0;
     issues.replaceChildren(...messages.map((m) => Object.assign(document.createElement("li"), { textContent: m })));
   });
+
+const suggest = (...labels: string[]) =>
+  panel.update(guide, () => "New: suggested labels", () => {
+    guide.hidden = labels.length === 0;
+    guide.textContent = labels.join(" ");
+  });
+
+const typing = () => {
+  input.focus();
+  input.value = "how do I";
+};
 
 describe("PanelScroll.append", () => {
   it("follows new text when the reader is at the end of the log", () => {
@@ -111,5 +124,65 @@ describe("PanelScroll.update", () => {
     violate();
     expect(chip.hidden).toBe(true);
     expect(issues.scrollIntoView).not.toHaveBeenCalled();
+  });
+
+  it("keeps a Violation notice when guidance changes or clears while the person is typing", () => {
+    typing();
+    violate("Test mode lets anyone read your data");
+    suggest("environment=dev");
+    expect(chip.textContent).toBe("New: 1 to fix");
+    suggest();
+    expect(chip.hidden).toBe(false);
+    expect(chip.textContent).toBe("New: 1 to fix");
+
+    chip.click();
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(chip.hidden).toBe(true);
+  });
+
+  it("walks the chip through every card changed while typing, oldest first", () => {
+    typing();
+    suggest("environment=dev");
+    violate("Test mode lets anyone read your data");
+    expect(chip.textContent).toBe("New: suggested labels");
+
+    chip.click();
+    expect(guide.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(chip.hidden).toBe(false);
+    expect(chip.textContent).toBe("New: 1 to fix");
+
+    chip.click();
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(chip.hidden).toBe(true);
+  });
+});
+
+describe("PanelScroll reveal while the coach streams", () => {
+  it("carries a smooth reveal on through streamed text instead of cutting it short", () => {
+    scroll.scrollTop = logHeight() - VIEW;
+    violate("Test mode lets anyone read your data");
+    const at = top;
+    panel.append(line());
+    panel.append(line());
+    expect(top).toBe(at);
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(3);
+    expect(issues.scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", behavior: "smooth" });
+
+    scroll.scrollTop = maxTop();
+    scroll.dispatchEvent(new Event("scrollend"));
+    const cardAt = cardTop();
+    panel.append(line());
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(3);
+    expect(cardTop()).toBe(cardAt);
+  });
+
+  it("does not re-reveal after an instant reveal under reduced motion", () => {
+    reduced = true;
+    scroll.scrollTop = logHeight() - VIEW;
+    violate("Test mode lets anyone read your data");
+    const at = top;
+    panel.append(line());
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(top).toBe(at + LINE);
   });
 });
