@@ -139,8 +139,7 @@ export function highlightResult(decision: TargetDecision): HighlightResult {
   return { found: false, reason: decision.reason, alternatives: [] };
 }
 
-export function highlightOutcome(decision: TargetDecision): string {
-  if (decision.authorized) return `Pointing at ${decision.name}.`;
+export function highlightOutcome(decision: Exclude<TargetDecision, { authorized: true }>): string {
   if (decision.reason === "ambiguous") return decision.ask;
   if (decision.reason === "missing") return decision.mismatch;
   if (decision.reason === "stale") return "This screen changed since I last read it, so I won't point at or fill anything.";

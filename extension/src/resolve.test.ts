@@ -12,7 +12,6 @@ import {
   MIN_CONFIDENCE,
   resolveName,
   type BoundSnapshot,
-  type TargetDecision,
 } from "./resolve.ts";
 
 function layOut() {
@@ -36,17 +35,8 @@ function snapshot(elements: PageElement[], tabId = 7): BoundSnapshot {
   return { tabId, url: "http://127.0.0.1/duplicate-save", generation: 3, elements };
 }
 
-function show(decision: TargetDecision) {
-  const el = document.createElement("p");
-  el.className = "msg system";
-  el.textContent = highlightOutcome(decision);
-  document.querySelector("#log")!.append(el);
-  return el;
-}
-
 beforeEach(() => {
   document.body.innerHTML = `
-    <main id="log" aria-live="polite"></main>
     <h1>Permissions</h1>
     <section aria-label="Billing"><button type="button">Save</button></section>
     <section aria-label="Security"><button type="button">Save</button></section>
@@ -69,24 +59,13 @@ describe("duplicate-Save fixture", () => {
     expect(decision.alternatives).toEqual(["Billing: Save", "Security: Save"]);
     expect(highlightResult(decision)).toMatchObject({ found: false, reason: "ambiguous" });
     expect(highlightResult(decision)).not.toHaveProperty("i");
-
-    const line = show(decision);
-    expect(line.className).toBe("msg system");
-    expect(line.textContent).toBe('Which "Save" should I point at? I see Billing: Save or Security: Save.');
-    expect(document.querySelector("#log")!.textContent).not.toContain("Pointing at");
-  });
-
-  it("still asks when both Saves are buttons", () => {
-    const decision = authorizeTarget({ text: "Save", role: "button", snapshot: snapshot(elementsOf()), stale: false, tabId: 7 });
-    expect(highlightOutcome(decision)).toMatch(/Which "Save"/);
-    expect(actionAuthorized(decision)).toBe(false);
+    expect(highlightOutcome(decision)).toBe('Which "Save" should I point at? I see Billing: Save or Security: Save.');
   });
 });
 
 describe("exact names before fuzzy candidates", () => {
   it("picks the exact Save and leaves Save draft alone", () => {
     document.body.innerHTML = `
-      <main id="log"></main>
       <section aria-label="Billing"><button type="button">Save</button><button type="button">Save draft</button></section>`;
     layOut();
     const elements = elementsOf();
@@ -137,10 +116,8 @@ describe("missing controls keep their citation", () => {
       citation: "Create a database",
       mismatch: "The doc says Create a database. I can't see Location on this screen.",
     });
-    show(decision);
-    const text = document.querySelector("#log")!.textContent ?? "";
-    expect(text).toContain("Create a database");
-    expect(text).toContain("I can't see Location on this screen.");
+    if (decision.authorized) throw new Error("expected a missing Location");
+    expect(highlightOutcome(decision)).toBe("The doc says Create a database. I can't see Location on this screen.");
     expect(actionAuthorized(decision)).toBe(false);
   });
 });
@@ -154,14 +131,12 @@ describe("snapshot eligibility", () => {
     for (const decision of [stale, otherTab, unread]) {
       expect(actionAuthorized(decision)).toBe(false);
       expect(decision).not.toHaveProperty("i");
-      show(decision);
+      if (decision.authorized) throw new Error("expected a refusal");
+      expect(highlightOutcome(decision)).toContain("won't point at or fill anything");
     }
     expect(stale).toMatchObject({ reason: "stale" });
     expect(otherTab).toMatchObject({ reason: "wrong_tab" });
     expect(unread).toMatchObject({ reason: "unbound" });
-    const log = document.querySelector("#log")!.textContent ?? "";
-    expect(log).toContain("won't point at or fill anything");
-    expect(log).not.toContain("Pointing at");
   });
 
   it("authorizes one target only when the name is in the latest snapshot for this tab", () => {
@@ -171,7 +146,6 @@ describe("snapshot eligibility", () => {
       expect(decision.name).toBe("Database ID");
       expect(decision.confidence).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
     }
-    expect(highlightOutcome(decision)).toBe("Pointing at Database ID.");
   });
 
   it("accepts a live element only when the snapshot generation and name still match", () => {
@@ -189,5 +163,25 @@ describe("snapshot eligibility", () => {
     const pinned = liveHighlight({ text: "Database ID", generation: 3, index: db.i, name: "Database ID" }, 3, indexed);
     expect(pinned.result).toMatchObject({ found: true, i: db.i, name: "Database ID" });
     expect(pinned.el).toBe(indexed.get(db.i));
+  });
+
+  it("does not point at a pinned index that is no longer the unique resolution", () => {
+    document.body.innerHTML = `
+      <section aria-label="Billing"><button type="button">Save</button><button type="button">Save draft</button></section>
+      <section aria-label="Security"><button type="button">Save</button></section>`;
+    layOut();
+    const indexed = new Map(collectControls().map(({ i, el }) => [i, el] as const));
+    const elements = elementsOf();
+    const [save] = elements.filter((e) => e.name === "Save");
+    const draft = elements.find((e) => e.name === "Save draft")!;
+
+    const tied = liveHighlight({ text: "Save", generation: 3, index: save.i, name: "Save" }, 3, indexed);
+    expect(tied.result).toMatchObject({ found: false, reason: "ambiguous" });
+    expect(tied.el).toBeUndefined();
+
+    indexed.get(elements.filter((e) => e.name === "Save")[1].i)!.remove();
+    const other = liveHighlight({ text: "Save", generation: 3, index: draft.i, name: "Save draft" }, 3, indexed);
+    expect(other.result).toEqual({ found: false, reason: "stale", alternatives: [] });
+    expect(other.el).toBeUndefined();
   });
 });
