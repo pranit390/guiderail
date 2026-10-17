@@ -19,6 +19,7 @@ const HTTP = "http://localhost:8787";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
+const scroll = $("#scroll");
 const status = $("#status");
 const card = $("#guidance");
 const issues = $("#issues");
@@ -161,7 +162,8 @@ function say(role: "user" | "model" | "system" | "step", text: string) {
     log.append(el);
     open = role === "system" || role === "step" ? null : { role, el };
   }
-  log.scrollTop = log.scrollHeight;
+  // Follow new conversation text without jumping past the draft/cards below it.
+  scroll.scrollTop += log.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom;
 }
 
 // ---------- Connection to the relay ----------
@@ -708,6 +710,7 @@ $("#form").addEventListener("submit", (e) => {
   memory.add("user", text);
   sendServer({ type: "text", text });
   input.value = "";
+  input.focus();
 });
 
 async function startTalking() {
