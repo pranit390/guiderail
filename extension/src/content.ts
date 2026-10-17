@@ -1,7 +1,7 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
-import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage } from "./messages.ts";
-import { allElements, CUSTOM_FIELD, effectiveUrl, findSection, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf } from "./page.ts";
+import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
+import { allElements, CUSTOM_FIELD, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
 
@@ -11,7 +11,9 @@ const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
 let indexed = new Map<number, Element>();
 let highlighted: Element | null = null;
 let blockingFields: string[] = [];
+let blockingRuleCount = 0;
 let warnedSubmitAt = 0;
+const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------- Reading the page ----------
 
@@ -67,11 +69,16 @@ function findElement(text: string, role?: string): HighlightResult {
 const host = document.createElement("guiderail-overlay");
 const shadow = host.attachShadow({ mode: "open" });
 shadow.innerHTML = `<style>
-  :host { all: initial; }
+  :host { all: initial; --gr-edge:#805b00; --gr-halo:rgba(224,161,0,.20); --gr-bad:#c43a2f; }
+  :host([data-theme="dark"]) { --gr-edge:#f2b927; --gr-halo:rgba(242,185,39,.22); --gr-bad:#f07468; }
   .layer { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
-  .ring { position: fixed; border: 3px solid #f2b927; border-radius: 8px; box-shadow: 0 0 0 4px rgba(242,185,39,.35);
-          animation: pulse 1.2s ease-in-out infinite; transition: all .15s ease; }
-  .bad { position: fixed; border: 2px solid #e5484d; border-radius: 6px; background: rgba(229,72,77,.06); }
+  .ring { position: fixed; border-radius: 6px; outline: 2px solid var(--gr-edge); outline-offset: 2px;
+          box-shadow: 0 0 10px 3px var(--gr-halo); transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease; }
+  .ring.pulse { animation: gr-pulse 1.4s ease-in-out 2; }
+  @keyframes gr-pulse { 0%,100% { box-shadow: 0 0 6px 2px var(--gr-halo); } 50% { box-shadow: 0 0 16px 6px var(--gr-halo); } }
+  .bad { position: fixed; border-radius: 6px; outline: 2px solid var(--gr-bad); outline-offset: 1px; background: transparent; }
+  .chip { position: fixed; max-width: 260px; background: #161d28; color: #fff; font: 500 11px/1.3 system-ui, sans-serif;
+          padding: 4px 7px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
   .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #161d28; color: #fff;
            font: 600 14px/1.4 system-ui, sans-serif; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #e5484d;
            box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
@@ -81,8 +88,12 @@ shadow.innerHTML = `<style>
   :host(.gr-calm) .ring { animation: none; transition: none; }
   :host(.gr-calm) .rec { animation: none; }
   .gr-shade { position: fixed; box-shadow: 0 0 0 100vmax rgba(0,0,0,.08); }
-  @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(242,185,39,0); } }
-  @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
+  @media (prefers-reduced-motion: reduce) { .ring { animation: none !important; transition: none; } }
+  @media (forced-colors: active) {
+    .ring { outline: 2px solid Highlight; box-shadow: none; forced-color-adjust: none; }
+    .bad { outline: 2px solid Highlight; forced-color-adjust: none; }
+    .chip { forced-color-adjust: auto; }
+  }
 </style><div class="layer"></div>`;
 const layer = shadow.querySelector(".layer")!;
 // A copy left by a previous version of the extension (after a reload) is replaced.
@@ -92,30 +103,77 @@ document.documentElement.append(host);
 const ring = document.createElement("div");
 ring.className = "ring";
 ring.hidden = true;
+ring.setAttribute("aria-hidden", "true");
 layer.append(ring);
-let badBoxes: { el: Element; box: HTMLDivElement }[] = [];
+let badBoxes: { el: Element; box: HTMLDivElement; chip: HTMLDivElement }[] = [];
 const calm = new CalmView(host, layer, (text) => send({ kind: "customize_event", text }));
+let followRunning = false;
+let staleNotified = false;
 
 function place(box: HTMLElement, el: Element, pad: number) {
   const r = el.getBoundingClientRect();
   Object.assign(box.style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + pad * 2}px`, height: `${r.height + pad * 2}px` });
 }
 
-function pointAt(el: Element) {
+function placeChip(chip: HTMLElement, el: Element) {
+  const r = el.getBoundingClientRect();
+  const top = Math.max(4, r.top - chip.offsetHeight - 8);
+  const left = Math.min(window.innerWidth - chip.offsetWidth - 8, Math.max(4, r.right - chip.offsetWidth));
+  Object.assign(chip.style, { left: `${left}px`, top: `${top}px` });
+}
+
+function applyTheme(el: Element) {
+  host.dataset.theme = isDarkSurrounding(el) ? "dark" : "light";
+}
+
+function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   highlighted = el;
-  el.scrollIntoView({ block: "center", behavior: calm.active ? "instant" : "smooth" });
+  staleNotified = false;
+  applyTheme(el);
   ring.hidden = false;
+  place(ring, el, 4);
+  // Pulse twice (~1.4s each) then settle; never under reduced motion.
+  ring.classList.remove("pulse");
+  if (!reducedMotion()) { void ring.offsetWidth; ring.classList.add("pulse"); }
+  // No unsolicited scrolling: only an explicit Show-field action scrolls, and never smoothly under reduced motion.
+  if (opts.scroll) el.scrollIntoView({ block: "center", behavior: reducedMotion() || calm.active ? "auto" : "smooth" });
+  startFollow();
+}
+
+function showField(field: string) {
+  const el = violationFieldElement(field);
+  if (el) pointAt(el, { scroll: true });
+}
+
+function startFollow() {
+  if (followRunning) return;
+  followRunning = true;
+  requestAnimationFrame(follow);
 }
 
 function follow() {
   if (!alive()) return shutdown();
   calm.follow(highlighted, badBoxes.map(({ el }) => el));
-  if (highlighted && highlighted.isConnected) place(ring, highlighted, 6);
-  else ring.hidden = true;
-  for (const { el, box } of badBoxes) place(box, el, 3);
-  requestAnimationFrame(follow);
+  if (highlighted) {
+    if (highlighted.isConnected && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; }
+    else {
+      ring.hidden = true;
+      highlighted = null;
+      if (!staleNotified) { staleNotified = true; send({ kind: "page_event", text: "The highlighted field is no longer on screen." }); }
+    }
+  } else ring.hidden = true;
+  badBoxes = badBoxes.filter(({ el, box, chip }) => {
+    if (!el.isConnected || !isVisible(el)) { box.remove(); chip.remove(); return false; }
+    place(box, el, 3);
+    placeChip(chip, el);
+    return true;
+  });
+  if (!highlighted && badBoxes.length === 0 && ring.hidden) { followRunning = false; return; }
+  if (highlighted || badBoxes.length) requestAnimationFrame(follow);
+  else followRunning = false;
 }
-requestAnimationFrame(follow);
+window.addEventListener("resize", () => { if (highlighted || badBoxes.length) startFollow(); });
+document.addEventListener("scroll", () => { if (highlighted || badBoxes.length) startFollow(); }, true);
 
 function toast(text: string) {
   const t = document.createElement("div");
@@ -166,31 +224,31 @@ function readForm(): FormState {
   return { url: effectiveUrl(), labels, fields, sections };
 }
 
-function fieldElement(field: string): Element | null {
-  if (field.startsWith("label:")) return findSection("Labels");
-  const el = [...document.querySelectorAll("input,select,textarea")].find((e) => norm(nameOf(e)) === norm(field));
-  return el ?? null;
-}
-
-function showViolations(fields: string[], submitLabel?: string) {
-  blockingFields = fields;
-  for (const { box } of badBoxes) box.remove();
+function showViolations(violations: ViolationDetail[]) {
+  const blocking = violations.filter((v) => v.severity === "block");
+  blockingFields = [...new Set(blocking.map((v) => v.field))];
+  blockingRuleCount = blocking.length;
+  for (const { box, chip } of badBoxes) { box.remove(); chip.remove(); }
   badBoxes = [];
-  const targets = new Set<Element>();
-  for (const f of fields) {
-    const el = fieldElement(f);
-    if (el) targets.add(el);
-  }
-  if (fields.length && submitLabel) {
-    const submit = allElements().find((el) => roleOf(el) === "button" && norm(nameOf(el)) === norm(submitLabel));
-    if (submit) targets.add(submit);
-  }
-  for (const el of targets) {
+  // One box per unique field; chips carry every Rule message for that field. Never the whole section, never the submit button.
+  const byField = new Map<string, ViolationDetail[]>();
+  for (const v of violations) byField.set(v.field, [...(byField.get(v.field) ?? []), v]);
+  for (const [field, items] of byField) {
+    const el = violationFieldElement(field);
+    if (!el) continue;
+    applyTheme(el);
     const box = document.createElement("div");
     box.className = "bad";
     layer.append(box);
-    badBoxes.push({ el, box });
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.textContent = `${violationFieldLabel(field)}: ${items.map((i) => i.message).join(" ")}`;
+    layer.append(chip);
+    badBoxes.push({ el, box, chip });
+    place(box, el, 3);
+    placeChip(chip, el);
   }
+  if (badBoxes.length) startFollow();
 }
 
 // ---------- Watching the user ----------
@@ -225,7 +283,7 @@ function onClick(e: MouseEvent) {
       warnedSubmitAt = Date.now();
       e.preventDefault();
       e.stopImmediatePropagation();
-      toast(`GuideRail: ${blockingFields.length} policy issue(s) to fix first. Click again to continue anyway.`);
+      toast(`GuideRail: ${blockingFields.length} field(s) to fix (${blockingRuleCount} Rule(s)). Click again to continue anyway.`);
       return;
     }
   }
@@ -255,8 +313,9 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "read_page": reply(readPage()); break;
     case "highlight": reply(findElement(msg.text, msg.role)); break;
     case "read_form": reply(readForm()); break;
-    case "show_violations": showViolations(msg.fields, msg.submitLabel); reply({ ok: true }); break;
-    case "clear": highlighted = null; showViolations([]); reply({ ok: true }); break;
+    case "show_violations": showViolations(msg.violations); reply({ ok: true }); break;
+    case "show_field": showField(msg.field); reply({ ok: true }); break;
+    case "clear": highlighted = null; ring.hidden = true; showViolations([]); reply({ ok: true }); break;
     case "teach":
       setRecording(msg.on);
       reply({ ok: true });

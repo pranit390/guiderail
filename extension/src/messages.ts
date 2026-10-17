@@ -13,12 +13,15 @@ export type FormState = {
   sections: string[]; // Rule sections present on the page, e.g. "Labels"
 };
 
+export type ViolationDetail = { field: string; message: string; severity: "block" | "warn" };
+
 export type ToPage =
   | { kind: "read_page" }
   | { kind: "highlight"; text: string; role?: string }
   | { kind: "customize"; preset: CalmPreset }
   | { kind: "read_form" }
-  | { kind: "show_violations"; fields: string[]; submitLabel?: string }
+  | { kind: "show_violations"; violations: ViolationDetail[] }
+  | { kind: "show_field"; field: string }
   | { kind: "clear" }
   | { kind: "teach"; on: boolean };
 
