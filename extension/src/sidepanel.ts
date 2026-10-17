@@ -9,8 +9,7 @@ import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts"
 import { SessionLog } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 
-const SERVER = "ws://localhost:8787";
-const HTTP = "http://localhost:8787";
+import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
@@ -24,6 +23,7 @@ let ws: WebSocket | undefined;
 // Latest read of the tab this session is coaching. Highlight and Assist fill may use only these names.
 let bound: BoundSnapshot | null = null;
 let boundStale = false;
+let connectionAttempt = 0;
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
 // Memory for this side-panel session, given to every new Live connection (e.g. after Teach ↔ Guide).
@@ -114,11 +114,28 @@ function say(role: "user" | "model" | "system" | "step", text: string) {
 
 // ---------- Connection to the relay ----------
 
-function connect() {
+async function connect() {
+  const attempt = ++connectionAttempt;
+  ws?.close();
+  ws = undefined;
   setStatus("Connecting…", "busy");
   const params = new URLSearchParams({ mode });
   if (mode === "guide" && resumeHandle) params.set("resume", resumeHandle);
   if (mode === "teach" && teach) params.set("goal", teach.goal);
+  let credential: string;
+  try {
+    const response = await fetch(`${HTTP}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const body = await response.json();
+    if (!response.ok || typeof body.credential !== "string") throw new Error(body.error ?? "Session admission failed.");
+    credential = body.credential;
+  } catch (error) {
+    if (attempt !== connectionAttempt) return;
+    setStatus(`Can't connect to ${SERVER_HOST}. Click to retry`, "off");
+    say("system", error instanceof Error ? error.message : "Session admission failed.");
+    return;
+  }
+  if (attempt !== connectionAttempt) return;
+  params.set("credential", credential);
   const sock = new WebSocket(`${SERVER}/live?${params}`);
   ws = sock;
   sock.onmessage = (e) => { if (ws === sock) void onServer(JSON.parse(e.data)); };
@@ -130,7 +147,7 @@ function connect() {
     held.audio = [];
     if (talking) stopTalking();
   };
-  sock.onerror = () => { if (ws === sock) setStatus("Can't reach the GuideRail server on localhost:8787", "off"); };
+  sock.onerror = () => { if (ws === sock) setStatus(`Can't reach ${SERVER_HOST}`, "off"); };
 }
 
 status.addEventListener("click", () => ws?.readyState !== WebSocket.OPEN && connect());
@@ -140,7 +157,7 @@ const sendServer = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send
 async function onServer(msg: any) {
   switch (msg.type) {
     case "ready":
-      setStatus("Ready", "on");
+      setStatus(`Connected to ${SERVER_HOST}`, "on");
       if (memory.size) sendServer({ type: "session", text: memory.summary() });
       break;
     case "audio":
@@ -236,8 +253,8 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     case "draft_message": {
       // Opens a pre-filled compose window; the user reviews it and clicks Send (ADR 0001).
       const tab = await activeTab();
-      const sandbox = tab.url?.startsWith("http://localhost:8787/sandbox/");
-      const base = sandbox ? "http://localhost:8787/sandbox/gmail-compose.html?" : "https://mail.google.com/mail/?view=cm&";
+      const sandbox = tab.url?.startsWith(`${HTTP}/sandbox/`);
+      const base = sandbox ? `${HTTP}/sandbox/gmail-compose.html?` : "https://mail.google.com/mail/?view=cm&";
       const q = new URLSearchParams({ to: String(args.to ?? ""), su: String(args.subject ?? ""), body: String(args.body ?? "") });
       await chrome.tabs.create({ url: base + q.toString() });
       say("system", "Drafted the request. Review it and click Send yourself.");
@@ -498,7 +515,7 @@ async function stopAndDraft() {
   try {
     res = await fetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
   } catch {
-    say("system", "Couldn't reach the GuideRail server on localhost:8787. Press \"Stop and draft Playbook\" to try again.");
+    say("system", `Couldn't reach ${SERVER_HOST}. Try drafting again.`);
     $("#teachbar").hidden = false;
     return;
   }
@@ -537,7 +554,7 @@ $("#publish").addEventListener("click", async () => {
   try {
     res = await fetch(`${HTTP}/playbooks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft, ruleIds }) });
   } catch {
-    say("system", "Couldn't reach the GuideRail server on localhost:8787. Your draft is still here; press Publish to try again.");
+    say("system", "Couldn't reach the configured GuideRail coach. Your draft is still here; press Publish to try again.");
     return;
   }
   if (!res.ok) { say("system", `Publishing failed: ${await errorText(res)}. Your draft is still here; press Publish to try again.`); return; }

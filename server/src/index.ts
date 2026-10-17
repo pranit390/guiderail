@@ -5,6 +5,7 @@ import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
 import { draftPlaybook, DraftError, isRule } from "./playbooks/draft.ts";
 import { isAllowedOrigin } from "./origin.ts";
+import { LiveAdmission, SessionTickets } from "./admission.ts";
 import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { approvals, approvalUrl, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
@@ -36,7 +37,9 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown> |
   }
 }
 
-const WRITE_ROUTES = new Set(["/playbooks/draft", "/playbooks", "/approvals"]);
+const WRITE_ROUTES = new Set(["/session", "/playbooks/draft", "/playbooks", "/approvals"]);
+const tickets = new SessionTickets();
+const admission = new LiveAdmission();
 
 const server = createServer(async (req, res) => {
   try {
@@ -57,8 +60,24 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 
   if (url.pathname === "/health") return void res.end("ok");
 
+  if (url.pathname === "/" && req.method === "GET") {
+    return void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>GuideRail coach</title><h1>GuideRail coach</h1><p>The relay is online. Install the packaged extension, open a supported Google page, and type a question or press Talk.</p><p>This limited demo shares three Live minutes per UTC day per server instance. At most three sessions can connect; each session ends within ten minutes. Instance replacement can reset the daily allowance. Voice, typed questions and supported page context are sent to Gemini on Vertex AI. No Firebase sign-in or durable receipts are provided by this relay.</p></html>`);
+  }
+
   if (req.method === "POST" && WRITE_ROUTES.has(url.pathname) && !isAllowedOrigin(req.headers.origin)) {
     return json(res, 403, { error: "This origin may not write to GuideRail." });
+  }
+
+  if (url.pathname === "/session" && req.method === "POST") {
+    if (process.env.DEMO_END_AT && Date.now() >= Date.parse(process.env.DEMO_END_AT)) {
+      return json(res, 410, { error: "This judging demo has ended." });
+    }
+    if (!req.headers.origin) return json(res, 403, { error: "A supported browser origin is required." });
+    const body = await readJson(req);
+    if (!body) return json(res, 400, { error: "Send a JSON object." });
+    const ticket = tickets.issue(req.headers.origin);
+    res.setHeader("Cache-Control", "no-store");
+    return json(res, ticket ? 201 : 429, ticket ?? { error: "The coach is busy. Please retry shortly." });
   }
 
   if (url.pathname === "/rules") {
@@ -67,6 +86,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url.pathname === "/playbooks/draft" && req.method === "POST") {
+    if (process.env.DISABLE_DRAFT === "true") return json(res, 503, { error: "Playbook drafting is disabled on this cost-limited demo." });
     const body = (await readJson(req)) as TeachPayload | undefined;
     if (!body?.goal || !Array.isArray(body.events) || body.events.length === 0) {
       return json(res, 400, { error: "Send a goal and at least one event." });
@@ -218,9 +238,23 @@ function approverPage(approval?: Approval) {
 </script>`);
 }
 
-const wss = new WebSocketServer({ server, path: "/live" });
+const wss = new WebSocketServer({ server, path: "/live", maxPayload: 64 * 1024 });
 wss.on("connection", (client, req) => {
   const params = new URL(req.url ?? "", "http://x").searchParams;
+  const reject = (message: string) => {
+    client.send(JSON.stringify({ type: "error", message }));
+    client.close(4001, "session admission denied");
+  };
+  if (!isAllowedOrigin(req.headers.origin) || !tickets.consume(params.get("credential"), req.headers.origin)) {
+    reject("Missing, invalid or expired session credential. Reconnect from the extension.");
+    return;
+  }
+  const slot = admission.admit(() => {
+    client.send(JSON.stringify({ type: "error", message: "This demo session reached its session or daily voice limit." }));
+    client.close(4000, "demo allowance reached");
+  });
+  if (!slot.allowed) { reject(slot.message); return; }
+  client.on("close", slot.release);
   const mode = params.get("mode") === "teach" ? "teach" : "guide";
   const goal = params.get("goal")?.slice(0, 200) || undefined;
   void relay(client, params.get("resume") ?? undefined, mode, goal);
