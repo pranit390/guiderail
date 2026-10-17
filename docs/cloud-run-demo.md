@@ -62,7 +62,7 @@ available.
 | Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; short eight-reply sessions | 1.4175 |
 | Cloud Run active compute | 3,780 s at $0.000024/vCPU-s + 0.5 × $0.0000025/GiB-s; no free-tier discount | 0.0955 |
 | Startup, HTTP, network and logs | Small judge traffic, short requests, bounded payloads; reserve | 0.30 |
-| One source build and one image | Small Node image/build, held through judging; reserve | 0.50 |
+| Two source builds and one retained image | Small Node builds, one corrected retry; image held through judging; reserve | 0.50 |
 | **Planning total** | Rounded upward | **3.74** |
 | **Margin to $6** | Approximately | **2.26** |
 
