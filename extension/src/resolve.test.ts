@@ -1,0 +1,182 @@
+// @vitest-environment happy-dom
+import { beforeEach, describe, expect, it } from "vitest";
+import type { PageElement } from "./messages.ts";
+import { collectControls } from "./page.ts";
+import {
+  actionAuthorized,
+  authorizeTarget,
+  highlightOutcome,
+  highlightResult,
+  liveTargetOk,
+  MIN_CONFIDENCE,
+  resolveName,
+  type BoundSnapshot,
+  type TargetDecision,
+} from "./resolve.ts";
+
+function layOut() {
+  const rect = { x: 0, y: 0, width: 80, height: 24, top: 0, left: 0, bottom: 24, right: 80, toJSON() { return {}; } } as DOMRect;
+  for (const el of document.querySelectorAll<HTMLElement>("*")) {
+    el.getBoundingClientRect = () => rect;
+    el.style.opacity = "1";
+  }
+}
+
+function elementsOf(): PageElement[] {
+  return collectControls().map(({ i, role, name, value, section }) => {
+    const item: PageElement = { i, role, name };
+    if (value) item.value = value;
+    if (section) item.section = section;
+    return item;
+  });
+}
+
+function snapshot(elements: PageElement[], tabId = 7): BoundSnapshot {
+  return { tabId, url: "http://127.0.0.1/duplicate-save", generation: 3, elements };
+}
+
+function show(decision: TargetDecision) {
+  const el = document.createElement("p");
+  el.className = "msg system";
+  el.textContent = highlightOutcome(decision);
+  document.querySelector("#log")!.append(el);
+  return el;
+}
+
+beforeEach(() => {
+  document.body.innerHTML = `
+    <main id="log" aria-live="polite"></main>
+    <h1>Permissions</h1>
+    <section aria-label="Billing"><button type="button">Save</button></section>
+    <section aria-label="Security"><button type="button">Save</button></section>
+    <label for="db">Database ID</label><input id="db">`;
+  layOut();
+});
+
+describe("duplicate-Save fixture", () => {
+  it("asks which Save and does not select the first button", () => {
+    const elements = elementsOf();
+    const saves = elements.filter((e) => e.name === "Save");
+    expect(saves.map((e) => e.section)).toEqual(["Billing", "Security"]);
+    expect(saves[0].i).toBeLessThan(saves[1].i);
+
+    const decision = authorizeTarget({ text: "Save", role: "button", snapshot: snapshot(elements), stale: false, tabId: 7 });
+    expect(decision.authorized).toBe(false);
+    expect(actionAuthorized(decision)).toBe(false);
+    expect(decision).not.toHaveProperty("i");
+    if (decision.authorized || decision.reason !== "ambiguous") throw new Error("expected an ambiguous Save");
+    expect(decision.alternatives).toEqual(["Billing: Save", "Security: Save"]);
+    expect(highlightResult(decision)).toMatchObject({ found: false, reason: "ambiguous" });
+    expect(highlightResult(decision)).not.toHaveProperty("i");
+
+    const line = show(decision);
+    expect(line.className).toBe("msg system");
+    expect(line.textContent).toBe('Which "Save" should I point at? I see Billing: Save or Security: Save.');
+    expect(document.querySelector("#log")!.textContent).not.toContain("Pointing at");
+  });
+
+  it("still asks when both Saves are buttons", () => {
+    const decision = authorizeTarget({ text: "Save", role: "button", snapshot: snapshot(elementsOf()), stale: false, tabId: 7 });
+    expect(highlightOutcome(decision)).toMatch(/Which "Save"/);
+    expect(actionAuthorized(decision)).toBe(false);
+  });
+});
+
+describe("exact names before fuzzy candidates", () => {
+  it("picks the exact Save and leaves Save draft alone", () => {
+    document.body.innerHTML = `
+      <main id="log"></main>
+      <section aria-label="Billing"><button type="button">Save</button><button type="button">Save draft</button></section>`;
+    layOut();
+    const elements = elementsOf();
+    const resolved = resolveName("SAVE", elements, "button");
+    expect(resolved).toMatchObject({ status: "found", name: "Save", confidence: 1 });
+    if (resolved.status === "found") expect(resolved.confidence).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+    const draft = elements.find((e) => e.name === "Save draft");
+    if (resolved.status === "found" && draft) expect(resolved.i).not.toBe(draft.i);
+  });
+
+  it("uses a fuzzy name only when nothing matches exactly, at or above 0.6", () => {
+    const elements = elementsOf();
+    const fuzzy = resolveName("Database", elements);
+    expect(fuzzy.status).toBe("found");
+    if (fuzzy.status === "found") {
+      expect(fuzzy.name).toBe("Database ID");
+      expect(fuzzy.confidence).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+      expect(fuzzy.confidence).toBeLessThan(1);
+    }
+    expect(resolveName("purple monkey", elements).status).toBe("missing");
+    const swapped = resolveName("alpha beta", [{ i: 1, role: "textbox", name: "beta alpha" }]);
+    expect(swapped.status).toBe("found");
+    if (swapped.status === "found") expect(swapped.confidence).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+  });
+
+  it("lets a role break a tie and refuses a tie the role does not break", () => {
+    const mixed: PageElement[] = [
+      { i: 1, role: "button", name: "Save" },
+      { i: 2, role: "link", name: "Save" },
+    ];
+    expect(resolveName("Save", mixed, "button")).toMatchObject({ status: "found", i: 1, name: "Save" });
+    expect(resolveName("Save", mixed).status).toBe("ambiguous");
+  });
+});
+
+describe("missing controls keep their citation", () => {
+  it("states the docs and screen mismatch without dropping the citation", () => {
+    const decision = authorizeTarget({
+      text: "Location",
+      citation: "Create a database",
+      snapshot: snapshot(elementsOf()),
+      stale: false,
+      tabId: 7,
+    });
+    expect(decision).toMatchObject({
+      authorized: false,
+      reason: "missing",
+      citation: "Create a database",
+      mismatch: "The doc says Create a database. I can't see Location on this screen.",
+    });
+    show(decision);
+    const text = document.querySelector("#log")!.textContent ?? "";
+    expect(text).toContain("Create a database");
+    expect(text).toContain("I can't see Location on this screen.");
+    expect(actionAuthorized(decision)).toBe(false);
+  });
+});
+
+describe("snapshot eligibility", () => {
+  it("refuses a stale snapshot and a different tab, and does not authorize a fill", () => {
+    const shot = snapshot(elementsOf());
+    const stale = authorizeTarget({ text: "Database ID", snapshot: shot, stale: true, tabId: 7 });
+    const otherTab = authorizeTarget({ text: "Database ID", snapshot: shot, stale: false, tabId: 9 });
+    const unread = authorizeTarget({ text: "Database ID", snapshot: null, stale: false, tabId: 7 });
+    for (const decision of [stale, otherTab, unread]) {
+      expect(actionAuthorized(decision)).toBe(false);
+      expect(decision).not.toHaveProperty("i");
+      show(decision);
+    }
+    expect(stale).toMatchObject({ reason: "stale" });
+    expect(otherTab).toMatchObject({ reason: "wrong_tab" });
+    expect(unread).toMatchObject({ reason: "unbound" });
+    const log = document.querySelector("#log")!.textContent ?? "";
+    expect(log).toContain("won't point at or fill anything");
+    expect(log).not.toContain("Pointing at");
+  });
+
+  it("authorizes one target only when the name is in the latest snapshot for this tab", () => {
+    const decision = authorizeTarget({ text: "Database ID", snapshot: snapshot(elementsOf()), stale: false, tabId: 7 });
+    expect(actionAuthorized(decision)).toBe(true);
+    if (decision.authorized) {
+      expect(decision.name).toBe("Database ID");
+      expect(decision.confidence).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+    }
+    expect(highlightOutcome(decision)).toBe("Pointing at Database ID.");
+  });
+
+  it("accepts a live element only when the snapshot generation and name still match", () => {
+    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 4, name: "Database ID", liveName: "Database ID", connected: true })).toBe(true);
+    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 4, index: 4, name: "Database ID", liveName: "Database ID", connected: true })).toBe(false);
+    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 2, name: "Database ID", liveName: "Save", connected: true })).toBe(false);
+    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 4, name: "Database ID", liveName: "Database ID", connected: false })).toBe(false);
+  });
+});
