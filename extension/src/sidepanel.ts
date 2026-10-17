@@ -18,6 +18,8 @@ const talk = $<HTMLButtonElement>("#talk");
 let ws: WebSocket | undefined;
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
+// The last message sent in the text box, so Teach can use it as the goal.
+let lastSent: { text: string; at: number } | null = null;
 let resumeHandle: string | undefined;
 let rules: Rule[] = [];
 let firstName: string | undefined;
@@ -315,7 +317,9 @@ $("#teach").addEventListener("click", async () => {
     return;
   }
   showTeachButton(true);
-  const goal = input.value.trim() || "Untitled task (name it from what the expert did)";
+  // Goal: what's in the box, else what was just sent (people often type, press Send, then Teach).
+  const recent = lastSent && Date.now() - lastSent.at < 2 * 60_000 ? lastSent.text : "";
+  const goal = input.value.trim() || recent || "Untitled task (name it from what the expert did)";
   input.value = "";
   teach = new TeachSession(goal);
   pendingPayload = null;
@@ -402,6 +406,7 @@ $("#form").addEventListener("submit", (e) => {
   if (!text) return;
   say("user", text);
   open = null;
+  lastSent = { text, at: Date.now() };
   sendServer({ type: "text", text });
   input.value = "";
 });
