@@ -44,7 +44,7 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 | [`docs/adr/`](docs/adr) | Decision records |
 | [`docs/research/`](docs/research) | Competitor teardown (SupaMaus, TipTour) and alternatives we rejected |
 | [`docs/hackathon.md`](docs/hackathon.md) | Submission rules and deadlines |
-| [`seed/`](seed) | Seed Policy, Rules and Playbook for the demo org |
+| [`seed/`](seed) | Seed Policy and Rules for the demo org (how-to Playbooks come from Teach sessions) |
 
 ## For judges
 

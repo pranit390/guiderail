@@ -9,7 +9,10 @@ const publishedRules = new FileRuleStore(join(ROOT, "data", "rules"));
 
 export async function loadPlaybooks(): Promise<string[]> {
   const seedDir = join(ROOT, "seed", "playbooks");
-  const seed = await Promise.all((await readdir(seedDir)).filter((f) => f.endsWith(".md")).map((f) => readFile(join(seedDir, f), "utf8")));
+  // Seed Playbooks are optional; the seed holds only the org's policy and Rules, and how-to
+  // knowledge comes from Teach sessions.
+  const files = await readdir(seedDir).catch(() => [] as string[]);
+  const seed = await Promise.all(files.filter((f) => f.endsWith(".md")).map((f) => readFile(join(seedDir, f), "utf8")));
   return [...seed, ...(await published.list())];
 }
 
