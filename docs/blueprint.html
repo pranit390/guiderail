@@ -435,6 +435,7 @@ sequenceDiagram
     <tbody>
       <tr><td><code>read_page</code></td><td>Content script</td><td>none</td><td><code>{url, title, elements:[{i, role, name, value?, section?}], blockers:[]}</code></td></tr>
       <tr><td><code>highlight</code></td><td>Content script</td><td><code>{text, role?, near?}</code></td><td><code>{found, i?, alternatives?[]}</code></td></tr>
+      <tr><td><code>customize</code></td><td>Content script</td><td><code>{preset: "calm" | null}</code> (only when the user asks)</td><td><code>{ok, preset}</code>. Calmer view until restored or reload; presentation only.</td></tr>
       <tr><td><code>wait_for_user</code></td><td>Content script</td><td><code>{expect: click|url_change|element_visible|field_value, value?}</code></td><td><code>{done, observed}</code> or <code>{timeout}</code></td></tr>
       <tr><td><code>get_guidance</code></td><td>Side panel</td><td><code>{section?}</code></td><td><code>{rules:[{ruleId, explain, format, examples, suggested}]}</code>. Shows the Suggested card.</td></tr>
       <tr><td><code>check_policy</code></td><td>Side panel</td><td>none</td><td><code>{violations:[{ruleId, field, message, severity}]}</code></td></tr>

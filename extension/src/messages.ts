@@ -1,5 +1,6 @@
 // Messages between the side panel and the content script.
 import type { TeachEvent } from "./teach/events.ts";
+import type { CalmPreset } from "./calm.ts";
 
 export type PageElement = { i: number; role: string; name: string; value?: string; section?: string };
 
@@ -15,12 +16,14 @@ export type FormState = {
 export type ToPage =
   | { kind: "read_page" }
   | { kind: "highlight"; text: string; role?: string }
+  | { kind: "customize"; preset: CalmPreset }
   | { kind: "read_form" }
   | { kind: "show_violations"; fields: string[]; submitLabel?: string }
   | { kind: "clear" }
   | { kind: "teach"; on: boolean };
 
 export type FromPage =
+  | { kind: "customize_event"; text: string }
   | { kind: "page_event"; text: string }
   | { kind: "form_changed"; form: FormState }
   | { kind: "submit_intent"; label: string; form: FormState }
