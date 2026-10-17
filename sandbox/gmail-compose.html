@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="guiderail-url" content="mail.google.com/mail/compose">
+  <title>Compose · GuideRail sandbox</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Roboto, Arial, sans-serif; color: #202124; background: #f1f3f4; } * { box-sizing: border-box; } body { margin: 0; } header { height: 64px; display: flex; align-items: center; padding: 0 clamp(20px, 6vw, 80px); background: #fff; border-bottom: 1px solid #dadce0; } header strong { color: #3c4043; font-size: 20px; font-weight: 500; } main { max-width: 820px; margin: 42px auto; padding: 0 20px; } .compose { overflow: hidden; background: #fff; border: 1px solid #dadce0; border-radius: 12px; box-shadow: 0 2px 8px #3c404326; } h1 { margin: 0; padding: 16px 20px; background: #f2f6fc; font-size: 16px; font-weight: 500; } .fields { padding: 0 20px; } .field { display: grid; grid-template-columns: 76px 1fr; align-items: center; min-height: 52px; border-bottom: 1px solid #dadce0; } label { font-size: 14px; color: #5f6368; } input, textarea { width: 100%; border: 0; padding: 10px 0; color: inherit; background: transparent; font: inherit; } textarea { min-height: 220px; resize: vertical; line-height: 1.5; } input:focus, textarea:focus, button:focus-visible { outline: 3px solid #a8c7fa; outline-offset: 2px; } .body { display: block; padding: 13px 0 18px; } .body label { display: block; margin-bottom: 6px; } footer { display: flex; align-items: center; gap: 12px; padding: 16px 20px; border-top: 1px solid #dadce0; } button { min-height: 38px; padding: 0 20px; border: 0; border-radius: 20px; color: #fff; background: #0b57d0; cursor: pointer; font: 600 14px/1 inherit; } button:disabled { cursor: default; background: #9aa0a6; } .notice { color: #0d652d; font-size: 14px; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <header><strong>GuideRail mail sandbox</strong></header>
+  <main><form class="compose" id="compose"><h1>New message</h1><div class="fields"><div class="field"><label for="to">To</label><input id="to" name="to" type="text" autocomplete="off"></div><div class="field"><label for="subject">Subject</label><input id="subject" name="subject" type="text" autocomplete="off"></div><div class="body"><label for="body">Body</label><textarea id="body" name="body"></textarea></div></div><footer><button type="submit">Send</button><span id="result" class="notice" aria-live="polite"></span></footer></form></main>
+  <script>
+    const query = new URLSearchParams(location.search); document.getElementById('to').value = query.get('to') || ''; document.getElementById('subject').value = query.get('su') || ''; document.getElementById('body').value = query.get('body') || ''; document.getElementById('compose').addEventListener('submit', event => { event.preventDefault(); document.getElementById('result').textContent = 'Message sent'; document.querySelectorAll('#compose input, #compose textarea, #compose button').forEach(field => field.disabled = true); });
+  </script>
+</body>
+</html>

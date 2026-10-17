@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Set up GuideRail</title>
+  <link rel="stylesheet" href="panel.css">
+  <style>
+    body { align-items: center; justify-content: center; text-align: center; padding: 24px; }
+    main { max-width: 440px; display: flex; flex-direction: column; gap: 14px; }
+    h1 { margin: 0; font-size: 26px; } h1 span { color: var(--accent); }
+    #allow { padding: 10px 18px; font-size: 15px; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Guide<span>Rail</span></h1>
+    <p>GuideRail talks you through Google tools. Allow the microphone once so you can speak to it. You can also type instead.</p>
+    <button id="allow" type="button">Allow microphone</button>
+    <p id="result" aria-live="polite"></p>
+  </main>
+  <script type="module" src="welcome.js"></script>
+</body>
+</html>

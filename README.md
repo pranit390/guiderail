@@ -1,7 +1,7 @@
 # GuideRail
 
-**Guide first. Guard second.**
-The rail you hold onto in any Google tool.
+**Your experts teach it once. Every new hire is guided by it, and guarded by your rules.**
+Guide first. Guard second. The rail you hold onto in any Google tool.
 
 GuideRail is a voice coach for Google tools. It guides employees through a task by voice, highlighting each step on the live page in Cloud Console, IAM and Gmail. It explains company policy before the user fills in a form, and catches anything still wrong before they click Create. It never clicks for the user.
 
@@ -16,6 +16,7 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 
 ## What GuideRail does
 
+0. **Learns from your experts (Teach mode):** an expert does the task once in the real tool and says why. GuideRail records the steps by meaning (never passwords or screenshots), asks "why?" at key choices, and drafts a Playbook and suggested Rules for the expert to publish.
 1. **Guides:** you say the Goal ("deploy my app to Cloud Run"). GuideRail speaks each Step and highlights the exact button or field.
 2. **Explains policy up front:** at a form section with Rules, it explains what's required and suggests values, e.g. `owner=pranit`, `managed-by=manual`.
 3. **Guards:** it checks every field change against company Rules and flags Create until the form is compliant.

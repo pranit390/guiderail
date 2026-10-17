@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GuideRail sandbox</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Roboto, Arial, sans-serif; color: #202124; background: #f8fafd; }
+    * { box-sizing: border-box; } body { margin: 0; } header { background: #fff; border-bottom: 1px solid #dadce0; padding: 22px clamp(24px, 7vw, 96px); }
+    main { max-width: 980px; margin: 48px auto; padding: 0 24px; } .banner { color: #174ea6; background: #e8f0fe; border: 1px solid #c6dafc; border-radius: 10px; padding: 12px 16px; }
+    h1 { font-size: clamp(28px, 4vw, 38px); margin: 0 0 8px; } p { color: #5f6368; line-height: 1.55; } .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 28px; }
+    a { display: block; min-height: 180px; padding: 24px; color: inherit; text-decoration: none; background: #fff; border: 1px solid #dadce0; border-radius: 12px; box-shadow: 0 1px 2px #3c40431a; transition: box-shadow .15s, transform .15s; } a:hover, a:focus-visible { box-shadow: 0 4px 12px #3c40432b; transform: translateY(-2px); outline: 3px solid #a8c7fa; outline-offset: 2px; }
+    h2 { margin: 0 0 10px; font-size: 20px; color: #1967d2; } @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } main { margin-top: 28px; } }
+  </style>
+</head>
+<body>
+  <header><h1>GuideRail sandbox</h1><p>Local practice pages for guided demos.</p></header>
+  <main>
+    <p class="banner">GuideRail sandbox — practice copies, not product pages.</p>
+    <div class="grid">
+      <a href="cloud-run-create.html"><h2>Create service</h2><p>Practice completing a service form, labels, and an access blocker.</p></a>
+      <a href="iam-grant.html"><h2>Grant access</h2><p>Practice selecting a least-privilege role and saving access.</p></a>
+      <a href="gmail-compose.html"><h2>Compose message</h2><p>Practice reviewing and sending a pre-filled access request.</p></a>
+    </div>
+  </main>
+</body>
+</html>

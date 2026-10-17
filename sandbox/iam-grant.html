@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="guiderail-url" content="console.cloud.google.com/iam-admin/iam">
+  <title>Grant access · GuideRail sandbox</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Roboto, Arial, sans-serif; color: #202124; background: #f8fafd; } * { box-sizing: border-box; } body { margin: 0; } header { background: #fff; border-bottom: 1px solid #dadce0; padding: 20px clamp(24px, 8vw, 120px); } .crumb { font-size: 14px; color: #5f6368; } h1 { margin: 8px 0 0; font-weight: 500; font-size: 28px; } main { max-width: 760px; margin: 34px auto; padding: 0 24px; } section { background: #fff; border: 1px solid #dadce0; border-radius: 12px; padding: clamp(22px, 5vw, 36px); box-shadow: 0 1px 2px #3c40431a; } h2 { margin: 0 0 26px; font-size: 22px; font-weight: 500; } .field { margin-bottom: 23px; } label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; color: #3c4043; } input, select { width: 100%; min-height: 44px; padding: 10px 12px; border: 1px solid #747775; border-radius: 4px; background: #fff; color: inherit; font: inherit; } input:focus, select:focus, button:focus-visible { outline: 3px solid #a8c7fa; outline-offset: 1px; border-color: #1967d2; } button { min-height: 38px; padding: 0 18px; border: 0; border-radius: 4px; color: #fff; background: #1a73e8; cursor: pointer; font: 600 14px/1 inherit; } .notice { margin-top: 22px; padding: 14px 16px; border: 1px solid #a8dab5; border-radius: 8px; color: #0d652d; background: #e6f4ea; }
+  </style>
+</head>
+<body>
+  <header><div class="crumb">Identity &amp; access</div><h1>Permissions</h1></header>
+  <main><section aria-labelledby="grant-h"><h2 id="grant-h">Grant access</h2><form id="grant-form"><div class="field"><label for="principal">New principals</label><input id="principal" name="principal" type="text" autocomplete="off" placeholder="person@example.com"></div><div class="field"><label for="role">Role</label><select id="role" name="role"><option value="Owner">Owner</option><option value="Editor">Editor</option><option value="Viewer">Viewer</option><option value="Cloud Run Developer">Cloud Run Developer</option><option value="Cloud Run Admin">Cloud Run Admin</option><option value="Service Account User">Service Account User</option></select></div><button type="submit">Save</button><div id="result" aria-live="polite"></div></form></section></main>
+  <script>
+    const query = new URLSearchParams(location.search); const principal = document.getElementById('principal'); const role = document.getElementById('role'); if (query.has('principal')) principal.value = query.get('principal'); if ([...role.options].some(option => option.value === query.get('role'))) role.value = query.get('role'); document.getElementById('grant-form').addEventListener('submit', event => { event.preventDefault(); const box = document.getElementById('result'); box.className = 'notice'; box.textContent = 'Access granted to ' + (principal.value.trim() || 'principal') + ' as ' + role.value; });
+  </script>
+</body>
+</html>

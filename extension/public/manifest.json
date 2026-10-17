@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "GuideRail",
+  "version": "0.1.0",
+  "description": "Guide first, guard second. A voice coach for Google tools.",
+  "permissions": ["sidePanel", "storage", "tabs", "scripting", "identity", "identity.email"],
+  "host_permissions": [
+    "https://*.google.com/*",
+    "http://localhost:8787/*"
+  ],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "side_panel": { "default_path": "sidepanel.html" },
+  "action": { "default_title": "Open GuideRail" },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Ctrl+Shift+K", "mac": "Command+Shift+K" },
+      "description": "Open GuideRail"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://*.google.com/*", "http://localhost:8787/sandbox/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [{ "resources": ["mic-worklet.js"], "matches": ["<all_urls>"] }]
+}
