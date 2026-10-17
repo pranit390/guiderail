@@ -81,13 +81,6 @@ shadow.innerHTML = `<style>
   :host(.gr-calm) .ring { animation: none; transition: none; }
   :host(.gr-calm) .rec { animation: none; }
   .gr-shade { position: fixed; box-shadow: 0 0 0 100vmax rgba(0,0,0,.08); }
-  .gr-preview { position: fixed; bottom: 24px; right: 24px; max-width: calc(100vw - 48px);
-    padding: 14px; border: 2px solid #424954; border-radius: 8px; background: #fff; color: #202124;
-    font: 16px/1.5 system-ui, sans-serif; pointer-events: auto; }
-  .gr-preview span { display: block; margin-bottom: 8px; }
-  .gr-preview button { font: inherit; padding: 6px 10px; margin-right: 8px; border: 1px solid #424954;
-    border-radius: 4px; color: #202124; background: #f3f4f6; cursor: pointer; }
-  .gr-preview button:focus-visible { outline: 3px solid #185abc; outline-offset: 2px; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(242,185,39,0); } }
   @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
 </style><div class="layer"></div>`;

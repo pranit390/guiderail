@@ -41,24 +41,13 @@ describe("calmer presentation", () => {
     expect(document.body.innerHTML).toBe(before.replace("<guiderail-overlay>", '<guiderail-overlay class="">'));
   });
 
-  it("restores an unconfirmed preview after five seconds, even after a repeated call", () => {
+  it("stays applied until restored, with no timer or on-page prompt", () => {
     view.set("calm");
-    vi.advanceTimersByTime(4000);
-    view.set("calm");
-    vi.advanceTimersByTime(1000);
-    expect(view.active).toBe(false);
-    expect(layer.querySelector<HTMLElement>(".gr-preview")?.hidden).toBe(true);
-  });
-
-  it("keeps only after a user click, and the overlay Restore still works", () => {
-    view.set("calm");
-    layer.querySelector("button")?.click();
-    vi.advanceTimersByTime(6000);
+    vi.advanceTimersByTime(60_000);
     expect(view.active).toBe(true);
-    view.set(null);
-    view.set("calm");
-    layer.querySelectorAll("button")[1].click();
-    expect(view.active).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
+    expect(layer.querySelectorAll("button")).toHaveLength(0);
+    view.set(null);
+    expect(view.active).toBe(false);
   });
 });

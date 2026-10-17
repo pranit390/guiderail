@@ -49,11 +49,6 @@ describe("calmer content messages", () => {
     expect(document.querySelector("#guiderail-customize")).toBeNull();
   });
 
-  it("does not expose GuideRail's own preview buttons as page controls", () => {
-    request({ kind: "customize", preset: "calm" });
-    expect(JSON.stringify(request({ kind: "read_page" }))).not.toContain("Keep calmer");
-  });
-
   it("keeps the real form reader and policy results unchanged, with violations above the spotlight", () => {
     const before = form();
     const violations = evaluate(rules, before);

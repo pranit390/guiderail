@@ -6,7 +6,6 @@ export function parseCalmPreset(value: unknown): CalmPreset {
 }
 
 const STYLE_ID = "guiderail-customize";
-const PREVIEW_MS = 5000;
 
 // No page data, model text, or selectors are interpolated into this stylesheet.
 const CALM_CSS = `
@@ -33,9 +32,7 @@ html.gr-calm { font-size: max(100%, 18px); scroll-behavior: auto !important; }
 /** Owns presentation only. The existing overlay stays above the dimmer. */
 export class CalmView {
   private style: HTMLStyleElement | null = null;
-  private timer: ReturnType<typeof setTimeout> | undefined;
   private readonly shade = document.createElement("div");
-  private readonly preview = document.createElement("div");
   private readonly addedClasses = new Set<string>();
 
   constructor(private readonly host: HTMLElement, layer: Element, private readonly announce: (text: string) => void) {
@@ -43,19 +40,6 @@ export class CalmView {
     this.shade.hidden = true;
     this.shade.setAttribute("aria-hidden", "true");
     layer.prepend(this.shade);
-    this.preview.className = "gr-preview";
-    this.preview.hidden = true;
-    this.preview.setAttribute("role", "status");
-    this.preview.innerHTML = `<span>Keep this look? Restores in 5 seconds.</span>
-      <button type="button">Keep calmer</button><button type="button">Restore</button>`;
-    const [keep, restore] = this.preview.querySelectorAll("button");
-    keep.addEventListener("click", () => {
-      clearTimeout(this.timer);
-      this.preview.hidden = true;
-      this.announce("Calmer view kept for this page. Restore is always available in the panel.");
-    });
-    restore.addEventListener("click", () => this.set(null));
-    layer.append(this.preview);
   }
 
   get active(): boolean { return this.style !== null; }
@@ -66,7 +50,7 @@ export class CalmView {
       this.announce("Original page appearance restored.");
       return { ok: true, preset: null };
     }
-    if (this.active) return { ok: true, preset, preview: !this.preview.hidden };
+    if (this.active) return { ok: true, preset };
     this.style = document.createElement("style");
     this.style.id = STYLE_ID;
     this.style.textContent = CALM_CSS;
@@ -76,10 +60,8 @@ export class CalmView {
       this.addClass("gr-calm-sandbox");
     }
     this.host.classList.add("gr-calm");
-    this.preview.hidden = false;
-    this.timer = setTimeout(() => this.set(null), PREVIEW_MS);
-    this.announce("Calmer preview. Click Keep calmer on the page within 5 seconds, or it restores automatically.");
-    return { ok: true, preset, preview: true };
+    this.announce("Calmer view on for this page. Say put it back or click Restore in the panel to undo.");
+    return { ok: true, preset };
   }
 
   private addClass(name: string) {
@@ -89,13 +71,11 @@ export class CalmView {
   }
 
   restore() {
-    clearTimeout(this.timer);
     this.style?.remove();
     this.style = null;
     for (const name of this.addedClasses) document.documentElement.classList.remove(name);
     this.addedClasses.clear();
     this.host.classList.remove("gr-calm");
-    this.preview.hidden = true;
     this.shade.hidden = true;
   }
 
