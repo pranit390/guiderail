@@ -38,3 +38,9 @@ button:disabled { opacity: .5; cursor: default; }
 #talk { background: var(--accent); border-color: var(--accent); color: #1b1300; font-weight: 600; }
 #talk[data-on] { background: var(--bad); border-color: var(--bad); color: #fff; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+#teach[data-on] { background: var(--bad); border-color: var(--bad); color: #fff; }
+.rec { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--bad); margin-right: 4px; animation: blink 1s steps(2) infinite; }
+@keyframes blink { 50% { opacity: .2; } }
+@media (prefers-reduced-motion: reduce) { .rec { animation: none; } }
+#draftmd { white-space: pre-wrap; max-height: 240px; overflow: auto; font: 12px/1.5 ui-monospace, Menlo, monospace; background: var(--bg); padding: 8px; border-radius: 6px; }
+#draftrules label { display: block; font-size: 13px; padding: 2px 0; }

@@ -8,6 +8,7 @@
 <body>
   <header>
     <strong>Guide<span>Rail</span></strong>
+    <button id="teach" type="button" title="Show GuideRail how your team does a task">Teach</button>
     <button id="status" type="button" data-state="busy">Connecting…</button>
   </header>
   <main id="log" aria-live="polite">
@@ -15,6 +16,16 @@
   </main>
   <section id="guidance" class="card" hidden></section>
   <ul id="issues" class="card" hidden></ul>
+  <section id="teachbar" class="card" hidden>
+    <p><span class="rec" aria-hidden="true"></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
+    <button id="teachstop" type="button">Stop and draft Playbook</button>
+  </section>
+  <section id="draft" class="card" hidden>
+    <h2>Playbook draft</h2>
+    <pre id="draftmd"></pre>
+    <div id="draftrules"></div>
+    <button id="publish" type="button">Publish</button>
+  </section>
   <form id="form">
     <button id="talk" type="button">Talk</button>
     <input id="text" type="text" placeholder="e.g. deploy my app to Cloud Run" autocomplete="off">
