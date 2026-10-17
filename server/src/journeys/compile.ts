@@ -9,7 +9,7 @@ Return JSON only, no markdown fences. Shape:
 {goalId, method, steps:[{control,explanation,sourceUrl,citationHeading}], prerequisite:{role,permission,explanation,sourceUrl,citationHeading}, databaseIdGuidance:{explanation,sourceUrl,citationHeading}, limitations:{explanation,sourceUrl,citationHeading}, testModeWarning:{explanation,sourceUrl,citationHeading}, locationWarning:{explanation,sourceUrl,citationHeading}}.
 Steps have exactly these single controls in order: ${JSON.stringify(STEP_CONTROLS)}.
 This splits the seven source beats. For Location, explain the source's action without claiming a particular widget exists. Production mode is the safe branch; explain Test mode as the alternative, not a second action. Create is always the person's click. Navigation may already be complete at the deep link.
-Use only these exact citation headings: steps and Test mode warning = "Firebase console", prerequisite = "Required roles and permissions", databaseIdGuidance = "Database ID", limitations = "Limitations", locationWarning = "Cloud Firestore locations" (the page title for the markdown introduction). Do not use a sentence as a heading. Use nonempty explanations and one of the three source URLs for EVERY Step and guidance item. Cite only URLs the tool retrieved successfully. No CLI, Terraform or Google Cloud console procedure.
+Use only these exact citation headings: steps and Test mode warning = "Create a database", prerequisite = "Required roles and permissions", databaseIdGuidance = "Database ID", limitations = "Limitations", locationWarning = "Cloud Firestore locations" (the page title for the markdown introduction). Do not use a sentence as a heading. Use nonempty explanations and one of the three source URLs for EVERY Step and guidance item. Cite only URLs the tool retrieved successfully. No CLI, Terraform or Google Cloud console procedure.
 Prerequisite: roles/datastore.owner and datastore.databases.create. Database ID guidance must cover lowercase letters/numbers/hyphens, first letter, last letter/number, 4–63 characters, not UUID-shaped, Standard edition (default) when omitted, about 5 minutes before deleted ID reuse; put applicable limits in the separate limitations item citing Limitations, not the Database ID item. State the documented 100-database project limit and that support can raise it; do not invent other limits. Test mode allows anyone to read and overwrite data. Location cannot be changed after creation; cite locations.md.txt for this warning.
 Do not turn vendor facts into company Policy. Do not invent live UI verification.`;
 
@@ -26,7 +26,9 @@ export class JourneyCompiler {
   private lastAttempt = 0;
   constructor(private store: JourneyStore, private generate: GenerateJourney = generateJourney) {}
   async compile(): Promise<CompileResult> {
-    const cached = await this.store.get();
+    const cached = await this.store.get().catch(() => {
+      throw new CompileError("Couldn't read the Journey cache. Retry compilation, or read the official docs.");
+    });
     if (cached) return { journey: cached, cacheHit: true };
     if (this.pending) return this.pending;
     if (Date.now() - this.lastAttempt < 5000) throw new CompileBusyError("The docs compiler is busy. Retry in a few seconds.");
@@ -53,7 +55,9 @@ export class JourneyCompiler {
     });
     const journey = parseCompiledJourney({ ...draft, retrieval, consoleUrl: FIRESTORE_GOAL.consoleUrl,
       version: FIRESTORE_GOAL.version, compiledAt: new Date().toISOString(), durationMs: Date.now() - start });
-    await this.store.put(journey);
+    await this.store.put(journey).catch(() => {
+      throw new CompileError("Couldn't save the compiled Journey. Retry compilation, or read the official docs.");
+    });
     return { journey, cacheHit: false };
   }
 }

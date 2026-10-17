@@ -1,12 +1,19 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { UrlRetrievalStatus } from "@google/genai";
-import { FIRESTORE_GOAL, parseCompileRequest, parseJourneyDraft, type CompiledJourney } from "../../../shared/journey.ts";
+import { CompileError, FIRESTORE_GOAL, parseCompileRequest, parseJourneyDraft, type CompiledJourney } from "../../../shared/journey.ts";
 import { JourneyCompiler, guideJourneyInstruction, journeyInstruction, type GenerateJourney } from "./compile.ts";
 import { FileJourneyStore, type JourneyStore } from "./store.ts";
 import { fixtureDraft } from "./fixture.ts";
+
+const generateContent = vi.hoisted(() => vi.fn());
+vi.mock("@google/genai", async (original) => ({
+  ...await original<typeof import("@google/genai")>(),
+  GoogleGenAI: class { models = { generateContent }; },
+}));
 
 const response = () => ({ text: JSON.stringify(fixtureDraft), candidates: [{ urlContextMetadata: { urlMetadata: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: UrlRetrievalStatus.URL_RETRIEVAL_STATUS_SUCCESS })) } }] });
 function store(): JourneyStore {
@@ -14,6 +21,25 @@ function store(): JourneyStore {
   return { async get() { return value; }, async put(journey) { value = journey; } };
 }
 describe("compile boundary", () => {
+  it("reports an unreadable cache as a compile error without spending provider quota", async () => {
+    const generate = vi.fn<GenerateJourney>().mockResolvedValue(response());
+    const cache = { get: vi.fn().mockRejectedValue(new Error("EACCES")), put: vi.fn() };
+    await expect(new JourneyCompiler(cache, generate).compile()).rejects.toMatchObject({ constructor: CompileError, message: expect.stringContaining("Couldn't read the Journey cache") });
+    expect(generate).not.toHaveBeenCalled();
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+  it("reports a failed cache write as a compile error instead of returning an uncached success", async () => {
+    const cache = { get: async () => undefined, put: vi.fn().mockRejectedValue(new Error("EACCES")) };
+    await expect(new JourneyCompiler(cache, async () => response()).compile()).rejects.toMatchObject({ constructor: CompileError, message: expect.stringContaining("Couldn't save the compiled Journey") });
+  });
+  it("sends the validated fixture's citation heading to the provider for Steps and Test mode", async () => {
+    generateContent.mockResolvedValue(response());
+    await new JourneyCompiler(store()).compile();
+    const draft = parseJourneyDraft(fixtureDraft);
+    for (const item of [...draft.steps, draft.testModeWarning]) {
+      expect(generateContent).toHaveBeenCalledWith(expect.objectContaining({ contents: expect.stringContaining(`steps and Test mode warning = "${item.citationHeading}"`) }));
+    }
+  });
   it("accepts only the pinned catalog Goal ID", () => {
     expect(parseCompileRequest({ goalId: FIRESTORE_GOAL.id })).toBe(FIRESTORE_GOAL.id);
     for (const value of [{ goalId: "other" }, { goalId: FIRESTORE_GOAL.id, url: "https://example.com" }, {}, null, []]) expect(() => parseCompileRequest(value)).toThrow();
@@ -29,6 +55,23 @@ describe("compile boundary", () => {
       const second = await new JourneyCompiler(new FileJourneyStore(dir), generate).compile();
       expect(second).toEqual({ ...first, cacheHit: true });
       expect(generate).toHaveBeenCalledTimes(1);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+  it("recompiles instead of serving a Journey cached under the previous source contract", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "guiderail-compile-"));
+    try {
+      const previous = { ...FIRESTORE_GOAL, version: 2 };
+      const staleKey = createHash("sha256").update(JSON.stringify(previous)).digest("hex");
+      const cite = (c: { citationHeading: string }) => c.citationHeading === "Create a database" ? { ...c, citationHeading: "Firebase console" } : c;
+      const stale = { ...fixtureDraft, steps: fixtureDraft.steps.map(cite), testModeWarning: cite(fixtureDraft.testModeWarning),
+        consoleUrl: FIRESTORE_GOAL.consoleUrl, version: 2, compiledAt: "2026-10-17T23:00:00Z", durationMs: 100,
+        retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) };
+      await writeFile(join(dir, `${staleKey}.json`), JSON.stringify(stale));
+      const generate = vi.fn<GenerateJourney>().mockResolvedValue(response());
+      const result = await new JourneyCompiler(new FileJourneyStore(dir), generate).compile();
+      expect(result.cacheHit).toBe(false);
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect([...result.journey.steps, result.journey.testModeWarning].map((c) => c.citationHeading)).not.toContain("Firebase console");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
   it("coalesces simultaneous requests into one bounded provider call", async () => {
