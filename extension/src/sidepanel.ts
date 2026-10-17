@@ -11,6 +11,7 @@ const HTTP = "http://localhost:8787";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
+const scroll = $("#scroll");
 const status = $("#status");
 const card = $("#guidance");
 const issues = $("#issues");
@@ -78,7 +79,8 @@ function say(role: "user" | "model" | "system" | "step", text: string) {
     log.append(el);
     open = role === "system" || role === "step" ? null : { role, el };
   }
-  log.scrollTop = log.scrollHeight;
+  // Follow new conversation text without jumping past the draft/cards below it.
+  scroll.scrollTop += log.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom;
 }
 
 // ---------- Connection to the relay ----------
@@ -336,7 +338,12 @@ function showTeachButton(on: boolean) {
   const button = $<HTMLButtonElement>("#teach");
   button.toggleAttribute("data-on", on);
   button.setAttribute("aria-pressed", String(on));
-  button.textContent = on ? "● Teaching" : "Teach";
+  if (on) {
+    const dot = document.createElement("span");
+    dot.setAttribute("aria-hidden", "true");
+    dot.textContent = "● ";
+    button.replaceChildren(dot, document.createTextNode("Teaching"));
+  } else button.textContent = "Teach";
   button.title = on ? "Stop teaching and draft a Playbook" : "Show GuideRail how your team does a task";
 }
 
@@ -461,12 +468,14 @@ $("#form").addEventListener("submit", (e) => {
   memory.add("user", text);
   sendServer({ type: "text", text });
   input.value = "";
+  input.focus();
 });
 
 async function startTalking() {
   try {
     await mic.start((data) => sendServer({ type: "audio", data }));
     talking = true;
+    talk.setAttribute("aria-pressed", "true");
     talk.textContent = "Stop";
     talk.dataset.on = "true";
   } catch {
@@ -478,6 +487,7 @@ async function startTalking() {
 function stopTalking() {
   mic.stop();
   talking = false;
+  talk.setAttribute("aria-pressed", "false");
   talk.textContent = "Talk";
   delete talk.dataset.on;
   sendServer({ type: "audio_end" });
