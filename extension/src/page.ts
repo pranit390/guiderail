@@ -175,10 +175,6 @@ export function labelValueInput(key: string): Element | null {
   for (let k = 0; k + 1 < inputs.length; k += 2) {
     if (inputs[k].value.trim() === key) return inputs[k + 1];
   }
-  // Missing key: point at the first empty pair's value input so the person can fill it there.
-  for (let k = 0; k + 1 < inputs.length; k += 2) {
-    if (!inputs[k].value.trim()) return inputs[k + 1];
-  }
   return null;
 }
 
@@ -186,9 +182,7 @@ export function labelValueInput(key: string): Element | null {
 export function violationFieldElement(field: string): Element | null {
   if (field.startsWith("label:")) return labelValueInput(field.slice("label:".length));
   const candidates = [...document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD},[role=radio],[role=checkbox],[role=switch]`)];
-  const exact = candidates.find((e) => norm(nameOf(e)) === norm(field));
-  if (exact) return exact;
-  return allElements().find((e) => norm(nameOf(e)) === norm(field)) ?? null;
+  return candidates.find((e) => norm(nameOf(e)) === norm(field)) ?? null;
 }
 
 export function violationFieldLabel(field: string): string {

@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
-import { contrastRatio, EDGE_DARK, EDGE_LIGHT, findSection, isSecret, labelValueInput, nameOf, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
+import { BAD_DARK, BAD_LIGHT, contrastRatio, EDGE_DARK, EDGE_LIGHT, findSection, isSecret, labelValueInput, nameOf, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 
 beforeEach(() => {
   document.body.innerHTML = `
@@ -40,6 +40,8 @@ describe("page helpers", () => {
     expect(contrastRatio(EDGE_LIGHT, "rgb(248,250,253)")).toBeGreaterThanOrEqual(3);
     expect(contrastRatio(EDGE_DARK, "rgb(22,29,40)")).toBeGreaterThanOrEqual(3);
     expect(contrastRatio(EDGE_DARK, "rgb(15,20,28)")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(BAD_LIGHT, "rgb(255,255,255)")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(BAD_DARK, "rgb(22,29,40)")).toBeGreaterThanOrEqual(3);
   });
 
   it("maps label:key to its exact value input, never the whole Labels section", () => {
@@ -54,13 +56,17 @@ describe("page helpers", () => {
     expect(labelValueInput("owner")).toBe(ownerValue);
     expect(violationFieldElement("label:owner")).toBe(ownerValue);
     expect(violationFieldElement("label:environment")).toBe(document.querySelector('input[aria-label="Value 1"]'));
-    // Missing key falls back to the first empty pair's value input, not the section.
-    document.querySelector('input[aria-label="Key 1"]')!.setAttribute("value", "");
+    // A missing key has no value input: nothing is marked, and several missing keys never stack on one empty pair.
     (document.querySelector('input[aria-label="Key 1"]') as HTMLInputElement).value = "";
-    expect(labelValueInput("component")).toBe(document.querySelector('input[aria-label="Value 1"]'));
+    expect(labelValueInput("component")).toBeNull();
+    expect(violationFieldElement("label:environment")).toBeNull();
     // Generic fields resolve the real observed control by accessible name.
     expect(violationFieldElement("Role")).toBe(document.getElementById("role"));
     expect(violationFieldElement("Test mode")?.getAttribute("role")).toBe("radio");
+    // A field whose real control is gone is not mapped to a heading or button with the same name.
+    document.body.insertAdjacentHTML("beforeend", `<h3>Database ID</h3><button>Save</button>`);
+    expect(violationFieldElement("Database ID")).toBeNull();
+    expect(violationFieldElement("Save")).toBeNull();
     expect(violationFieldLabel("label:owner")).toBe("owner value");
     expect(violationFieldLabel("Role")).toBe("Role");
   });

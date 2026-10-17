@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import seed from "../../seed/rules/org-labeling-rules.json";
 import type { FormState } from "./messages.ts";
-import { evaluate, guidance, rulesFor, summarizeViolations, type Rule, type Violation } from "./policy.ts";
+import { evaluate, guidance, rulesFor, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
 
@@ -109,14 +109,23 @@ describe("evaluate", () => {
 });
 
 describe("summarizeViolations", () => {
-  it("counts unique fields primary and Rules secondary (panel/page agreement)", () => {
+  it("counts unique fields to fix and to check, Rules secondary (panel/page agreement)", () => {
     const vs: Violation[] = [
       { ruleId: "a", field: "label:owner", message: "m1", severity: "block" },
       { ruleId: "b", field: "label:owner", message: "m2", severity: "block" },
       { ruleId: "c", field: "label:environment", message: "m3", severity: "warn" },
+      { ruleId: "d", field: "label:owner", message: "m4", severity: "warn" },
     ];
-    expect(summarizeViolations(vs)).toEqual({ fields: ["label:owner", "label:environment"], fieldCount: 2, ruleCount: 3, blockingFields: ["label:owner"], blockingFieldCount: 1, blockingRuleCount: 2 });
-    expect(summarizeViolations([])).toMatchObject({ fieldCount: 0, ruleCount: 0 });
+    expect(summarizeViolations(vs)).toEqual({ blockingFields: ["label:owner"], fixCount: 1, checkCount: 1, ruleCount: 4 });
+    expect(violationCountText(summarizeViolations(vs))).toBe("1 to fix · 1 to check (4 Rules)");
+    expect(violationCountText(summarizeViolations(vs.slice(2, 3)))).toBe("1 to check (1 Rule)");
+    expect(summarizeViolations([])).toMatchObject({ fixCount: 0, checkCount: 0, ruleCount: 0 });
+  });
+
+  it("gives the same text for a warn and a missing owner as the panel, toast and model see", () => {
+    const vs = evaluate(rules, cloudRun({ ...validLabels, component: "foo", owner: "" }));
+    expect(vs.map((v) => v.severity).sort()).toEqual(["block", "warn"]);
+    expect(violationCountText(summarizeViolations(vs))).toBe("1 to fix · 1 to check (2 Rules)");
   });
 });
 
