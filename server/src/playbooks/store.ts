@@ -15,10 +15,11 @@ function assertSafeId(id: unknown): asserts id is string {
   if (!isSafeId(id)) throw new Error(`Invalid Playbook id: ${JSON.stringify(id)}`);
 }
 
-async function readAll(dir: string, ext: string): Promise<string[]> {
-  const files = await readdir(dir).catch(() => [] as string[]);
-  return Promise.all(files.filter((f) => f.endsWith(ext)).sort().map((f) => readFile(join(dir, f), "utf8")));
+async function readNamed(dir: string, ext: string): Promise<{ name: string; text: string }[]> {
+  const files = (await readdir(dir).catch(() => [] as string[])).filter((f) => f.endsWith(ext)).sort();
+  return Promise.all(files.map(async (name) => ({ name, text: await readFile(join(dir, name), "utf8") })));
 }
+const readAll = async (dir: string, ext: string) => (await readNamed(dir, ext)).map((f) => f.text);
 
 export class FilePlaybookStore implements PlaybookStore {
   constructor(private dir: string) {}
@@ -38,6 +39,13 @@ export class FileRuleStore implements RuleStore {
     await writeFile(join(this.dir, `${playbookId}.json`), JSON.stringify({ playbookId, rules }, null, 2));
   }
   async all() {
-    return (await readAll(this.dir, ".json")).flatMap((s) => (JSON.parse(s) as { rules: Rule[] }).rules);
+    return (await readNamed(this.dir, ".json")).flatMap(({ name, text }) => {
+      try {
+        const parsed = JSON.parse(text) as { rules?: unknown };
+        if (parsed && Array.isArray(parsed.rules)) return parsed.rules as Rule[];
+      } catch {}
+      console.warn(`[rules] Skipping ${join(this.dir, name)}: not JSON with a rules array`);
+      return [];
+    });
   }
 }

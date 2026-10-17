@@ -5,6 +5,8 @@ export class DraftError extends Error {}
 export type Generate = (prompt: string) => Promise<string>;
 
 const RUNNABLE_CHECKS = new Set(["label_required", "label_value_enum", "label_value_regex", "label_all_regex", "field_value_not_in"]);
+// The extension only evaluates Rules in these page sections, so a Rule scoped anywhere else could never fire.
+const RUNNABLE_SECTIONS = new Set(["Labels", "Grant access"]);
 
 export function buildDraftPrompt(p: TeachPayload): string {
   return `An expert just showed how their org does this task in Google web tools.
@@ -15,6 +17,7 @@ Write a Playbook for guiding a new hire through the same task in the same UI.
 - appliesTo: URL globs for the pages involved, like "console.cloud.google.com/run*".
 - goals: short phrases a new hire might say.
 - suggestedRules: only for values the expert set deliberately and explained (or set identically every time). Use only these check kinds: label_required {key}, label_value_enum {key, values}, label_value_regex {key, pattern}, label_all_regex {pattern}, field_value_not_in {field, values}. Use severity "warn" unless the expert said it's mandatory.
+- Every suggested rule needs scope {url, section}. scope.section must be exactly "Labels" for label_* checks, and exactly "Grant access" for field_value_not_in on IAM role grants; rules in any other section are discarded.
 - Never invent steps that are not in the events.
 
 Events (JSON, in order; "answer" is the expert's reply to a why-question):
@@ -41,9 +44,10 @@ function validCheck(c: Record<string, unknown>): boolean {
   }
 }
 
-function isRule(r: unknown): r is Rule {
+export function isRule(r: unknown): r is Rule {
   const x = r as Rule;
-  if (!x || typeof x !== "object" || !isStr(x.id) || !x.scope || !x.scope.url || !isStr(x.scope.section)) return false;
+  if (!x || typeof x !== "object" || !isStr(x.id) || !x.scope || typeof x.scope !== "object") return false;
+  if (!isStr(x.scope.url) || !x.scope.url || !RUNNABLE_SECTIONS.has(x.scope.section)) return false;
   if (!x.guide || !isStr(x.guide.explain) || !isStr(x.guide.format) || !Array.isArray(x.guide.examples)) return false;
   if (!x.check || typeof x.check !== "object" || !RUNNABLE_CHECKS.has(x.check.kind) || !validCheck(x.check)) return false;
   if (!(x.severity === "block" || x.severity === "warn") || !isStr(x.message)) return false;

@@ -3,7 +3,8 @@ import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
-import { draftPlaybook, DraftError } from "./playbooks/draft.ts";
+import { draftPlaybook, DraftError, isRule } from "./playbooks/draft.ts";
+import { isAllowedOrigin } from "./origin.ts";
 import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { approvals, approvalUrl, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
@@ -18,9 +19,15 @@ const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javas
 const json = (res: ServerResponse, status: number, body: unknown) =>
   void res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
 
+const MAX_BODY = 1024 * 1024;
+class TooLarge extends Error {}
+
 async function readJson(req: IncomingMessage): Promise<Record<string, unknown> | undefined> {
   let raw = "";
-  for await (const chunk of req) raw += chunk;
+  for await (const chunk of req) {
+    raw += chunk;
+    if (Buffer.byteLength(raw) > MAX_BODY) throw new TooLarge();
+  }
   try {
     const body = JSON.parse(raw);
     return body && typeof body === "object" ? body : undefined;
@@ -29,13 +36,30 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown> |
   }
 }
 
+const WRITE_ROUTES = new Set(["/playbooks/draft", "/playbooks", "/approvals"]);
+
 const server = createServer(async (req, res) => {
+  try {
+    await handle(req, res);
+  } catch (err) {
+    if (err instanceof TooLarge) return json(res, 413, { error: "Request body is larger than 1 MB." });
+    console.error("[server]", err);
+    if (!res.headersSent) json(res, 500, { error: "Internal server error." });
+    else res.end();
+  }
+});
+
+async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") return void res.writeHead(204).end();
 
   if (url.pathname === "/health") return void res.end("ok");
+
+  if (req.method === "POST" && WRITE_ROUTES.has(url.pathname) && !isAllowedOrigin(req.headers.origin)) {
+    return json(res, 403, { error: "This origin may not write to GuideRail." });
+  }
 
   if (url.pathname === "/rules") {
     const seed = JSON.parse(await readFile(join(ROOT, "seed", "rules", "org-labeling-rules.json"), "utf8"));
@@ -72,7 +96,7 @@ const server = createServer(async (req, res) => {
     const keep = new Set((body?.ruleIds as string[] | undefined) ?? []);
     try {
       await playbookStore.publish(draft);
-      await ruleStore.replace(draft.id, draft.suggestedRules.filter((r) => keep.has(r?.id)));
+      await ruleStore.replace(draft.id, draft.suggestedRules.filter((r) => isRule(r) && keep.has(r.id)));
     } catch (err) {
       return json(res, 500, { error: (err as Error).message });
     }
@@ -138,7 +162,7 @@ const server = createServer(async (req, res) => {
   }
 
   res.writeHead(404).end("not found");
-});
+}
 
 const escape = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

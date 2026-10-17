@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,6 +26,14 @@ describe("stores", () => {
     await r.replace("cloud-run-deploy", [rule("a"), rule("b")]);
     await r.replace("cloud-run-deploy", [rule("c")]);
     expect((await r.all()).map((x) => x.id)).toEqual(["c"]);
+  });
+  it("skips corrupt Rules files instead of crashing", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "corrupt-"));
+    const r = new FileRuleStore(dir);
+    await r.replace("good", [rule("a")]);
+    writeFileSync(join(dir, "broken.json"), "{ not json");
+    writeFileSync(join(dir, "norules.json"), JSON.stringify({ playbookId: "x" }));
+    expect((await r.all()).map((x) => x.id)).toEqual(["a"]);
   });
   it("refuses an unsafe id and writes nothing", async () => {
     const root = mkdtempSync(join(tmpdir(), "unsafe-"));

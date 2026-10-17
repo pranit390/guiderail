@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDraftPrompt, DraftError, draftPlaybook, parseDraft } from "./draft.ts";
+import { buildDraftPrompt, DraftError, draftPlaybook, isRule, parseDraft } from "./draft.ts";
 import type { TeachPayload } from "./types.ts";
 
 const payload: TeachPayload = {
@@ -15,9 +15,9 @@ const payload: TeachPayload = {
 const good = JSON.stringify({
   id: "cloud-run-deploy", title: "Deploy a Cloud Run service", appliesTo: ["console.cloud.google.com/run*"],
   goals: ["deploy"], markdown: "# Deploy\n1. Region us-central1 (EU customers: europe-west1).",
-  suggestedRules: [{ id: "region-us", scope: { url: "console.cloud.google.com/run/create*", section: "Configure" },
-    guide: { explain: "Default region", format: "us-central1", examples: ["us-central1"], suggest: null },
-    check: { kind: "field_value_not_in", field: "Region", values: ["asia-south1"] }, severity: "warn", message: "Use us-central1." }],
+  suggestedRules: [{ id: "region-us", scope: { url: "console.cloud.google.com/iam-admin/*", section: "Grant access" },
+    guide: { explain: "No owner grants", format: "a narrower role", examples: ["Cloud Run Developer"], suggest: null },
+    check: { kind: "field_value_not_in", field: "Role", values: ["Owner"] }, severity: "warn", message: "Use a narrower role." }],
 });
 
 describe("buildDraftPrompt", () => {
@@ -26,6 +26,11 @@ describe("buildDraftPrompt", () => {
     expect(p).toContain("Deploy a Cloud Run service our way");
     expect(p).toContain("Always us-central1 unless it's an EU customer");
     expect(p).toContain('"name":"Region"');
+  });
+  it("tells the model which sections Rules can fire in", () => {
+    const p = buildDraftPrompt(payload);
+    expect(p).toContain('"Labels"');
+    expect(p).toContain('"Grant access"');
   });
 });
 
@@ -70,6 +75,26 @@ describe("parseDraft", () => {
   });
   it("slugs the id", () => {
     expect(parseDraft(JSON.stringify({ ...JSON.parse(good), id: "Cloud Run Deploy!" })).id).toBe("cloud-run-deploy");
+  });
+});
+
+describe("isRule", () => {
+  const base = () => JSON.parse(good).suggestedRules[0];
+  it("accepts Rules scoped to Labels or Grant access", () => {
+    expect(isRule(base())).toBe(true);
+    expect(isRule({ ...base(), scope: { url: "console.cloud.google.com/*", section: "Labels" }, check: { kind: "label_required", key: "owner" } })).toBe(true);
+  });
+  it("drops a Rule scoped to a section the extension never checks", () => {
+    expect(isRule({ ...base(), scope: { url: "console.cloud.google.com/run*", section: "Configure" } })).toBe(false);
+  });
+  it("drops a Rule whose scope.url is not a string", () => {
+    expect(isRule({ ...base(), scope: { url: 5, section: "Labels" } })).toBe(false);
+    expect(isRule({ ...base(), scope: { section: "Labels" } })).toBe(false);
+  });
+  it("parseDraft drops Rules in other sections", () => {
+    const d = JSON.parse(good);
+    d.suggestedRules.push({ ...d.suggestedRules[0], id: "cfg", scope: { url: "x*", section: "Configure" } });
+    expect(parseDraft(JSON.stringify(d)).suggestedRules.map((r) => r.id)).toEqual(["region-us"]);
   });
 });
 
