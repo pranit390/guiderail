@@ -1,0 +1,3 @@
+# Guidance knowledge comes from expert Teach sessions
+
+GuideRail's knowledge of how the org does a task, and where things are in each tool, comes from Teach sessions: an expert performs the task in the real UI while GuideRail records meaning-level events (never coordinates, screenshots or passwords) and the expert's reasons, and Gemini drafts a Playbook the expert publishes. We chose this after our own assumption (labels on the Cloud Run create form) turned out wrong for the live console; docs and our guesses drift, the expert's real route doesn't. Rules proposed from a Teach session are suggestions the expert must confirm, so checks stay deterministic (ADR 0002).
