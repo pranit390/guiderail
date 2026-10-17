@@ -1,7 +1,7 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
 import { STATES, stateGlyph, violationState } from "./states.ts";
 import { mountJourneyPanel } from "./journey-panel.ts";
-import { briefPrompt, isPublicDoc, type DocumentSnapshot } from "./document.ts";
+import { briefPrompt, isPublicDoc, routePageTool, type DocumentSnapshot } from "./document.ts";
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
@@ -30,6 +30,7 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   http: HTTP,
   compiled() {
     compiledGoal = true;
+    docsTabId = undefined;
     resumeHandle = undefined;
     void chrome.storage.session.remove("resumeHandle");
     ws?.close();
@@ -227,7 +228,6 @@ async function activeTab(): Promise<chrome.tabs.Tab> {
 
 async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
   const tab = tabId === undefined ? await activeTab() : await chrome.tabs.get(tabId);
-  if (tabId === docsTabId && docsTabId !== undefined && (!tab.url || !isPublicDoc(tab.url))) throw new Error("The briefing tab left the public docs. Open the docs and retry briefing.");
   try {
     return await chrome.tabs.sendMessage(tab.id!, msg);
   } catch {
@@ -242,12 +242,16 @@ async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
 async function runTool(name: string, args: Record<string, any>): Promise<Record<string, unknown>> {
   switch (name) {
     case "read_page":
-      return toPage({ kind: "read_page" }, docsTabId);
     case "highlight_document":
-      return toPage({ kind: "highlight_document", heading: String(args.heading ?? "") }, docsTabId);
-    case "highlight":
-      if (docsTabId !== undefined) return toPage({ kind: "highlight_document", heading: String(args.text ?? "") }, docsTabId);
-      return toPage({ kind: "highlight", text: String(args.text ?? ""), role: args.role });
+    case "highlight": {
+      const tab = await activeTab();
+      const route = routePageTool(name, args, docsTabId, tab);
+      if (route.ended) {
+        docsTabId = undefined;
+        appEvent(`The briefing ended: the person left the public docs. ${compiledGoal ? "Continue the compiled Firestore Journey" : "Continue guiding"} on the current page.`);
+      }
+      return toPage(route.message, tab.id);
+    }
     case "customize":
       return toPage({ kind: "customize", preset: parseCalmPreset(args.preset) });
     case "get_guidance": {

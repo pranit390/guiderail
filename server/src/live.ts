@@ -2,9 +2,7 @@ import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@go
 import type { WebSocket } from "ws";
 import { runServerTool, SERVER_TOOLS, tools } from "./tools.ts";
 import { instructionFor, playbookTitle, type Mode } from "./instructions.ts";
-import { FIRESTORE_GOAL } from "../../shared/journey.ts";
-import { journeyStore } from "./journeys/store.ts";
-import { journeyInstruction } from "./journeys/compile.ts";
+import { guideJourneyInstruction } from "./journeys/compile.ts";
 import { loadPlaybooks, loadRuleLines } from "./playbooks/load.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
@@ -38,10 +36,7 @@ const ai = new GoogleGenAI({ vertexai: true, project, location });
 
 async function buildInstruction(mode: Mode, goal?: string, goalId?: string): Promise<string> {
   const playbooks = await loadPlaybooks();
-  if (mode === "guide") {
-    const journey = goalId === FIRESTORE_GOAL.id ? await journeyStore.get() : undefined;
-    return instructionFor("guide", playbooks, {}, journey ? journeyInstruction(journey) : undefined);
-  }
+  if (mode === "guide") return instructionFor("guide", playbooks, {}, await guideJourneyInstruction(goalId));
   return instructionFor("teach", playbooks, { goal, rules: await loadRuleLines(), playbookTitles: playbooks.map(playbookTitle) });
 }
 

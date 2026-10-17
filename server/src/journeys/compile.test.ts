@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { UrlRetrievalStatus } from "@google/genai";
 import { FIRESTORE_GOAL, parseCompileRequest, parseJourneyDraft, type CompiledJourney } from "../../../shared/journey.ts";
-import { JourneyCompiler, journeyInstruction, type GenerateJourney } from "./compile.ts";
+import { JourneyCompiler, guideJourneyInstruction, journeyInstruction, type GenerateJourney } from "./compile.ts";
 import { FileJourneyStore, type JourneyStore } from "./store.ts";
 import { fixtureDraft } from "./fixture.ts";
 
@@ -69,5 +69,21 @@ describe("compile boundary", () => {
     expect(instruction).toContain("I can't see it on this screen");
     expect(instruction).toContain(FIRESTORE_GOAL.sourceUrls[0]);
     expect(instruction).toContain("The person clicks Create");
+  });
+});
+
+describe("Guide Journey context", () => {
+  it("appends the cached Journey only for the catalog Goal", async () => {
+    const cached = store();
+    await cached.put((await new JourneyCompiler(cached, vi.fn<GenerateJourney>().mockResolvedValue(response())).compile()).journey);
+    expect(await guideJourneyInstruction(FIRESTORE_GOAL.id, cached)).toContain("Documentation-derived Journey");
+    expect(await guideJourneyInstruction(undefined, cached)).toBeUndefined();
+  });
+  it("falls back to plain Guide with a diagnostic when the cache can't be read", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const broken: JourneyStore = { async get() { throw Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" }); }, async put() {} };
+    expect(await guideJourneyInstruction(FIRESTORE_GOAL.id, broken)).toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("EACCES"));
+    warn.mockRestore();
   });
 });
