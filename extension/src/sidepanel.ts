@@ -273,9 +273,11 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply
       if (mode === "teach") break;
       void updateViolations(msg.form).then(() => {
         const blocking = violations.filter((v) => v.severity === "block");
+        // The values let the model check what rules can't, e.g. a Region that doesn't fit the customer.
+        const values = Object.entries(msg.form.fields).map(([k, v]) => `${k}=${v}`).join(", ");
         const text = blocking.length
-          ? `User is about to click "${msg.label}" but ${blocking.length} policy Violation(s) remain: ${blocking.map((v) => v.message).join(" ")}`
-          : `User clicked "${msg.label}" and all policy checks pass.`;
+          ? `User is about to click "${msg.label}" but ${blocking.length} policy Violation(s) remain: ${blocking.map((v) => v.message).join(" ")} Form: ${values}`
+          : `User clicked "${msg.label}" with no rule Violations. Form: ${values}. Compare it with the Goal and the playbook now and say at once if anything is off.`;
         say("system", text);
         sendServer({ type: "event", text });
       });

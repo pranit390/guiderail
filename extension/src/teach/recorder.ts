@@ -57,7 +57,10 @@ function onClick(e: Event) {
 function onChange(e: Event) {
   const el = e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
   if (!emit || ours(el) || isSecret(el) || !("value" in el)) return;
-  const value = el instanceof HTMLSelectElement ? el.selectedOptions[0]?.textContent?.trim() ?? el.value : el.value;
+  // Same shape the guard reads (page.ts valueOf): a radio or checkbox is its own field, "checked" or not.
+  const toggle = el instanceof HTMLInputElement && (el.type === "radio" || el.type === "checkbox");
+  const value = toggle ? (el.checked ? "checked" : "unchecked")
+    : el instanceof HTMLSelectElement ? el.selectedOptions[0]?.textContent?.trim() ?? el.value : el.value;
   const target = describe(el);
   emit({ t: "field", at: Date.now(), url: effectiveUrl(), target, value: isSecretField(target) ? MASK : maskValue(value) });
 }
