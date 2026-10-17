@@ -1,0 +1,108 @@
+---
+import { hero } from "../content/guiderail";
+import type { CallToAction } from "../kit/types";
+
+interface Props {
+  cta: CallToAction;
+}
+const { cta } = Astro.props;
+---
+
+<section class="hero" data-hero aria-labelledby="page-title">
+  <div class="hero-copy">
+    <h1 id="page-title">{hero.title}</h1>
+    <p class="dek">{hero.dek}</p>
+    <p class="lede">{hero.lede}</p>
+    <div class="cta-row">
+      <a class="button" href={cta.href} aria-describedby="cta-note">{cta.label}</a>
+      <p class="cta-note" id="cta-note">{cta.note}</p>
+    </div>
+  </div>
+
+  <div class="stage" id="demo" tabindex="-1">
+    <h2>{hero.demoHeading}</h2>
+    <figure>
+      <div class="plate-shell">
+        <div class="plate" data-plate>
+          <div class="plate-top">
+            <span class="plate-name">Cloud Run</span>
+            <span class="plate-crumb">Services</span>
+          </div>
+          <p class="goal-line"><span class="term">Goal</span>{hero.goal}</p>
+          <div class="service-row">
+            <span class="tick" aria-hidden="true"></span>
+            <span class="svc-name">{hero.service}</span>
+            <span class="svc-meta">{hero.region}</span>
+            <span class="visually-hidden">selected</span>
+          </div>
+          <div class="tabs" role="group" aria-label="Info panel">
+            <button type="button" data-panel-button="details" aria-pressed="true">Details</button>
+            <button type="button" data-panel-button="labels" data-to aria-pressed="false" disabled>Labels</button>
+            <button type="button" disabled aria-label="Revisions, not part of this Step">Revisions</button>
+          </div>
+          <div class="panels">
+            <div class="panel" data-panel="details">
+              <p>{hero.details}</p>
+            </div>
+            <div class="panel" data-panel="labels" hidden>
+              <p class="field-line">
+                <span class="field-key">owner</span>
+                <span class="field-val" data-owner>{hero.emptyOwner}</span>
+              </p>
+              <p class="verdict" data-verdict hidden></p>
+              <div class="policy" data-policy hidden>
+                <p><span class="term">Policy</span>{hero.policy}</p>
+              </div>
+            </div>
+          </div>
+          <p class="coach">
+            <span class="coach-dot" data-from aria-hidden="true"></span>
+            <span class="visually-hidden">Coach. </span>
+            <span data-caption aria-live="polite">{hero.captions.ready}</span>
+          </p>
+          <svg class="rail-overlay" data-rail-svg aria-hidden="true" focusable="false">
+            <path data-rail></path>
+          </svg>
+        </div>
+      </div>
+      <figcaption class="figure-note">{hero.figureCaption}</figcaption>
+    </figure>
+
+    <div class="actions" role="group" aria-label="Your actions">
+      <button type="button" data-action="show">{hero.actions.show}</button>
+      <button type="button" data-action="policy" disabled>{hero.actions.policy}</button>
+      <button type="button" data-action="bad" disabled>{hero.actions.bad}</button>
+      <button type="button" data-action="fix" disabled>{hero.actions.fix}</button>
+      <button type="button" data-action="save" disabled>{hero.actions.save}</button>
+      <button type="button" data-action="reset">{hero.actions.reset}</button>
+    </div>
+  </div>
+
+  <div class="story">
+    <h3 class="beats-head">{hero.beatsHeading}</h3>
+    <ol class="beats" data-beats>
+      {
+        hero.beats.map((beat, index) => (
+          <li aria-current={index === 0 ? "step" : undefined}>
+            <span class="beat-num" aria-hidden="true">{index + 1}</span>
+            <p>{beat}</p>
+          </li>
+        ))
+      }
+    </ol>
+    <noscript>
+      <p class="noscript">The buttons above need JavaScript. The five captions are the full story.</p>
+    </noscript>
+  </div>
+</section>
+
+<script>
+  import { startHero } from "../scripts/hero.ts";
+
+  document.querySelectorAll("[data-hero]").forEach((node) => {
+    if (node instanceof HTMLElement && node.dataset.booted !== "1") {
+      node.dataset.booted = "1";
+      startHero(node);
+    }
+  });
+</script>

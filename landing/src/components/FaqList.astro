@@ -1,0 +1,24 @@
+---
+import type { FaqItem } from "../kit/types";
+
+interface Props {
+  items: FaqItem[];
+}
+const { items } = Astro.props;
+---
+
+<div class="faq">
+  {
+    items.map((item) => (
+      <details>
+        <summary>
+          {item.question}
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M3 6l5 5 5-5" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"></path>
+          </svg>
+        </summary>
+        <p>{item.answer}</p>
+      </details>
+    ))
+  }
+</div>

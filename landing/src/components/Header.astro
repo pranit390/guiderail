@@ -1,0 +1,28 @@
+---
+import type { CallToAction } from "../kit/types";
+
+interface Props {
+  name: string;
+  nav: { href: string; label: string }[];
+  cta: CallToAction;
+}
+
+const { name, nav, cta } = Astro.props;
+---
+
+<a class="skip" href="#demo">Skip to the demonstration</a>
+<header class="site-header">
+  <div class="wrap header-bar">
+    <a class="logo" href="#top">
+      <svg viewBox="0 0 32 32" aria-hidden="true">
+        <path d="M4 22h24M9 22v5M16 22v5M23 22v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
+        <circle cx="16" cy="11" r="3.2" fill="none" stroke="currentColor" stroke-width="2"></circle>
+      </svg>
+      {name}
+    </a>
+    <nav class="site-nav" aria-label="Page">
+      {nav.map((item) => <a href={item.href}>{item.label}</a>)}
+    </nav>
+    <a class="button header-cta" href={cta.href} aria-describedby="cta-note">{cta.label}</a>
+  </div>
+</header>
