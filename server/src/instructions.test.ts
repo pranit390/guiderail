@@ -33,3 +33,8 @@ describe("playbookTitle", () => {
     expect(playbookTitle("no heading")).toBe("Untitled playbook");
   });
 });
+
+it("keeps validated vendor Journey text out of Teach mode", () => {
+  expect(instructionFor("guide", ["# Company Playbook"], {}, "# Vendor Journey")).toContain("# Vendor Journey");
+  expect(instructionFor("teach", ["# Company Playbook"], {}, "# Vendor Journey")).not.toContain("# Vendor Journey");
+});

@@ -1,5 +1,8 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
 import { STATES, stateGlyph, violationState } from "./states.ts";
+import { mountJourneyPanel } from "./journey-panel.ts";
+import { briefPrompt, isPublicDoc, type DocumentSnapshot } from "./document.ts";
+import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
@@ -20,6 +23,33 @@ const input = $<HTMLInputElement>("#text");
 const talk = $<HTMLButtonElement>("#talk");
 
 let ws: WebSocket | undefined;
+let liveReady = false;
+let compiledGoal = false;
+let docsTabId: number | undefined;
+const journeyPanel = mountJourneyPanel($("#journey"), {
+  http: HTTP,
+  compiled() {
+    compiledGoal = true;
+    resumeHandle = undefined;
+    void chrome.storage.session.remove("resumeHandle");
+    ws?.close();
+    connect();
+  },
+  async brief() {
+    if (!liveReady || ws?.readyState !== WebSocket.OPEN) throw new Error("The coach is not ready. Reconnect and retry.");
+    const tab = await activeTab();
+    if (!tab.url || !isPublicDoc(tab.url)) throw new Error("Choose the Firestore or IAM public docs tab.");
+    const doc = await toPage<DocumentSnapshot | { error: string }>({ kind: "read_document" }, tab.id);
+    if ("error" in doc) throw new Error(doc.error);
+    if (!doc.text || !doc.headings.length) throw new Error("No visible document section was found.");
+    docsTabId = tab.id;
+    const preferred = doc.headings.find((h) => /^(Create a database|Grant access|Required roles and permissions)$/i.test(h)) ?? doc.headings[0];
+    await toPage({ kind: "highlight_document", heading: preferred }, docsTabId);
+    sendServer({ type: "text", text: briefPrompt(doc) });
+    say("user", "Brief me from this page.");
+    open = null;
+  },
+});
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
 // Memory for this side-panel session, given to every new Live connection (e.g. after Teach ↔ Guide).
@@ -111,8 +141,10 @@ function say(role: "user" | "model" | "system" | "step", text: string) {
 // ---------- Connection to the relay ----------
 
 function connect() {
+  liveReady = false;
   setStatus("Connecting…", "busy");
   const params = new URLSearchParams({ mode });
+  if (mode === "guide" && compiledGoal) params.set("goalId", FIRESTORE_GOAL.id);
   if (mode === "guide" && resumeHandle) params.set("resume", resumeHandle);
   if (mode === "teach" && teach) params.set("goal", teach.goal);
   const sock = new WebSocket(`${SERVER}/live?${params}`);
@@ -120,6 +152,7 @@ function connect() {
   sock.onmessage = (e) => { if (ws === sock) void onServer(JSON.parse(e.data)); };
   sock.onclose = () => {
     if (ws !== sock) return;
+    liveReady = false;
     setStatus("Disconnected. Click to reconnect", "off");
     speaker.interrupt();
     speaker.turnEnded();
@@ -136,6 +169,7 @@ const sendServer = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send
 async function onServer(msg: any) {
   switch (msg.type) {
     case "ready":
+      liveReady = true;
       setStatus("Ready", "on");
       if (memory.size) sendServer({ type: "session", text: memory.summary() });
       break;
@@ -193,6 +227,7 @@ async function activeTab(): Promise<chrome.tabs.Tab> {
 
 async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
   const tab = tabId === undefined ? await activeTab() : await chrome.tabs.get(tabId);
+  if (tabId === docsTabId && docsTabId !== undefined && (!tab.url || !isPublicDoc(tab.url))) throw new Error("The briefing tab left the public docs. Open the docs and retry briefing.");
   try {
     return await chrome.tabs.sendMessage(tab.id!, msg);
   } catch {
@@ -207,8 +242,11 @@ async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
 async function runTool(name: string, args: Record<string, any>): Promise<Record<string, unknown>> {
   switch (name) {
     case "read_page":
-      return toPage({ kind: "read_page" });
+      return toPage({ kind: "read_page" }, docsTabId);
+    case "highlight_document":
+      return toPage({ kind: "highlight_document", heading: String(args.heading ?? "") }, docsTabId);
     case "highlight":
+      if (docsTabId !== undefined) return toPage({ kind: "highlight_document", heading: String(args.text ?? "") }, docsTabId);
       return toPage({ kind: "highlight", text: String(args.text ?? ""), role: args.role });
     case "customize":
       return toPage({ kind: "customize", preset: parseCalmPreset(args.preset) });
@@ -371,6 +409,8 @@ async function followTab(tabId: number) {
 
 async function setTeach(on: boolean) {
   mode = on ? "teach" : "guide";
+  docsTabId = undefined;
+  journeyPanel.setEnabled(!on);
   showTeachButton(on);
   ws?.close();
   if (on) {

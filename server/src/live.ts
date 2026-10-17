@@ -2,6 +2,9 @@ import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@go
 import type { WebSocket } from "ws";
 import { runServerTool, SERVER_TOOLS, tools } from "./tools.ts";
 import { instructionFor, playbookTitle, type Mode } from "./instructions.ts";
+import { FIRESTORE_GOAL } from "../../shared/journey.ts";
+import { journeyStore } from "./journeys/store.ts";
+import { journeyInstruction } from "./journeys/compile.ts";
 import { loadPlaybooks, loadRuleLines } from "./playbooks/load.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
@@ -33,13 +36,16 @@ const MAX_SESSION_MS = 10 * 60 * 1000;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 
-async function buildInstruction(mode: Mode, goal?: string): Promise<string> {
+async function buildInstruction(mode: Mode, goal?: string, goalId?: string): Promise<string> {
   const playbooks = await loadPlaybooks();
-  if (mode === "guide") return instructionFor("guide", playbooks);
+  if (mode === "guide") {
+    const journey = goalId === FIRESTORE_GOAL.id ? await journeyStore.get() : undefined;
+    return instructionFor("guide", playbooks, {}, journey ? journeyInstruction(journey) : undefined);
+  }
   return instructionFor("teach", playbooks, { goal, rules: await loadRuleLines(), playbookTitles: playbooks.map(playbookTitle) });
 }
 
-export async function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string) {
+export async function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string, goalId?: string) {
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
   let session: Session;
@@ -48,7 +54,7 @@ export async function relay(client: WebSocket, resumptionHandle?: string, mode: 
       model,
       config: {
         responseModalities: [Modality.AUDIO],
-        systemInstruction: await buildInstruction(mode, goal),
+        systemInstruction: await buildInstruction(mode, goal, goalId),
         tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
         inputAudioTranscription: {},
         outputAudioTranscription: {},

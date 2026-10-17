@@ -7,7 +7,8 @@
     "start": "tsx src/index.ts",
     "probe": "tsx src/probe.ts",
     "test": "vitest run",
-    "typecheck": "tsc -p ."
+    "typecheck": "tsc -p .",
+    "warm:journeys": "tsx src/journeys/warm.ts"
   },
   "dependencies": {
     "@google/genai": "^2.30.0",
