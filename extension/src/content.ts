@@ -3,6 +3,7 @@
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage } from "./messages.ts";
 import { allElements, CUSTOM_FIELD, effectiveUrl, findSection, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf } from "./page.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
+import { CalmView, parseCalmPreset } from "./calm.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -77,6 +78,16 @@ shadow.innerHTML = `<style>
   .rec { position: fixed; left: 16px; bottom: 16px; background: #000; color: #fff; border: 2px solid #fff;
          font: 600 13px/1.2 system-ui, sans-serif; padding: 6px 10px; border-radius: 999px; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
   .rec .dot { color: #ff5c5c; }
+  :host(.gr-calm) .ring { animation: none; transition: none; }
+  :host(.gr-calm) .rec { animation: none; }
+  .gr-shade { position: fixed; box-shadow: 0 0 0 100vmax rgba(0,0,0,.08); }
+  .gr-preview { position: fixed; bottom: 24px; right: 24px; max-width: calc(100vw - 48px);
+    padding: 14px; border: 2px solid #424954; border-radius: 8px; background: #fff; color: #202124;
+    font: 16px/1.5 system-ui, sans-serif; pointer-events: auto; }
+  .gr-preview span { display: block; margin-bottom: 8px; }
+  .gr-preview button { font: inherit; padding: 6px 10px; margin-right: 8px; border: 1px solid #424954;
+    border-radius: 4px; color: #202124; background: #f3f4f6; cursor: pointer; }
+  .gr-preview button:focus-visible { outline: 3px solid #185abc; outline-offset: 2px; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(242,185,39,0); } }
   @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
 </style><div class="layer"></div>`;
@@ -90,6 +101,7 @@ ring.className = "ring";
 ring.hidden = true;
 layer.append(ring);
 let badBoxes: { el: Element; box: HTMLDivElement }[] = [];
+const calm = new CalmView(host, layer, (text) => send({ kind: "customize_event", text }));
 
 function place(box: HTMLElement, el: Element, pad: number) {
   const r = el.getBoundingClientRect();
@@ -98,11 +110,13 @@ function place(box: HTMLElement, el: Element, pad: number) {
 
 function pointAt(el: Element) {
   highlighted = el;
-  el.scrollIntoView({ block: "center", behavior: "smooth" });
+  el.scrollIntoView({ block: "center", behavior: calm.active ? "instant" : "smooth" });
   ring.hidden = false;
 }
 
 function follow() {
+  if (!alive()) return shutdown();
+  calm.follow(highlighted, badBoxes.map(({ el }) => el));
   if (highlighted && highlighted.isConnected) place(ring, highlighted, 6);
   else ring.hidden = true;
   for (const { el, box } of badBoxes) place(box, el, 3);
@@ -241,6 +255,10 @@ const urlTimer = setInterval(() => {
 
 chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
   switch (msg.kind) {
+    case "customize":
+      try { reply(calm.set(parseCalmPreset(msg.preset))); }
+      catch (err) { reply({ error: err instanceof Error ? err.message : "Invalid preset." }); }
+      break;
     case "read_page": reply(readPage()); break;
     case "highlight": reply(findElement(msg.text, msg.role)); break;
     case "read_form": reply(readForm()); break;
@@ -255,6 +273,7 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
 });
 
 function shutdown() {
+  calm.restore();
   document.removeEventListener("input", onInput, true);
   document.removeEventListener("click", onClick, true);
   clearInterval(urlTimer);

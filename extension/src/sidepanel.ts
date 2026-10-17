@@ -4,6 +4,7 @@ import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, type Rule, type Violation } from "./policy.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
 import { SessionLog } from "./sessionlog.ts";
+import { parseCalmPreset } from "./calm.ts";
 
 const SERVER = "ws://localhost:8787";
 const HTTP = "http://localhost:8787";
@@ -177,6 +178,8 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       return toPage({ kind: "read_page" });
     case "highlight":
       return toPage({ kind: "highlight", text: String(args.text ?? ""), role: args.role });
+    case "customize":
+      return toPage({ kind: "customize", preset: parseCalmPreset(args.preset) });
     case "get_guidance": {
       const form = await toPage<FormState>({ kind: "read_form" });
       const items = guidance(rules, form, { firstName, consoleCreate: true }, args.section ?? "Labels");
@@ -254,6 +257,10 @@ type TabChanged = { kind: "tab_changed"; tabId: number; url?: string };
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply) => {
   switch (msg.kind) {
+    case "customize_event":
+      say("system", msg.text);
+      appEvent(msg.text);
+      break;
     case "teach_status":
       reply({ on: mode === "teach" });
       break;
@@ -435,6 +442,14 @@ $("#publish").addEventListener("click", async () => {
 });
 
 // ---------- Input ----------
+
+for (const [id, preset] of [["#calmer", "calm"], ["#restore", null]] as const) {
+  $(id).addEventListener("click", () => {
+    void runTool("customize", { preset }).then((result) => {
+      if (result.error) say("system", String(result.error));
+    }).catch((err: Error) => say("system", err.message));
+  });
+}
 
 $("#form").addEventListener("submit", (e) => {
   e.preventDefault();

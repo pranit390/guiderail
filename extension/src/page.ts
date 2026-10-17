@@ -10,6 +10,7 @@ export function effectiveUrl(): string {
 export function allElements(root: Document | ShadowRoot = document): Element[] {
   const out: Element[] = [];
   for (const el of root.querySelectorAll("*")) {
+    if (el.localName === "guiderail-overlay") continue;
     if (el.matches(INTERACTIVE)) out.push(el);
     if (el.shadowRoot) out.push(...allElements(el.shadowRoot));
   }
