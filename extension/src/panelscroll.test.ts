@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PanelScroll } from "./panelscroll.ts";
 
-// A tiny layout model: 100px viewport, 20px per log line, a 200px card below the log.
+// A tiny layout model: 100px viewport, 20px per log line, then two 100px cards (Violations, guidance) below the log.
 const VIEW = 100;
 const LINE = 20;
 const CARD = 200;
@@ -31,6 +31,8 @@ beforeEach(() => {
   Object.defineProperty(scroll, "scrollTop", { get: () => top, set: (v: number) => { top = Math.min(Math.max(0, v), maxTop()); } });
   scroll.getBoundingClientRect = () => ({ top: 0, bottom: VIEW }) as DOMRect;
   log.getBoundingClientRect = () => ({ top: -top, bottom: logHeight() - top }) as DOMRect;
+  issues.getBoundingClientRect = () => ({ top: logHeight() - top, bottom: logHeight() + 100 - top }) as DOMRect;
+  guide.getBoundingClientRect = () => ({ top: logHeight() + 100 - top, bottom: logHeight() + 200 - top }) as DOMRect;
   issues.scrollIntoView = vi.fn();
   guide.scrollIntoView = vi.fn();
   reduced = false;
@@ -180,6 +182,37 @@ describe("PanelScroll reveal while the coach streams", () => {
     reduced = true;
     scroll.scrollTop = logHeight() - VIEW;
     violate("Test mode lets anyone read your data");
+    const at = top;
+    panel.append(line());
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(top).toBe(at + LINE);
+  });
+
+  it("lets go of a reveal that had nothing to move and follows the log again, without any scrollend", () => {
+    scroll.scrollTop = logHeight();
+    violate("Test mode lets anyone read your data");
+    const cardAt = cardTop();
+    panel.append(line());
+    panel.append(line());
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(cardTop()).toBe(cardAt);
+  });
+
+  it("lets go of a reveal whose card is cleared and follows the log again, without any scrollend", () => {
+    scroll.scrollTop = logHeight() - VIEW;
+    violate("Test mode lets anyone read your data");
+    violate();
+    const at = top;
+    panel.append(line());
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(top).toBe(at + LINE);
+    expect(logHeight() - top).toBe(VIEW);
+  });
+
+  it("lets go of a reveal whose card leaves the page", () => {
+    scroll.scrollTop = logHeight() - VIEW;
+    violate("Test mode lets anyone read your data");
+    issues.remove();
     const at = top;
     panel.append(line());
     expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);

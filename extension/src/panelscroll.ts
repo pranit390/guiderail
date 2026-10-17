@@ -4,7 +4,7 @@ const shown = (el: HTMLElement) => (el.hidden ? "" : el.textContent ?? "");
 export class PanelScroll {
   // Cards changed while the person was typing, oldest first, each with its chip label.
   private pending = new Map<HTMLElement, () => string>();
-  // The card a smooth reveal is moving to, until that scroll ends.
+  // The card a smooth reveal is moving to, until that scroll ends or the card is hidden or settled in view.
   private revealing: HTMLElement | null = null;
 
   constructor(
@@ -24,6 +24,7 @@ export class PanelScroll {
   // a reader scrolled back into the history is left alone. Never scrolls upward.
   // A smooth reveal still in progress is carried on rather than cut short.
   append(write: () => void) {
+    if (this.revealing && this.settled(this.revealing)) this.revealing = null;
     const before = this.log.getBoundingClientRect().bottom;
     const following = before <= this.scroll.getBoundingClientRect().bottom + 1;
     write();
@@ -52,6 +53,15 @@ export class PanelScroll {
     el.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
     this.pending.delete(el);
     this.showChip();
+  }
+
+  private settled(el: HTMLElement) {
+    if (el.hidden || !el.isConnected) return true;
+    const card = el.getBoundingClientRect();
+    const view = this.scroll.getBoundingClientRect();
+    const inside = card.top >= view.top - 1 && card.bottom <= view.bottom + 1;
+    const covers = card.top <= view.top + 1 && card.bottom >= view.bottom - 1;
+    return inside || covers;
   }
 
   private showChip() {
