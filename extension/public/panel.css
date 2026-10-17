@@ -16,10 +16,8 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display:none !important; }
-html, body { margin:0; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
-html, body { height: 100%; }
-body { margin: 0; display: flex; flex-direction: column; background: var(--bg); color: var(--ink);
-       font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+html, body { height:100%; }
+body { margin:0; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
 header { flex:none; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
 header strong { font-size: 16px; } header strong span { color: var(--accent); }
 #status { border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px;
@@ -35,7 +33,7 @@ header strong { font-size: 16px; } header strong span { color: var(--accent); }
 .msg.system { align-self: center; color: var(--muted); font-size: 12px; text-align: center; }
 .card { flex-shrink: 0; margin: 0 12px 10px; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .card h2 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
-.sugg { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); }
+.sugg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); }
 .sugg code { font: 600 13px ui-monospace, Menlo, monospace; }
 .sugg .why { grid-column: 1; color: var(--muted); font-size: 12px; }
 .sugg button { grid-row: 1 / span 2; grid-column: 2; align-self: center; }
@@ -53,6 +51,8 @@ form { flex:none; display:grid; grid-template-columns:auto minmax(0,1fr) auto; g
 form > label { grid-column:1 / -1; font-size:12px; color:var(--muted); }
 input { font:inherit; min-width: 0; padding: 8px 10px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--bg); color: var(--ink); }
 input::placeholder { color:var(--muted); opacity:1; }
+#newcards { flex:none; align-self:center; margin:6px 12px; padding:2px 12px; border-color:var(--focus); border-radius:999px; background:var(--accent-soft); font-size:12px; font-weight:600; }
+
 button { padding: 6px 12px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; }
 button:disabled { opacity: .5; cursor: default; }
 #talk { font-weight:600; }

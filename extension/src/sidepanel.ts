@@ -11,6 +11,7 @@ import { evaluate, guidance, summarizeViolations, violationCountText, type Rule,
 import { violationFieldLabel } from "./page.ts";
 import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, type BoundSnapshot } from "./resolve.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
+import { PanelScroll } from "./panelscroll.ts";
 import { SessionLog } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 
@@ -19,12 +20,12 @@ const HTTP = "http://localhost:8787";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
-const scroll = $("#scroll");
 const status = $("#status");
 const card = $("#guidance");
 const issues = $("#issues");
 const input = $<HTMLInputElement>("#text");
 const talk = $<HTMLButtonElement>("#talk");
+const panel = new PanelScroll($("#scroll"), log, input, $<HTMLButtonElement>("#newcards"));
 
 let ws: WebSocket | undefined;
 // Latest read of the tab this session is coaching. Highlight and Assist fill may use only these names.
@@ -153,17 +154,17 @@ function setStatus(text: string, state: "on" | "off" | "busy") {
 let open: { role: string; el: HTMLElement } | null = null;
 
 function say(role: "user" | "model" | "system" | "step", text: string) {
-  if (open && open.role === role && role !== "system" && role !== "step") {
-    open.el.textContent += text;
-  } else {
-    const el = document.createElement("p");
-    el.className = `msg ${role}`;
-    el.textContent = text;
-    log.append(el);
-    open = role === "system" || role === "step" ? null : { role, el };
-  }
-  // Follow new conversation text without jumping past the draft/cards below it.
-  scroll.scrollTop += log.getBoundingClientRect().bottom - scroll.getBoundingClientRect().bottom;
+  panel.append(() => {
+    if (open && open.role === role && role !== "system" && role !== "step") {
+      open.el.textContent += text;
+    } else {
+      const el = document.createElement("p");
+      el.className = `msg ${role}`;
+      el.textContent = text;
+      log.append(el);
+      open = role === "system" || role === "step" ? null : { role, el };
+    }
+  });
 }
 
 // ---------- Connection to the relay ----------
@@ -402,6 +403,10 @@ async function clearBoundHighlight() {
 // ---------- Guide: suggested values before the user types ----------
 
 function renderGuidance(items: ReturnType<typeof guidance>) {
+  panel.update(card, () => "New: suggested labels", () => fillGuidance(items));
+}
+
+function fillGuidance(items: ReturnType<typeof guidance>) {
   card.hidden = items.length === 0;
   card.replaceChildren();
   const h = document.createElement("h2");
@@ -430,6 +435,11 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 async function updateViolations(form: FormState) {
   violations = evaluate(rules, form);
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations }).catch(() => undefined))?.shown ?? [];
+  showViolations(shown);
+}
+
+function showViolations(shown: string[] = []) {
+  panel.update(issues, () => `New: ${violationCountText(summarizeViolations(violations))}`, () => {
   issues.hidden = violations.length === 0;
   const heading = $("#issues-summary");
   // The heading is the live region: only a change in the counts is announced, not every rebuild while typing.
@@ -459,6 +469,7 @@ async function updateViolations(form: FormState) {
       return li;
     }),
   );
+  });
 }
 
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
@@ -570,9 +581,7 @@ async function setTeach(on: boolean) {
   ws?.close();
   if (on) {
     violations = [];
-    issues.hidden = true;
-    $("#issues-list").replaceChildren();
-    $("#issues-summary").textContent = "";
+    showViolations();
     await toPage({ kind: "show_violations", violations: [] }).catch(() => {});
   }
   await toPage({ kind: "teach", on }).catch(() => {});
@@ -661,8 +670,8 @@ async function stopAndDraft() {
     return label;
   }));
   $("#draft").hidden = false;
-  $("#draft").scrollIntoView({ block: "nearest" });
   say("system", "Draft ready below. Review it, untick any Rules you don't want, then click Publish.");
+  panel.reveal($("#draft"));
   appEvent(`Playbook draft ready: "${draft.title}". It is shown below the chat for the user to review; they still need to click Publish. Draft:\n${String(draft.markdown).slice(0, 1200)}`);
 }
 
