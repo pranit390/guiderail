@@ -75,6 +75,9 @@ shadow.innerHTML = `<style>
   .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #161d28; color: #fff;
            font: 600 14px/1.4 system-ui, sans-serif; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #e5484d;
            box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
+  .rec { position: fixed; left: 16px; bottom: 16px; background: #000; color: #fff; border: 2px solid #fff;
+         font: 600 13px/1.2 system-ui, sans-serif; padding: 6px 10px; border-radius: 999px; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
+  .rec .dot { color: #ff5c5c; }
   @keyframes pulse { 50% { box-shadow: 0 0 0 10px rgba(242,185,39,0); } }
   @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
 </style><div class="layer"></div>`;
@@ -112,6 +115,21 @@ function toast(text: string) {
   t.textContent = text;
   layer.append(t);
   setTimeout(() => t.remove(), 5000);
+}
+
+// The expert always sees when Teach is recording this page.
+const badge = document.createElement("div");
+badge.className = "rec";
+badge.setAttribute("role", "status");
+badge.setAttribute("aria-live", "polite");
+badge.hidden = true;
+layer.append(badge);
+
+function setRecording(on: boolean) {
+  if (on) startRecording((event) => send({ kind: "teach_event", event }));
+  else stopRecording();
+  badge.hidden = !on;
+  badge.innerHTML = on ? `<span class="dot" aria-hidden="true">●</span> GuideRail is recording` : "";
 }
 
 // ---------- Forms ----------
@@ -215,10 +233,14 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "show_violations": showViolations(msg.fields, msg.submitLabel); reply({ ok: true }); break;
     case "clear": highlighted = null; showViolations([]); reply({ ok: true }); break;
     case "teach":
-      if (msg.on) startRecording((event) => send({ kind: "teach_event", event }));
-      else stopRecording();
+      setRecording(msg.on);
       reply({ ok: true });
       break;
   }
   return false;
 });
+
+// A page loaded mid-Teach (navigation, reload, new tab) picks recording back up.
+chrome.runtime.sendMessage({ kind: "teach_status" } satisfies FromPage)
+  .then((res: { on?: boolean } | undefined) => { if (res?.on) setRecording(true); })
+  .catch(() => {});

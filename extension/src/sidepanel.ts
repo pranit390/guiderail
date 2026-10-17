@@ -112,8 +112,8 @@ async function activeTab(): Promise<chrome.tabs.Tab> {
   return tab;
 }
 
-async function toPage<T>(msg: ToPage): Promise<T> {
-  const tab = await activeTab();
+async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
+  const tab = tabId === undefined ? await activeTab() : await chrome.tabs.get(tabId);
   try {
     return await chrome.tabs.sendMessage(tab.id!, msg);
   } catch {
@@ -204,16 +204,27 @@ async function updateViolations(form: FormState) {
   );
 }
 
-chrome.runtime.onMessage.addListener((msg: FromPage | { kind: "tab_changed" }) => {
+type TabChanged = { kind: "tab_changed"; tabId: number; url?: string };
+
+chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply) => {
   switch (msg.kind) {
+    case "teach_status":
+      reply({ on: mode === "teach" });
+      break;
+    case "tab_changed":
+      if (mode === "teach") void followTab(msg.tabId);
+      break;
     case "page_event":
       say("system", msg.text);
       sendServer({ type: "event", text: msg.text });
       break;
     case "form_changed":
+      // Teach records what the expert does; it doesn't judge it.
+      if (mode === "teach") break;
       void updateViolations(msg.form);
       break;
     case "submit_intent":
+      if (mode === "teach") break;
       void updateViolations(msg.form).then(() => {
         const blocking = violations.filter((v) => v.severity === "block");
         const text = blocking.length
@@ -234,9 +245,25 @@ chrome.runtime.onMessage.addListener((msg: FromPage | { kind: "tab_changed" }) =
 
 // ---------- Teach ----------
 
+// Recording follows the expert across page loads and tab switches.
+async function followTab(tabId: number) {
+  const tab = await chrome.tabs.get(tabId).catch(() => null);
+  if (!tab || mode !== "teach") return;
+  await toPage({ kind: "teach", on: true }, tabId).catch(() => {});
+  if (!teach || !tab.url) return;
+  teach.add({ t: "navigate", at: Date.now(), url: tab.url, title: tab.title ?? "" });
+  $("#teachcount").textContent = String(teach.count);
+}
+
 async function setTeach(on: boolean) {
   mode = on ? "teach" : "guide";
   ws?.close();
+  if (on) {
+    violations = [];
+    issues.hidden = true;
+    issues.replaceChildren();
+    await toPage({ kind: "show_violations", fields: [] }).catch(() => {});
+  }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teach").toggleAttribute("data-on", on);
   $("#teachbar").hidden = !on;
@@ -249,6 +276,7 @@ $("#teach").addEventListener("click", async () => {
   if (!goal) { say("system", "Type the task you're teaching in the box, then press Teach."); return; }
   input.value = "";
   teach = new TeachSession(goal);
+  pendingPayload = null;
   say("system", `Teach mode: showing "${goal}". Do the task normally and say why as you go.`);
   await setTeach(true);
 });
@@ -316,6 +344,12 @@ $("#publish").addEventListener("click", async () => {
   say("system", `Published "${draft.title}". New hires will be guided by it from their next session.`);
   draft = null;
   await loadRules();
+  // Start a fresh Guide session so the relay loads the new Playbook.
+  resumeHandle = undefined;
+  void chrome.storage.session.remove("resumeHandle");
+  ws?.close();
+  connect();
+  say("system", "Reconnected with the new Playbook.");
 });
 
 // ---------- Input ----------
