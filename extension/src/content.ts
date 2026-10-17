@@ -82,6 +82,8 @@ shadow.innerHTML = `<style>
   @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
 </style><div class="layer"></div>`;
 const layer = shadow.querySelector(".layer")!;
+// A copy left by a previous version of the extension (after a reload) is replaced.
+document.querySelectorAll("guiderail-overlay").forEach((old) => old.remove());
 document.documentElement.append(host);
 
 const ring = document.createElement("div");
@@ -187,15 +189,27 @@ function showViolations(fields: string[], submitLabel?: string) {
 
 // ---------- Watching the user ----------
 
-const send = (msg: FromPage) => chrome.runtime.sendMessage(msg).catch(() => {});
+// After the extension is reloaded, this copy of the script is orphaned: chrome.runtime calls
+// throw "Extension context invalidated". It then shuts itself down quietly.
+const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
+
+function send(msg: FromPage) {
+  if (!alive()) return shutdown();
+  try {
+    chrome.runtime.sendMessage(msg).catch(() => {});
+  } catch {
+    shutdown();
+  }
+}
 
 let formTimer: ReturnType<typeof setTimeout> | undefined;
-document.addEventListener("input", () => {
+function onInput() {
   clearTimeout(formTimer);
   formTimer = setTimeout(() => send({ kind: "form_changed", form: readForm() }), 300);
-}, true);
+}
+document.addEventListener("input", onInput, true);
 
-document.addEventListener("click", (e) => {
+function onClick(e: MouseEvent) {
   const target = e.target as Element;
   const button = target.closest('button,[role=button],input[type=submit]');
   if (button && SUBMIT_WORDS.test(nameOf(button))) {
@@ -213,10 +227,11 @@ document.addEventListener("click", (e) => {
     send({ kind: "page_event", text: `User clicked "${nameOf(highlighted)}".` });
     highlighted = null;
   }
-}, true);
+}
+document.addEventListener("click", onClick, true);
 
 let lastUrl = location.href;
-setInterval(() => {
+const urlTimer = setInterval(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
     send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).` });
@@ -240,7 +255,20 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
   return false;
 });
 
+function shutdown() {
+  document.removeEventListener("input", onInput, true);
+  document.removeEventListener("click", onClick, true);
+  clearInterval(urlTimer);
+  clearTimeout(formTimer);
+  setRecording(false);
+  host.remove();
+}
+
 // A page loaded mid-Teach (navigation, reload, new tab) picks recording back up.
-chrome.runtime.sendMessage({ kind: "teach_status" } satisfies FromPage)
-  .then((res: { on?: boolean } | undefined) => { if (res?.on) setRecording(true); })
-  .catch(() => {});
+try {
+  chrome.runtime.sendMessage({ kind: "teach_status" } satisfies FromPage)
+    .then((res: { on?: boolean } | undefined) => { if (res?.on) setRecording(true); })
+    .catch(() => {});
+} catch {
+  shutdown();
+}
