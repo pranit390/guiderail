@@ -44,6 +44,11 @@ hidden content and forms. It highlights only an exact unique rendered heading
 on that document; absent or ambiguous sections produce an honest failure.
 Typed follow-ups use the existing Live connection. Live receives page text and
 validated cached Journey instructions, never search or URL-context tools.
+Page tools stay bound to the briefing tab only while it is the active public
+doc. Switching tabs or navigating away (for example to the Firebase console)
+ends the briefing, and reads and highlights return to the current page so the
+compiled Journey continues there. A Journey cache read failure is logged and
+Guide connects with its plain instruction instead.
 
 Tests use a labelled deterministic fixture. Live-provider timing and browser
 screenshots must be recorded separately; test success is not provider or
