@@ -7,6 +7,7 @@ import {
   authorizeTarget,
   highlightOutcome,
   highlightResult,
+  liveHighlight,
   liveTargetOk,
   MIN_CONFIDENCE,
   resolveName,
@@ -178,5 +179,15 @@ describe("snapshot eligibility", () => {
     expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 4, index: 4, name: "Database ID", liveName: "Database ID", connected: true })).toBe(false);
     expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 2, name: "Database ID", liveName: "Save", connected: true })).toBe(false);
     expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 4, name: "Database ID", liveName: "Database ID", connected: false })).toBe(false);
+  });
+
+  it("refuses an unpinned highlight as unbound without pointing at anything", () => {
+    const indexed = new Map(collectControls().map(({ i, el }) => [i, el] as const));
+    const db = elementsOf().find((e) => e.name === "Database ID")!;
+    expect(liveHighlight({ text: "Database ID" }, 3, indexed)).toEqual({ result: { found: false, reason: "unbound", alternatives: [] } });
+    expect(liveHighlight({ text: "Database ID", index: db.i, name: "Database ID" }, 3, indexed).result).toMatchObject({ reason: "unbound" });
+    const pinned = liveHighlight({ text: "Database ID", generation: 3, index: db.i, name: "Database ID" }, 3, indexed);
+    expect(pinned.result).toMatchObject({ found: true, i: db.i, name: "Database ID" });
+    expect(pinned.el).toBe(indexed.get(db.i));
   });
 });

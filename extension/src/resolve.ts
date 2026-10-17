@@ -3,7 +3,7 @@
 // existing 0.6 confidence is a match. A stale read or another tab cannot authorize
 // a highlight or an Assist fill.
 import type { HighlightResult, PageElement } from "./messages.ts";
-import { norm } from "./page.ts";
+import { nameOf, norm, roleOf, sectionOf } from "./page.ts";
 
 export const MIN_CONFIDENCE = 0.6;
 
@@ -161,4 +161,45 @@ export function liveTargetOk(input: {
   if (input.requestedGeneration !== input.liveGeneration) return false;
   if (!input.connected || input.liveName === undefined) return false;
   return norm(input.liveName) === norm(input.name);
+}
+
+function elementsNow(indexed: Map<number, Element>): PageElement[] {
+  const elements: PageElement[] = [];
+  for (const [i, el] of indexed) {
+    if (!el.isConnected) continue;
+    const name = nameOf(el);
+    if (!name) continue;
+    const item: PageElement = { i, role: roleOf(el), name };
+    const section = sectionOf(el);
+    if (section && section !== name) item.section = section;
+    elements.push(item);
+  }
+  return elements;
+}
+
+// Every highlight is pinned to the bound snapshot. An unpinned request is refused, never re-read.
+export function liveHighlight(
+  msg: { text: string; role?: string; generation?: number; index?: number; name?: string },
+  liveGeneration: number,
+  indexed: Map<number, Element>,
+): { result: HighlightResult; el?: Element } {
+  if (msg.generation === undefined || msg.index === undefined || !msg.name) {
+    return { result: { found: false, reason: "unbound", alternatives: [] } };
+  }
+  const stale: HighlightResult = { found: false, reason: "stale", alternatives: [] };
+  const el = indexed.get(msg.index);
+  const ok = liveTargetOk({
+    requestedGeneration: msg.generation,
+    liveGeneration,
+    index: msg.index,
+    name: msg.name,
+    liveName: el ? nameOf(el) : undefined,
+    connected: !!el?.isConnected,
+  });
+  if (!ok || !el) return { result: stale };
+  // A pinned index still has to be the one resolved name. Two Saves cannot be forced by index.
+  const resolved = resolveName(msg.text, elementsNow(indexed), msg.role);
+  if (resolved.status === "ambiguous" || resolved.status === "missing") return { result: resolutionResult(msg.text, resolved) };
+  if (resolved.i !== msg.index) return { result: stale };
+  return { result: resolutionResult(msg.text, resolved), el };
 }

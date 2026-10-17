@@ -3,7 +3,7 @@
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
 import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
-import { liveTargetOk, resolutionResult, resolveName } from "./resolve.ts";
+import { liveHighlight } from "./resolve.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
@@ -36,53 +36,12 @@ function readPage(): PageSnapshot {
   return { url: effectiveUrl(), title: document.title, elements, generation };
 }
 
-// ---------- Finding an element by its text ----------
-
-function findElement(text: string, role?: string): HighlightResult {
-  const snap = readPage();
-  const resolved = resolveName(text, snap.elements, role);
-  if (resolved.status !== "found") return resolutionResult(text, resolved);
-  const el = indexed.get(resolved.i);
-  if (!el) return { found: false, reason: "stale", alternatives: [] };
-  pointAt(el, { scroll: !interacting() });
-  return resolutionResult(text, resolved);
-}
-
-function elementsNow(): PageElement[] {
-  const elements: PageElement[] = [];
-  for (const [i, el] of indexed) {
-    if (!el.isConnected) continue;
-    const name = nameOf(el);
-    if (!name) continue;
-    const item: PageElement = { i, role: roleOf(el), name };
-    const section = sectionOf(el);
-    if (section && section !== name) item.section = section;
-    elements.push(item);
-  }
-  return elements;
-}
+// ---------- Pointing at a pinned element ----------
 
 function highlightRequest(msg: Extract<ToPage, { kind: "highlight" }>): HighlightResult {
-  const pinned = msg.index !== undefined || msg.generation !== undefined || msg.name !== undefined;
-  if (!pinned) return findElement(msg.text, msg.role);
-  const el = msg.index !== undefined ? indexed.get(msg.index) : undefined;
-  const ok = liveTargetOk({
-    requestedGeneration: msg.generation,
-    liveGeneration: generation,
-    index: msg.index,
-    name: msg.name,
-    liveName: el ? nameOf(el) : undefined,
-    connected: !!el?.isConnected,
-  });
-  if (!ok || !el) return { found: false, reason: "stale", alternatives: [] };
-  // A pinned index still has to be the one resolved name. Two Saves cannot be forced by index.
-  const resolved = resolveName(msg.text, elementsNow(), msg.role);
-  if (resolved.status !== "found" || resolved.i !== msg.index) {
-    if (resolved.status === "ambiguous" || resolved.status === "missing") return resolutionResult(msg.text, resolved);
-    return { found: false, reason: "stale", alternatives: [] };
-  }
-  pointAt(el, { scroll: !interacting() });
-  return { found: true, i: resolved.i, name: resolved.name, confidence: resolved.confidence };
+  const { result, el } = liveHighlight(msg, generation, indexed);
+  if (el) pointAt(el, { scroll: !interacting() });
+  return result;
 }
 
 // ---------- Overlay (Shadow DOM so the page's styles can't reach it) ----------
