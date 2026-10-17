@@ -1,8 +1,8 @@
 import { GoogleGenAI, Modality, type LiveServerMessage, type Session } from "@google/genai";
 import type { WebSocket } from "ws";
 import { runServerTool, SERVER_TOOLS, tools } from "./tools.ts";
-import { instructionFor, type Mode } from "./instructions.ts";
-import { loadPlaybooks } from "./playbooks/load.ts";
+import { instructionFor, playbookTitle, type Mode } from "./instructions.ts";
+import { loadPlaybooks, loadRuleLines } from "./playbooks/load.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
 // 16 kHz from the client, 24 kHz to the client.
@@ -10,7 +10,8 @@ export type ClientMessage =
   | { type: "audio"; data: string }
   | { type: "audio_end" }
   | { type: "text"; text: string }
-  | { type: "event"; text: string } // a page event the model should know about, e.g. a new Violation
+  | { type: "event"; text: string } // a page event the model should respond to, e.g. a new Violation or an expert choice
+  | { type: "context"; text: string } // a page event the model should only know about, with no reply, e.g. a click while teaching
   | { type: "tool_result"; id: string; name: string; response: Record<string, unknown> };
 
 export type ServerMessage =
@@ -30,7 +31,13 @@ const MAX_SESSION_MS = 10 * 60 * 1000;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 
-export async function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide") {
+async function buildInstruction(mode: Mode, goal?: string): Promise<string> {
+  const playbooks = await loadPlaybooks();
+  if (mode === "guide") return instructionFor("guide", playbooks);
+  return instructionFor("teach", playbooks, { goal, rules: await loadRuleLines(), playbookTitles: playbooks.map(playbookTitle) });
+}
+
+export async function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string) {
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
   let session: Session;
@@ -39,7 +46,7 @@ export async function relay(client: WebSocket, resumptionHandle?: string, mode: 
       model,
       config: {
         responseModalities: [Modality.AUDIO],
-        systemInstruction: instructionFor(mode, await loadPlaybooks()),
+        systemInstruction: await buildInstruction(mode, goal),
         tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
         inputAudioTranscription: {},
         outputAudioTranscription: {},
@@ -80,6 +87,10 @@ export async function relay(client: WebSocket, resumptionHandle?: string, mode: 
         break;
       case "event":
         session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: true });
+        break;
+      case "context":
+        // Context only: the model takes it in without starting a reply.
+        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: false });
         break;
       case "tool_result":
         session.sendToolResponse({ functionResponses: [{ id: msg.id, name: msg.name, response: msg.response }] });

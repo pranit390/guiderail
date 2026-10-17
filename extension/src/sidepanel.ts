@@ -2,7 +2,7 @@
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, type Rule, type Violation } from "./policy.ts";
-import { describeForModel, TeachSession } from "./teach/session.ts";
+import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
 
 const SERVER = "ws://localhost:8787";
 const HTTP = "http://localhost:8787";
@@ -16,6 +16,8 @@ const input = $<HTMLInputElement>("#text");
 const talk = $<HTMLButtonElement>("#talk");
 
 let ws: WebSocket | undefined;
+// Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
+let held = { audio: [] as string[], text: "", expertSpoke: false };
 let resumeHandle: string | undefined;
 let rules: Rule[] = [];
 let firstName: string | undefined;
@@ -70,7 +72,10 @@ function say(role: "user" | "model" | "system", text: string) {
 
 function connect() {
   setStatus("Connecting…", "busy");
-  const sock = new WebSocket(`${SERVER}/live?mode=${mode}${resumeHandle && mode === "guide" ? `&resume=${encodeURIComponent(resumeHandle)}` : ""}`);
+  const params = new URLSearchParams({ mode });
+  if (mode === "guide" && resumeHandle) params.set("resume", resumeHandle);
+  if (mode === "teach" && teach) params.set("goal", teach.goal);
+  const sock = new WebSocket(`${SERVER}/live?${params}`);
   ws = sock;
   sock.onmessage = (e) => { if (ws === sock) void onServer(JSON.parse(e.data)); };
   sock.onclose = () => {
@@ -88,10 +93,31 @@ const sendServer = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send
 async function onServer(msg: any) {
   switch (msg.type) {
     case "ready": setStatus("Ready", "on"); break;
-    case "audio": speaker.play(msg.data); break;
-    case "interrupted": speaker.interrupt(); break;
-    case "transcript": say(msg.role, msg.text); teach?.heard(msg.role, msg.text); break;
-    case "turn_complete": open = null; teach?.endTurn("user"); teach?.endTurn("model"); break;
+    case "audio":
+      if (mode === "teach") held.audio.push(msg.data);
+      else speaker.play(msg.data);
+      break;
+    case "interrupted": speaker.interrupt(); held.audio = []; break;
+    case "transcript":
+      teach?.heard(msg.role, msg.text);
+      if (mode === "teach" && msg.role === "model") held.text += msg.text;
+      else {
+        if (msg.role === "user") held.expertSpoke = true;
+        say(msg.role, msg.text);
+      }
+      break;
+    case "turn_complete":
+      if (mode === "teach") {
+        if (shouldSpeak(held.text, held.expertSpoke)) {
+          say("model", held.text.trim());
+          held.audio.forEach((a) => speaker.play(a));
+        }
+        held = { audio: [], text: "", expertSpoke: false };
+      }
+      open = null;
+      teach?.endTurn("user");
+      teach?.endTurn("model");
+      break;
     case "resumption":
       if (mode === "guide") { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
       break;
@@ -238,7 +264,11 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply
       if (!teach) break;
       teach.add(msg.event);
       $("#teachcount").textContent = String(teach.count);
-      { const text = describeForModel(msg.event); if (text) sendServer({ type: "event", text }); }
+      {
+        // Only the expert's choices invite a reply (a possible "why?"); clicks and page changes are context.
+        const text = describeForModel(msg.event);
+        if (text) sendServer({ type: msg.event.t === "field" ? "event" : "context", text });
+      }
       break;
   }
 });

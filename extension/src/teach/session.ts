@@ -41,3 +41,11 @@ export function describeForModel(e: TeachEvent): string | null {
     default: return null;
   }
 }
+
+// In Teach mode the model should only be heard when it asks something, or answers the expert.
+// A bare "Got it." after a click is dropped.
+export function shouldSpeak(modelText: string, expertSpoke: boolean): boolean {
+  const text = modelText.trim();
+  if (!text) return false;
+  return text.includes("?") || expertSpoke;
+}

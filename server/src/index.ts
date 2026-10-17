@@ -222,7 +222,8 @@ const wss = new WebSocketServer({ server, path: "/live" });
 wss.on("connection", (client, req) => {
   const params = new URL(req.url ?? "", "http://x").searchParams;
   const mode = params.get("mode") === "teach" ? "teach" : "guide";
-  void relay(client, params.get("resume") ?? undefined, mode);
+  const goal = params.get("goal")?.slice(0, 200) || undefined;
+  void relay(client, params.get("resume") ?? undefined, mode, goal);
 });
 
 server.listen(PORT, () => console.log(`GuideRail server on http://localhost:${PORT}  (ws /live, /rules, /approvals, /a/, /role, /sandbox/)`));

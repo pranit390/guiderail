@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeForModel, TeachSession } from "./session.ts";
+import { describeForModel, shouldSpeak, TeachSession } from "./session.ts";
 
 const clock = () => { let t = 0; return () => ++t; };
 
@@ -46,4 +46,11 @@ describe("describeForModel", () => {
       .toBe('Expert set "Region" to "us-central1".');
     expect(describeForModel({ t: "narration", at: 0, text: "x" })).toBeNull();
   });
+});
+
+describe("shouldSpeak", () => {
+  it("plays questions", () => expect(shouldSpeak("Why allow unauthenticated?", false)).toBe(true));
+  it("drops a bare acknowledgement after a page event", () => expect(shouldSpeak("Got it.", false)).toBe(false));
+  it("plays a reply when the expert spoke this turn", () => expect(shouldSpeak("Got it.", true)).toBe(true));
+  it("drops empty turns", () => expect(shouldSpeak("  ", true)).toBe(false));
 });
