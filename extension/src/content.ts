@@ -1,6 +1,8 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage } from "./messages.ts";
+import { allElements, effectiveUrl, findSection, isSecret, isVisible, nameOf, norm, roleOf, sectionOf } from "./page.ts";
+import { startRecording, stopRecording } from "./teach/recorder.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -12,87 +14,6 @@ let warnedSubmitAt = 0;
 
 // ---------- Reading the page ----------
 
-const INTERACTIVE =
-  'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
-
-function effectiveUrl(): string {
-  // Sandbox pages declare which Google page they stand in for.
-  const meta = document.querySelector<HTMLMetaElement>('meta[name="guiderail-url"]');
-  return meta?.content ?? location.host + location.pathname;
-}
-
-function allElements(root: Document | ShadowRoot = document): Element[] {
-  const out: Element[] = [];
-  for (const el of root.querySelectorAll("*")) {
-    if (el.matches(INTERACTIVE)) out.push(el);
-    if (el.shadowRoot) out.push(...allElements(el.shadowRoot));
-  }
-  return out;
-}
-
-function isVisible(el: Element): boolean {
-  const r = el.getBoundingClientRect();
-  if (r.width === 0 && r.height === 0) return false;
-  const s = getComputedStyle(el);
-  return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0;
-}
-
-function textOf(el: Element | null): string {
-  return (el?.textContent ?? "").replace(/\s+/g, " ").trim();
-}
-
-function nameOf(el: Element): string {
-  const aria = el.getAttribute("aria-label");
-  if (aria) return aria.trim();
-  const labelledBy = el.getAttribute("aria-labelledby");
-  if (labelledBy) {
-    const t = labelledBy.split(/\s+/).map((id) => textOf(document.getElementById(id))).join(" ").trim();
-    if (t) return t;
-  }
-  if (el.id) {
-    const label = document.querySelector(`label[for="${CSS.escape(el.id)}"]`);
-    if (label) return textOf(label);
-  }
-  const wrapping = el.closest("label");
-  if (wrapping && wrapping !== el) return textOf(wrapping);
-  const placeholder = el.getAttribute("placeholder");
-  if (placeholder) return placeholder;
-  const t = textOf(el);
-  if (t) return t.slice(0, 80);
-  return el.getAttribute("title") ?? "";
-}
-
-function roleOf(el: Element): string {
-  const explicit = el.getAttribute("role");
-  if (explicit) return explicit;
-  const tag = el.tagName.toLowerCase();
-  if (/^h[1-4]$/.test(tag) || tag === "legend") return "heading";
-  if (tag === "a") return "link";
-  if (tag === "select") return "combobox";
-  if (tag === "textarea") return "textbox";
-  if (tag === "summary") return "button";
-  if (tag === "section") return "region";
-  if (tag === "input") {
-    const type = (el as HTMLInputElement).type;
-    return type === "checkbox" || type === "radio" ? type : type === "submit" || type === "button" ? "button" : "textbox";
-  }
-  return tag;
-}
-
-function sectionOf(el: Element): string | undefined {
-  const region = el.closest("section[aria-label],[role=region][aria-label],fieldset");
-  if (region) {
-    const legend = region.querySelector("legend");
-    return region.getAttribute("aria-label") ?? (legend ? textOf(legend) : undefined);
-  }
-  const labelled = el.closest("section[aria-labelledby]");
-  if (labelled) return textOf(document.getElementById(labelled.getAttribute("aria-labelledby")!));
-  return undefined;
-}
-
-function isSecret(el: Element): boolean {
-  return el instanceof HTMLInputElement && (el.type === "password" || el.autocomplete.includes("password"));
-}
 
 function readPage(): PageSnapshot {
   indexed = new Map();
@@ -116,8 +37,6 @@ function readPage(): PageSnapshot {
 }
 
 // ---------- Finding an element by its text ----------
-
-const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 
 function score(target: string, name: string): number {
   const t = norm(target), n = norm(name);
@@ -196,12 +115,6 @@ function toast(text: string) {
 }
 
 // ---------- Forms ----------
-
-function findSection(title: string): Element | null {
-  const heading = allElements().find((el) => roleOf(el) === "heading" && norm(textOf(el)) === norm(title));
-  if (heading) return heading.closest("section,fieldset,[role=region]") ?? heading.parentElement;
-  return document.querySelector(`section[aria-label="${title}"],[role=region][aria-label="${title}"]`);
-}
 
 function readForm(): FormState {
   const labels: Record<string, string> = {};
@@ -301,6 +214,11 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "read_form": reply(readForm()); break;
     case "show_violations": showViolations(msg.fields, msg.submitLabel); reply({ ok: true }); break;
     case "clear": highlighted = null; showViolations([]); reply({ ok: true }); break;
+    case "teach":
+      if (msg.on) startRecording((event) => send({ kind: "teach_event", event }));
+      else stopRecording();
+      reply({ ok: true });
+      break;
   }
   return false;
 });
