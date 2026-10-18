@@ -1336,16 +1336,52 @@ describe("demo sign-in", () => {
 });
 
 describe("Firestore Guard panel", () => {
+  const firestoreTest = { ...form, url: "console.firebase.google.com/project/practice-only/firestore", fields: { "Start in test mode": "checked", "Start in Production mode": "" } };
+  function delayedReads() {
+    const reads: ((value: unknown) => void)[] = [];
+    sendMessage.mockImplementation((_tab: number, msg: { kind: string }) => msg.kind === "read_form" ? new Promise((resolve) => { reads.push(resolve); }) : Promise.resolve({ shown: [] }));
+    const shows = () => sendMessage.mock.calls.filter(([, msg]) => msg.kind === "show_violations");
+    return { reads, shows };
+  }
+  it("ignores a read from tab A that resolves after tab B, without sending stale Violations or reviving the Firestore card", async () => {
+    policy.violations = [{ ruleId: "firestore-no-test-mode", field: "Start in test mode", severity: "block", message: "Test mode allows anyone to read and overwrite your data." }];
+    const { reads, shows } = delayedReads();
+    page({ kind: "tab_changed", tabId: 1, url: "https://console.firebase.google.com/project/practice-only/firestore" });
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    page({ kind: "tab_changed", tabId: 2, url: "https://example.com/" });
+    await vi.waitFor(() => expect(reads).toHaveLength(2));
+    reads[1](form);
+    await vi.waitFor(() => expect(shows()).toHaveLength(1));
+    reads[0](firestoreTest);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(shows()).toHaveLength(1);
+    expect($("#firestore-guidance").hidden).toBe(true);
+  });
   it("does not revive Firestore guidance from a policy read that began before a tab change", async () => {
     const socket = await connected();
-    let finish: ((value: unknown) => void) | undefined;
-    sendMessage.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; })).mockRejectedValue(new Error("No content script"));
+    const { reads, shows } = delayedReads();
     socket.receive({ type: "tool_call", id: "check", name: "check_policy", args: {} });
-    await vi.waitFor(() => expect(finish).toBeDefined());
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
     page({ kind: "tab_changed", tabId: 2 });
-    finish!({ ...form, url: "console.firebase.google.com/project/practice-only/firestore", fields: { "Start in test mode": "checked", "Start in Production mode": "" } });
+    await vi.waitFor(() => expect(reads).toHaveLength(2));
+    reads[0](firestoreTest);
     await vi.waitFor(() => expect(sent(socket).some((m) => m.id === "check")).toBe(true));
+    expect(shows()).toHaveLength(0);
     expect($("#firestore-guidance").hidden).toBe(true);
+  });
+  it("does not show Violations or the Firestore card from a policy read that resolves after Teach starts", async () => {
+    policy.violations = [{ ruleId: "firestore-no-test-mode", field: "Start in test mode", severity: "block", message: "Test mode allows anyone to read and overwrite your data." }];
+    const socket = await connected();
+    const { reads, shows } = delayedReads();
+    socket.receive({ type: "tool_call", id: "check", name: "check_policy", args: {} });
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    $<HTMLButtonElement>("#teach").click();
+    await vi.waitFor(() => expect(shows()).toHaveLength(1));
+    reads[0](firestoreTest);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(shows().map(([, msg]) => msg.violations)).toEqual([[]]);
+    expect($("#firestore-guidance").hidden).toBe(true);
+    expect($("#issues").hidden).toBe(true);
   });
   it("renders the block reason, safe choice and location source, then clears on Production", async () => {
     await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());

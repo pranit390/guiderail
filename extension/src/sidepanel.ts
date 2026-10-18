@@ -781,8 +781,9 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 // ---------- Guard: Violations ----------
 
 async function updateViolations(form: FormState, revision = guidanceRevision) {
-  if (revision === guidanceRevision && mode === "guide") renderFirestoreGuidance($("#firestore-guidance"), form);
   const checked = evaluate(rules, form);
+  if (revision !== guidanceRevision || mode !== "guide") return checked;
+  renderFirestoreGuidance($("#firestore-guidance"), form);
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations: checked }).catch(() => undefined))?.shown ?? [];
   if (revision !== guidanceRevision || mode !== "guide") return checked;
   violations = checked;
