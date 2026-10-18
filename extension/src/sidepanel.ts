@@ -290,14 +290,11 @@ function setStatus(text: string, state: "on" | "off" | "busy" | "idle") {
   const dot = document.createElement("span");
   dot.className = "connection-dot";
   dot.setAttribute("aria-hidden", "true");
-  status.replaceChildren(dot);
-  if (state !== "on") {
-    const label = document.createElement("span");
-    label.textContent = text;
-    status.append(label);
-  }
+  const label = document.createElement("span");
+  label.textContent = text;
+  if (state === "on") label.className = "sr-only";
+  status.replaceChildren(dot, label);
   status.title = text;
-  status.setAttribute("aria-label", text);
   status.dataset.state = state;
 }
 

@@ -340,9 +340,9 @@ describe("lazy Live connection", () => {
     expect(status()).toBe("Connecting…");
     expect($("#status .connection-dot")).not.toBeNull();
     sockets[0].receive({ type: "ready" });
-    expect($("#status").textContent).toBe("");
+    expect(status()).toBe("Connected to coach.example");
+    expect($("#status").lastElementChild?.className).toBe("sr-only");
     expect($("#status").title).toBe("Connected to coach.example");
-    expect($("#status").getAttribute("aria-label")).toBe("Connected to coach.example");
     expect($("#status").dataset.state).toBe("on");
     expect($("#status .connection-dot").getAttribute("aria-hidden")).toBe("true");
     expect(sent(sockets[0])).toEqual([{ type: "text", text: "where are labels?" }]);
@@ -390,7 +390,7 @@ describe("lazy Live connection", () => {
     socket.closed(4000);
     expect(status()).toBe("Disconnected. Type or tap the mic to reconnect");
     expect($("#status").title).toBe(status());
-    expect($("#status").getAttribute("aria-label")).toBe(status());
+    expect($("#status").lastElementChild?.className).toBe("");
     expect($("#status .connection-dot")).not.toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sockets).toHaveLength(1);
