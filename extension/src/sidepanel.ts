@@ -18,6 +18,13 @@ const talk = $<HTMLButtonElement>("#talk");
 
 let ws: WebSocket | undefined;
 let connectionAttempt = 0;
+// The Live connection opens on the first typed message or Talk press; input sent meanwhile waits here.
+let connecting = false;
+let ready = false;
+let pending: string[] = [];
+let pendingAudio = 0;
+// Base64 characters of speech kept while connecting: under the relay's two-second audio burst.
+const PENDING_AUDIO_LIMIT = 64_000;
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
 // Memory for this side-panel session, given to every new Live connection (e.g. after Teach ↔ Guide).
@@ -45,10 +52,10 @@ let talking = false;
 // ---------- Startup ----------
 
 async function init() {
+  setStatus(IDLE_STATUS, "idle");
   await loadRules();
   const profile = await chrome.identity.getProfileUserInfo({ accountStatus: chrome.identity.AccountStatus.ANY }).catch(() => null);
   firstName = profile?.email ? profile.email.split("@")[0].split(/[._-]/)[0] : undefined;
-  connect();
 }
 
 async function loadRules() {
@@ -59,7 +66,7 @@ async function loadRules() {
   }
 }
 
-function setStatus(text: string, state: "on" | "off" | "busy") {
+function setStatus(text: string, state: "on" | "off" | "busy" | "idle") {
   status.textContent = text;
   status.dataset.state = state;
 }
@@ -83,10 +90,15 @@ function say(role: "user" | "model" | "system" | "step", text: string) {
 
 // ---------- Connection to the relay ----------
 
+const IDLE_STATUS = `Type or press Talk to connect to ${SERVER_HOST}`;
+
 async function connect() {
   const attempt = ++connectionAttempt;
   ws?.close();
   ws = undefined;
+  ready = false;
+  connecting = true;
+  const summary = memory.size ? memory.summary() : "";
   setStatus("Connecting…", "busy");
   const params = new URLSearchParams({ mode });
   if (mode === "guide" && resumeHandle) params.set("resume", resumeHandle);
@@ -99,7 +111,7 @@ async function connect() {
     credential = body.credential;
   } catch (error) {
     if (attempt !== connectionAttempt) return;
-    setStatus(`Can't connect to ${SERVER_HOST}. Click to retry`, "off");
+    disconnect(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`);
     say("system", error instanceof Error ? error.message : "Session admission failed.");
     return;
   }
@@ -107,25 +119,60 @@ async function connect() {
   params.set("credential", credential);
   const sock = new WebSocket(`${SERVER}/live?${params}`);
   ws = sock;
-  sock.onmessage = (e) => { if (ws === sock) void onServer(JSON.parse(e.data)); };
-  sock.onclose = () => {
+  sock.onmessage = (e) => {
     if (ws !== sock) return;
-    setStatus("Disconnected. Click to reconnect", "off");
-    if (talking) stopTalking();
+    const msg = JSON.parse(e.data);
+    if (msg.type === "ready") onReady(summary);
+    void onServer(msg);
   };
+  sock.onclose = () => { if (ws === sock) disconnect("Disconnected. Type or press Talk to reconnect"); };
   sock.onerror = () => { if (ws === sock) setStatus(`Can't reach ${SERVER_HOST}`, "off"); };
 }
 
-status.addEventListener("click", () => ws?.readyState !== WebSocket.OPEN && connect());
+function onReady(summary: string) {
+  ready = true;
+  connecting = false;
+  setStatus(`Connected to ${SERVER_HOST}`, "on");
+  if (summary) sendServer({ type: "session", text: summary });
+  const queued = pending;
+  pending = [];
+  pendingAudio = 0;
+  for (const raw of queued) ws?.send(raw);
+}
 
-const sendServer = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
+// Closes the Live connection without opening another; the next typed message or Talk press reconnects.
+function disconnect(text: string, state: "off" | "idle" = "off") {
+  connectionAttempt++;
+  const sock = ws;
+  ws = undefined;
+  ready = false;
+  connecting = false;
+  pending = [];
+  pendingAudio = 0;
+  sock?.close();
+  if (talking) stopTalking();
+  setStatus(text, state);
+}
+
+function sendServer(msg: object) {
+  if (!ready || ws?.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(msg));
+  return true;
+}
+
+// User input: delivered now, or kept and delivered once the connection it opens is ready.
+function sendInput(msg: { type: "text"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }) {
+  if (sendServer(msg)) return;
+  if (msg.type === "audio") {
+    if (pendingAudio + msg.data.length > PENDING_AUDIO_LIMIT) return;
+    pendingAudio += msg.data.length;
+  }
+  pending.push(JSON.stringify(msg));
+  if (!connecting) void connect();
+}
 
 async function onServer(msg: any) {
   switch (msg.type) {
-    case "ready":
-      setStatus(`Connected to ${SERVER_HOST}`, "on");
-      if (memory.size) sendServer({ type: "session", text: memory.summary() });
-      break;
     case "audio":
       if (mode === "teach") held.audio.push(msg.data);
       else speaker.play(msg.data);
@@ -336,7 +383,7 @@ async function followTab(tabId: number) {
 async function setTeach(on: boolean) {
   mode = on ? "teach" : "guide";
   showTeachButton(on);
-  ws?.close();
+  disconnect(IDLE_STATUS, "idle");
   if (on) {
     violations = [];
     issues.hidden = true;
@@ -345,7 +392,6 @@ async function setTeach(on: boolean) {
   }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teachbar").hidden = !on;
-  connect();
 }
 
 // The Teach button is a toggle and shows its state at once, before the mode switch finishes.
@@ -450,12 +496,11 @@ $("#publish").addEventListener("click", async () => {
   memory.add("app", `Playbook "${draft.title}" was published and is now used for guiding`);
   draft = null;
   await loadRules();
-  // Start a fresh Guide session so the relay loads the new Playbook.
+  // The next Guide session starts fresh so the relay loads the new Playbook.
   resumeHandle = undefined;
   void chrome.storage.session.remove("resumeHandle");
-  ws?.close();
-  connect();
-  say("system", "Reconnected with the new Playbook.");
+  disconnect(IDLE_STATUS, "idle");
+  say("system", "The next conversation will use the new Playbook.");
 });
 
 // ---------- Input ----------
@@ -475,14 +520,14 @@ $("#form").addEventListener("submit", (e) => {
   say("user", text);
   open = null;
   lastSent = { text, at: Date.now() };
+  sendInput({ type: "text", text });
   memory.add("user", text);
-  sendServer({ type: "text", text });
   input.value = "";
 });
 
 async function startTalking() {
   try {
-    await mic.start((data) => sendServer({ type: "audio", data }));
+    await mic.start((data) => sendInput({ type: "audio", data }));
     talking = true;
     talk.textContent = "Stop";
     talk.dataset.on = "true";
@@ -497,7 +542,7 @@ function stopTalking() {
   talking = false;
   talk.textContent = "Talk";
   delete talk.dataset.on;
-  sendServer({ type: "audio_end" });
+  if (ready || connecting) sendInput({ type: "audio_end" });
 }
 
 talk.addEventListener("click", () => (talking ? stopTalking() : void startTalking()));

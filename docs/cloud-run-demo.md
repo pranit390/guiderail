@@ -13,8 +13,12 @@ For local development, explicitly use `GUIDERAIL_SERVER_URL=http://localhost:878
 The generated manifest grants access to the configured origin and its practice
 pages. `extension/dist/build.json` records the origin and source revision. ZIP the
 contents of `extension/dist`, extract them, and use Chrome's **Load unpacked**.
-The status reads **Connected to <host>** only after Vertex Live acknowledges setup.
-Typing works without microphone permission.
+The panel does not connect when it opens or when switching between Teach and
+Guide. The first typed message or Talk press requests a credential and opens the
+Live session; that first message (or up to about 1.5 seconds of speech) is kept
+and delivered once the relay is ready. The status reads **Connected to <host>**
+only after Vertex Live acknowledges setup. Typing works without microphone
+permission.
 
 ## Runtime and admission
 
@@ -24,10 +28,17 @@ timeout 3600 seconds, session affinity, no startup CPU boost. Attach only
 `guiderail-coach@zoop-innovation.iam.gserviceaccount.com`, with the project binding
 `roles/aiplatform.user`. No service-account keys are needed.
 
-Set `DISABLE_DRAFT=true` to disable the billable Playbook draft endpoint, and
-`DEMO_END_AT=2026-11-07T00:00:00Z` to end new demo admission after judging.
-Set `PUBLIC_ORIGIN` to the deployed HTTPS origin to enable same-origin token
-issuance. Extension origins are also accepted; unrelated browser origins are not.
+Set `DISABLE_DRAFT=true` to disable the billable Playbook draft endpoint and
+Playbook publishing (which would otherwise let anyone change the hosted Guide
+instructions and rules), and `DEMO_END_AT=2026-11-07T00:00:00Z` to end new demo
+admission after judging. Set `PUBLIC_ORIGIN` to the deployed bare HTTPS origin
+(for example `https://guiderail-coach-q7tihot5sq-uc.a.run.app`, no trailing
+slash) to enable same-origin token issuance and Approver links. Extension origins
+are also accepted; unrelated browser origins are not. On Cloud Run (`K_SERVICE`
+set) without a valid `PUBLIC_ORIGIN`, the `create_approval` tool returns an error
+instead of a link; `http://localhost` links are produced only off Cloud Run with
+`PUBLIC_ORIGIN` unset. Approval requests are created only by that tool, held in
+memory, capped at 100 open requests and 500 characters per field.
 
 The extension obtains a one-use, 60-second credential from `POST /session`.
 The server binds it to a fresh anonymous UUID and the issuing Origin, then consumes
@@ -38,10 +49,14 @@ user accounts, durable identity claims or durable receipts in this deployment.
 The parent issue's Firebase identity integration remains a separate prerequisite.
 
 At most three Live sessions run per instance. The fourth receives an explicit
-**coach is busy** message. The shared allowance is three aggregate Live minutes
-per UTC day per instance: three simultaneous clients exhaust it in one minute.
-Disconnected clients stop consuming time. Each session also has a ten-minute
-upper limit, eight completed replies, a 512-output-token limit per response,
+**coach is busy** message. The shared allowance is five aggregate connected Live
+minutes per UTC day per instance: three simultaneous clients exhaust it in one
+minute 40 seconds. Only connected time is charged, and the relay disconnects a
+session after 60 seconds without typed or spoken input or model output (page
+context, app events and resumption updates do not keep it open). Disconnected
+clients stop consuming time. Every limit closes the Vertex Live session
+immediately, before the client's WebSocket close handshake. Each session also has
+a ten-minute upper limit, eight completed replies, a 512-output-token limit per response,
 24,000 input text characters, a 64 KiB WebSocket frame limit, and PCM input paced
 to real time with a two-second burst. Context compression targets 4,096 tokens
 after an 8,192-token trigger. The shared daily allowance will normally close a
@@ -52,19 +67,23 @@ and the remaining daily allowance; it does not restore minutes in that instance.
 
 This is an **expected-spend commitment below USD 6**, as clarified by firstmate;
 it is not a mathematical guarantee. Use a conservative 21 UTC-date allowance
-covering deployment on 17 October UTC through 6 November: 21 × 3 = 63 aggregate
-Live minutes. Do not assume Cloud Run's shared billing-account free tier remains
+covering deployment on 17 October UTC through 6 November: 21 × 5 = 105 aggregate
+connected Live minutes. Do not assume Cloud Run's shared billing-account free tier remains
 available.
 
 | Component | Planning assumption | Expected USD |
 |---|---|---:|
-| Live audio | 25 tokens/second in each direction, continuous audio at $3/M input and $12/M output; 63 × $0.0225 | 1.4175 |
-| Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; short eight-reply sessions | 1.4175 |
-| Cloud Run active compute | 3,780 s at $0.000024/vCPU-s + 0.5 × $0.0000025/GiB-s; no free-tier discount | 0.0955 |
+| Live audio | 25 tokens/second in each direction, continuous audio: 1,500 × $3/M + 1,500 × $12/M = $0.0225/min; 105 × $0.0225 | 2.3625 |
+| Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; short eight-reply sessions | 2.3625 |
+| Cloud Run active compute | 6,300 s at $0.000024/vCPU-s + 0.5 × $0.0000025/GiB-s = $0.00002525/s; no free-tier discount | 0.159075 |
 | Startup, HTTP, network and logs | Small judge traffic, short requests, bounded payloads; reserve | 0.30 |
-| Two source builds and one retained image | Small Node builds, one corrected retry; image held through judging; reserve | 0.50 |
-| **Planning total** | Rounded upward | **3.74** |
-| **Margin to $6** | Approximately | **2.26** |
+| Three source builds and one retained image | Initial failed startup, corrected serving build and one post-validation redeploy; image held through judging; reserve | 0.50 |
+| **Planning total** | 5.684075, rounded upward | **5.69** |
+| **Margin to $6** | Approximately | **0.31** |
+
+Five minutes is the largest whole-minute daily allowance under this model: six
+minutes gives 126 minutes, 126 × $0.045 + 7,560 s × $0.00002525 + $0.80 =
+$6.66089, which exceeds the commitment.
 
 The 25-token/sec conversion is a planning assumption, not a verified native-audio
 upper bound. Vertex bills tokens, including accumulated session context again on
