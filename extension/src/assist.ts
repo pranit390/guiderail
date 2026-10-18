@@ -57,10 +57,12 @@ export function mountAssist(container: HTMLElement, options: Options) {
   let enabled = true;
   const emit = (kind: AssistReceipt["kind"], outcome: string) => options.receipt({ kind, at: new Date().toISOString(), field: "Database ID", outcome });
   function invalidate(message: string) {
+    // Guide never fills, so a tab or page change keeps the Guide status.
+    const quiet = level.value !== "assist" && !plan && !busy;
     revision++; plan = undefined; copyValue = undefined;
     approve.disabled = true; copy.disabled = true;
     get("[data-plan]").hidden = true;
-    status.textContent = `${message} Already filled values remain; correct them manually.`;
+    if (!quiet) status.textContent = `${message} Already filled values remain; correct them manually.`;
   }
   function cancel(message = "Assist stopped. Queued fills cancelled.") {
     const wasActive = level.value === "assist" || !!plan || busy;
@@ -70,7 +72,7 @@ export function mountAssist(container: HTMLElement, options: Options) {
   stop.onclick = () => cancel();
   level.onchange = () => {
     if (level.value === "assist") { invalidate(""); status.textContent = "Assist selected. Answer both questions, then review your plan."; }
-    else { cancel("Guide selected. Guide cannot fill."); invalidate("Guide selected. Guide cannot fill."); }
+    else { cancel("Guide selected. Guide cannot fill."); invalidate("Guide selected. Guide cannot fill."); status.textContent = "Guide selected. Guide cannot fill. Already filled values remain; correct them manually."; }
     get("[data-assist-body]").hidden = level.value !== "assist";
     stop.hidden = level.value !== "assist";
   };

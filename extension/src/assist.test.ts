@@ -63,6 +63,10 @@ describe("approved Database ID assistance on a wizard fixture", () => {
     review(); approve();
     expect(context).not.toHaveBeenCalled(); expect(result()).toBe("(default)"); expect(fill).not.toHaveBeenCalled();
   });
+  it("keeps the Guide status when the tab or page changes in Guide", () => {
+    assist.invalidate("The tab or page changed. Review a new plan.");
+    expect(status()).toBe("Guide is the default. You do every click and keystroke.");
+  });
   it("selecting Assist from Guide records no Stop", () => {
     selectAssist();
     expect(receipts).toEqual([]); expect(status()).toBe("Assist selected. Answer both questions, then review your plan.");
