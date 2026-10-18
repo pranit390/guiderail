@@ -1,8 +1,8 @@
 import type { LandingContent } from "../kit/types";
 import coach from "./coach.json";
 
-/** Same-origin file produced by `npm run build:site`. Firebase Hosting serves it from the site root. */
-export const downloadHref = "/download/guiderail-extension.zip";
+/** Hosted coach build. It includes the Firebase sign-in key. The landing build does not produce this file. */
+export const downloadHref = `${coach.origin}/download/guiderail-extension.zip`;
 
 export const coachOrigin = coach.origin;
 
@@ -23,6 +23,8 @@ export const pageTitle = "GuideRail. Your next step, in view.";
 
 export const pageDescription =
   "GuideRail walks Create a Firestore database on the Firebase console. Cited Steps, Guide and Assist, and a Rules check. You click Create.";
+
+export const judgeNote = "Judges sign in with the demo login from the deck.";
 
 export const installSteps = [
   "Unzip the download. The folder is named guiderail-extension and contains manifest.json.",

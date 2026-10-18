@@ -2,7 +2,11 @@
 
 Static site for the public GuideRail page. Firebase Hosting can serve the built files. This directory has its own `package.json` and is not in the root npm workspaces, so installing or building the page alone leaves the server and the extension alone.
 
-The page is the Follow the rail concept with the Rail check logo. The primary button downloads the Chrome extension. The extension zip is produced at build time and is not committed.
+The page is the Follow the rail concept with the Rail check logo. The primary button downloads the Chrome extension from the hosted coach:
+
+`https://guiderail-coach-q7tihot5sq-uc.a.run.app/download/guiderail-extension.zip`
+
+That zip is produced by the coach deploy, which includes the Firebase sign-in key. This landing build does not produce it. Judges sign in with the demo login from the deck. Install is still Load unpacked: unzip, `chrome://extensions`, Developer mode, Load unpacked, pin GuideRail, open the Firebase console.
 
 ## One command
 
@@ -14,17 +18,11 @@ npm ci --prefix landing
 npm run build:site
 ```
 
-`npm run build:site` does three things:
+`npm run build:site` builds this Astro site into `landing/dist/`. It does not build or zip the extension.
 
-1. Clears `extension/dist`, then builds the extension with `GUIDERAIL_SERVER_URL` set to the hosted coach origin in `src/content/coach.json` and `GUIDERAIL_BUILD_REVISION` set to the current commit.
-2. Builds this Astro site into `landing/dist/`.
-3. Zips the contents of `extension/dist` as `guiderail-extension/` and writes `landing/dist/download/guiderail-extension.zip`.
+`npm run package:extension-zip` is an opt-in local script. It writes `landing/dist/download/guiderail-extension.zip` and is not what the page links to. A zip from that script does not include the Firebase sign-in key. It needs `python3` on PATH.
 
-Unzip the archive and load the `guiderail-extension` folder, which contains `manifest.json`, with Chrome's Load unpacked. `dist/` is gitignored, so the zip is not committed. Run the same command again to rebuild it.
-
-Build the release zip only from `develop`, after the Assist Database ID fill has merged there, because the page describes that fill. The release zip is built at deploy time from `develop`, not from a feature branch.
-
-Node 22.22 or newer, and `python3` on PATH for the zip step.
+Node 22.22 or newer.
 
 ## Preview
 
@@ -32,7 +30,7 @@ Node 22.22 or newer, and `python3` on PATH for the zip step.
 npm run preview --prefix landing
 ```
 
-`npm run dev --prefix landing` serves the page on 127.0.0.1 without the zip. The download button targets `/download/guiderail-extension.zip`, which exists after `npm run build:site`.
+`npm run dev --prefix landing` serves the page on 127.0.0.1. The download button targets the hosted coach zip.
 
 ## Hosting config
 

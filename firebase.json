@@ -2,15 +2,6 @@
   "hosting": {
     "site": "guiderail",
     "public": "landing/dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
-    "headers": [
-      {
-        "source": "/download/guiderail-extension.zip",
-        "headers": [
-          { "key": "Content-Type", "value": "application/zip" },
-          { "key": "Content-Disposition", "value": "attachment; filename=\"guiderail-extension.zip\"" }
-        ]
-      }
-    ]
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
   }
 }

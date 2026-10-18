@@ -1,3 +1,4 @@
+// Opt-in local zip. The landing page does not link to this file.
 import { spawnSync } from "node:child_process";
 import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -13,8 +14,8 @@ function run(command, args, options) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-if (!existsSync(join(root, "node_modules/esbuild")) || !existsSync(join(root, "landing/node_modules/astro"))) {
-  console.error("Install dependencies first: npm ci && npm ci --prefix landing");
+if (!existsSync(join(root, "node_modules/esbuild"))) {
+  console.error("Install dependencies first: npm ci");
   process.exit(1);
 }
 
@@ -30,7 +31,6 @@ run("npm", ["run", "build", "-w", "extension"], {
     GUIDERAIL_BUILD_REVISION: head,
   },
 });
-run("npm", ["run", "build"], { cwd: join(root, "landing") });
 
 const packer = `
 import zipfile

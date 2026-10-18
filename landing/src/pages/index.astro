@@ -12,6 +12,7 @@ import {
   docsHref,
   hero,
   installSteps,
+  judgeNote,
   locationsHref,
   nav,
   pageDescription,
@@ -29,7 +30,7 @@ import {
           <h1 id="page-title">{hero.titleLead}<br />{hero.titleRest}</h1>
           <p class="intro">{hero.intro}</p>
           <div class="actions">
-            <a class="button primary" href={content.cta.href} download="guiderail-extension.zip">{content.cta.label}</a>
+            <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
             <a class="button" href="#install">Install steps</a>
           </div>
           <p class="subtle">{hero.note}</p>
@@ -42,10 +43,11 @@ import {
       <div class="wrap">
         <h2 id="install-heading">{content.cta.label}</h2>
         <p>Desktop Chrome. Unzip the file, then load the folder that contains manifest.json.</p>
-        <a class="button primary" href={content.cta.href} download="guiderail-extension.zip">{content.cta.label}</a>
+        <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
         <ol class="install-steps">
           {installSteps.map((step) => <li>{step}</li>)}
         </ol>
+        <p class="hint">{judgeNote}</p>
         <p class="hint">
           Open <a href={consoleHref}>the Firebase console</a> for the real Journey. For a labelled copy first, open
           <a href={practiceHref}>the practice pages on the hosted coach</a>.
@@ -116,7 +118,7 @@ import {
           <h2 id="close-heading">{content.close.heading}</h2>
           <p class="section-lede">{content.close.lede}</p>
         </div>
-        <a class="button primary" href={content.cta.href} download="guiderail-extension.zip">{content.cta.label}</a>
+        <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
       </div>
     </section>
   </main>
