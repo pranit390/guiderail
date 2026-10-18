@@ -19,10 +19,10 @@ export const cta = {
   href: downloadHref,
 } as const;
 
-export const pageTitle = "GuideRail. A Chrome coach for creating a Firestore database";
+export const pageTitle = "GuideRail. A Chrome coach for cloud console tasks";
 
 export const pageDescription =
-  "A Chrome side panel that walks you through creating a Firestore database in the Firebase console, with a Firebase docs citation on every Step. It warns you off Test mode and leaves the Create click to you.";
+  "A Chrome side panel that walks you through tasks on the Google Cloud and Firebase consoles, Step by Step, from the official docs and your team's Playbooks. A Rules guard warns you before an unsafe choice, and you make every Create click yourself.";
 
 export const judgeNote = "Judges, sign in with the demo login from the pitch deck.";
 
@@ -54,8 +54,8 @@ export const hero = {
   titleLead: "GuideRail points.",
   titleRest: "You click.",
   intro:
-    "GuideRail is a Chrome side panel. It reads the official Firebase docs and highlights the next control on the real console, with the doc citation beside each Step.",
-  note: "Guide only points. Assist can type the Database ID once you approve, then reads it back. Pick Test mode and GuideRail holds your first Create click. Neither Guide nor Assist clicks Create for you.",
+    "GuideRail is a Chrome side panel for the Google Cloud and Firebase consoles. Pick a goal and it highlights the next control on the real page, one Step at a time. The Steps come from the official docs or from a Playbook your team's expert recorded. A Rules guard flags unsafe choices before you create anything.",
+  note: "Guide only points. Assist types into one field you approve and reads it back. Neither one clicks Create for you. The worked example below creates a Firestore database.",
   journeyLink: "See the Firestore Journey",
   figureCaption: "This is a mock of the Firebase form with made-up values. It isn't connected to any account.",
   staticStory:
@@ -64,7 +64,7 @@ export const hero = {
 
 export const content: LandingContent = {
   name: "GuideRail",
-  audience: "People creating a Firestore database in the Firebase console.",
+  audience: "People doing tasks on the Google Cloud and Firebase consoles, and the experts who teach them.",
   positioning: pageDescription,
   cta,
   route: {
@@ -75,17 +75,17 @@ export const content: LandingContent = {
       {
         title: "Goal",
         tone: "go",
-        paragraphs: ["Create a Firestore database."],
+        paragraphs: ["Pick a task, like creating a Firestore database."],
       },
       {
         title: "Cited Steps",
         tone: "step",
-        paragraphs: ["Each Step names a control from the docs. GuideRail finds it on the page."],
+        paragraphs: ["Each Step names a control from the docs or a Playbook. GuideRail finds it on the page."],
       },
       {
         title: "Rules check",
         tone: "check",
-        paragraphs: ["Test mode is a Violation. Production mode is fine."],
+        paragraphs: ["Unsafe choices are Violations, like Firestore Test mode."],
       },
       {
         title: "Done",
@@ -96,8 +96,8 @@ export const content: LandingContent = {
   },
   journey: {
     id: "journey",
-    heading: "How the Firestore Journey runs",
-    lede: "Green means carry on and yellow means look first. Red is kept for Violations and nothing else.",
+    heading: "The Firestore Journey, a worked example",
+    lede: "Creating a Firestore database is the Journey we show in full. Green means carry on and yellow means look first. Red is kept for Violations and nothing else.",
     stops: [
       {
         title: "Goal",
@@ -133,6 +133,71 @@ export const content: LandingContent = {
       },
     ],
   },
+  today: {
+    id: "today",
+    heading: "Where it is today",
+    lede: "This is what ships in the extension and the hosted coach right now.",
+    items: [
+      "A Chrome side panel that runs on Google Cloud and Firebase console pages.",
+      "You talk or type. Gemini Live on Vertex AI answers by voice and in text.",
+      "A goal picker. The Firestore Journey is compiled from two official Firebase docs, with a citation on each Step. Three more goals come from Playbooks: view Cloud Run logs, connect a custom domain to Firebase Hosting, and create a Cloud Storage bucket.",
+      "Guide outlines the next control and moves on by itself when you finish the Step.",
+      "Assist fills one approved field, the Firestore Database ID, and reads the value back.",
+      "The Rules guard flags unsafe choices, like Firestore Test mode, and holds your first Create click.",
+      "Learn mode. An expert does the task once and GuideRail drafts a Playbook with suggested Rules. The expert reviews it before anyone is guided by it.",
+      "Playbooks, Rules and compiled Journeys are stored in Firestore. The coach runs on Cloud Run, and you sign in with Firebase Auth.",
+      "You click Create. Every time.",
+    ],
+  },
+  roadmap: {
+    id: "roadmap",
+    heading: "Roadmap",
+    lede: "These are plans, not features. Nothing in this section ships today.",
+    groups: [
+      {
+        title: "Next",
+        items: [
+          {
+            title: "More Journeys and more sites",
+            text: "A docs finder picks the right official page for a goal. A compiled Journey is marked unverified until a person walks it once. Slack app setup is the first site outside Google.",
+          },
+          {
+            title: "Sessions that survive the panel",
+            text: "The microphone and the voice connection move out of the side panel, so closing the panel no longer ends the session.",
+          },
+          {
+            title: "Zen mode",
+            text: "A small bubble on the page listens and answers by voice, with a one-line caption. Click it to open the full panel.",
+          },
+          {
+            title: "More Assist, then Auto",
+            text: "Assist fills more kinds of fields, with approval per Step and undo before submit. An Auto level moves through a wizard inside a plan you approved. No level gets a click or submit tool.",
+          },
+        ],
+      },
+      {
+        title: "Later",
+        items: [
+          {
+            title: "On-device hybrid",
+            text: "Doc lookup with EmbeddingGemma and short field hints from Gemini Nano or Gemma run in the browser. Rules stay deterministic and Gemini Live stays the voice. It depends on Chrome's on-device model being available on your machine.",
+          },
+          {
+            title: "One-click setup on Google Cloud",
+            text: "Sign in with Google, then a wizard sets the coach up in your own Google Cloud project from a Cloud Run template. Install moves to the Chrome Web Store.",
+          },
+          {
+            title: "Policy-guarded MCP for other agents",
+            text: "GuideRail's guarded tools become an MCP server, read-only first. Another agent could read the page, highlight a control and check a Rule, but never click, submit or send. Fills would come later, each one approved in the side panel.",
+          },
+          {
+            title: "Chief of staff",
+            text: "One timeline of every Journey, whether a person or an agent did the work, with the Rule checks and approvals beside each Step.",
+          },
+        ],
+      },
+    ],
+  },
   faq: {
     id: "trust",
     heading: "What GuideRail will and won't do",
@@ -141,7 +206,7 @@ export const content: LandingContent = {
       {
         question: "Who clicks Create?",
         answer:
-          "You do, every time. Guide highlights the Step and cites the doc. Assist types into the Database ID field after you approve and reads it back. That is the only field it touches, and it never clicks or sends.",
+          "You do, every time. Guide highlights the Step and cites the doc. Assist types into the Database ID field after you approve and reads it back. Today that is the only field it touches, and it never clicks or sends.",
       },
       {
         question: "What is a Violation?",
@@ -166,14 +231,16 @@ export const content: LandingContent = {
     ],
   },
   close: {
-    heading: "Download it, load it, then open GuideRail on the Firebase console.",
+    heading: "Download it, load it, then open GuideRail on a Google Cloud or Firebase console page.",
     lede: "Use the toolbar icon or your keyboard shortcut. The welcome page shows the shortcut, or how to set one.",
   },
-  footer: "GuideRail is a Chrome extension that coaches you through creating a Firestore database.",
+  footer:
+    "GuideRail is a Chrome extension that coaches you through cloud console tasks from the official docs and your team's Playbooks. You make every consequential click.",
 };
 
 export const nav = [
   { href: "#journey", label: "How it works" },
+  { href: "#roadmap", label: "Roadmap" },
   { href: "#install", label: "Install" },
   { href: "#trust", label: "Questions" },
 ];
