@@ -1,25 +1,37 @@
 import { FIRESTORE_GOAL, parseCompileResult, type Citation, type CompileResult } from "../../shared/journey.ts";
+import { mountJourneyWalk } from "./journey-walk.ts";
+import type { PageSnapshot } from "./messages.ts";
 import { PUBLIC_DOCS } from "./document.ts";
 
-export function mountJourneyPanel(container: HTMLElement, options: { http: string; compiled: () => void; brief: () => Promise<void> }) {
+export function mountJourneyPanel(container: HTMLElement, options: { http: string; compiled: () => void; brief: () => Promise<void>; open?: () => Promise<unknown>; read?: () => Promise<PageSnapshot>; point?: (text: string, role: string | undefined) => Promise<unknown>; changed?: (text: string) => void; reset?: () => void }) {
   container.innerHTML = `<h2>Firestore Goal</h2><p>Create a Firestore database</p>
+    <button type="button" data-open>Start Firestore Journey</button>
+    <button type="button" data-reset hidden>End Journey binding</button>
     <button type="button" data-compile>Read the Firestore docs</button>
     <button type="button" data-brief>Brief me from this page</button>
     <p data-status>Start with public docs. No Google login, project or microphone needed.</p>
     <p data-links></p><div data-result></div>`;
+  let walk: ReturnType<typeof mountJourneyWalk> | undefined;
+  let enabled = true;
+  let pending: Promise<void> | undefined;
+  let revision = 0;
+  const start = container.querySelector<HTMLButtonElement>("[data-open]")!;
+  const reset = container.querySelector<HTMLButtonElement>("[data-reset]")!;
   const compile = container.querySelector<HTMLButtonElement>("[data-compile]")!;
   const brief = container.querySelector<HTMLButtonElement>("[data-brief]")!;
   const status = container.querySelector<HTMLElement>("[data-status]")!;
   const result = container.querySelector<HTMLElement>("[data-result]")!;
   const links = container.querySelector<HTMLElement>("[data-links]")!;
-  let enabled = true;
   PUBLIC_DOCS.forEach((url, i) => {
     const a = document.createElement("a");
     a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer";
     a.textContent = i === 0 ? "Open Firestore docs" : "Open IAM grant docs";
     links.append(a, document.createElement("br"));
   });
-  compile.addEventListener("click", async () => {
+  async function load() {
+    const loading = revision;
+    walk?.setEnabled(false);
+    walk = undefined;
     compile.disabled = true;
     result.replaceChildren();
     status.textContent = "Reading the Firestore docs… This can take up to 90 seconds.";
@@ -32,18 +44,53 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
         throw new Error(message);
       }
       const compiled = parseCompileResult(body);
+      if (loading !== revision) return;
       renderJourney(result, compiled);
       status.textContent = compiled.cacheHit ? "Loaded cited Steps from cache." : `Cited Steps ready in ${(compiled.journey.durationMs / 1000).toFixed(1)} seconds.`;
       compile.textContent = "Reload cited Steps";
       options.compiled();
+      if (!reset.hidden && options.read && options.point) {
+        walk = mountJourneyWalk(result, compiled.journey, options.read, options.point, options.changed ?? (() => {}));
+        walk.setEnabled(enabled);
+      }
     } catch (error) {
+      if (loading !== revision) return;
       status.textContent = `${error instanceof Error ? error.message : "Compilation failed."} Retry, or open the official docs above.`;
       compile.textContent = "Retry reading docs";
     } finally {
-      compile.disabled = !enabled;
-      container.removeAttribute("aria-busy");
+      if (loading === revision) {
+        compile.disabled = !enabled;
+        container.removeAttribute("aria-busy");
+      }
     }
-  });
+  }
+  function ensureLoaded() {
+    if (!pending) {
+      const request = load().finally(() => { if (pending === request) pending = undefined; });
+      pending = request;
+    }
+    return pending;
+  }
+  compile.addEventListener("click", () => void ensureLoaded());
+  async function openJourney() {
+    if (!enabled) throw new Error("Leave Teach mode before starting a Journey.");
+    start.disabled = true;
+    try {
+      if (!options.open) throw new Error("Console Journeys are unavailable here.");
+      await options.open();
+      reset.hidden = false;
+      await ensureLoaded();
+    } catch (error) { status.textContent = error instanceof Error ? error.message : "Could not open the Journey."; throw error; }
+    finally { start.disabled = !enabled; }
+  }
+  start.addEventListener("click", () => void openJourney().catch(() => {}));
+  function endJourney() {
+    revision++; pending = undefined; options.reset?.(); walk?.setEnabled(false); walk = undefined;
+    compile.disabled = !enabled; container.removeAttribute("aria-busy");
+    result.replaceChildren(); reset.hidden = true;
+    status.textContent = "Journey ended. Start again to bind a new tab.";
+  }
+  reset.addEventListener("click", endJourney);
   brief.addEventListener("click", async () => {
     brief.disabled = true;
     status.textContent = "Reading the visible document…";
@@ -51,12 +98,12 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     catch (error) { status.textContent = `${error instanceof Error ? error.message : "Couldn't brief this page."} Open a public doc above and retry.`; }
     finally { brief.disabled = !enabled; }
   });
-  return { setEnabled(on: boolean) { enabled = on; compile.disabled = !on; brief.disabled = !on; } };
+  return { openJourney, endJourney, invalidate(message: string) { walk?.invalidate(message); }, setEnabled(value: boolean) { enabled = value; walk?.setEnabled(value); reset.disabled = !value; compile.disabled = !enabled; brief.disabled = !enabled; start.disabled = !enabled; } };
 }
 function appendCitation(parent: HTMLElement, item: Citation, context: string) {
   const p = document.createElement("p"); p.textContent = item.explanation;
   const a = document.createElement("a"); a.href = item.sourceUrl.replace(/\.md\.txt$/, "");
-  a.textContent = item.citationHeading; a.target = "_blank"; a.rel = "noopener noreferrer";
+  a.className = "citation"; a.textContent = item.citationHeading; a.target = "_blank"; a.rel = "noopener noreferrer";
   a.setAttribute("aria-label", `Source for ${context}: ${item.citationHeading}`);
   parent.append(p, a);
 }
@@ -67,7 +114,7 @@ export function renderJourney(parent: HTMLElement, { journey }: CompileResult) {
   parent.append(note);
   const details = document.createElement("details");
   const summary = document.createElement("summary"); summary.textContent = "Prerequisite, Database ID and warnings";
-  details.append(summary); details.open = true;
+  details.append(summary); details.open = false;
   for (const [context, item] of Object.entries({ Prerequisite: journey.prerequisite, "Database ID": journey.databaseIdGuidance, Limits: journey.limitations, "Test mode warning": journey.testModeWarning, "Location warning": journey.locationWarning })) appendCitation(details, item, context);
   parent.append(details);
   const list = document.createElement("ol");

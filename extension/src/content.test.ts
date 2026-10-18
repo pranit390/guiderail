@@ -51,6 +51,52 @@ afterEach(() => {
 });
 
 describe("calmer content messages", () => {
+  it("places the pointer inside a wizard top layer and returns it to the page", () => {
+    const surface = document.createElement("div");
+    surface.setAttribute("popover", "manual");
+    surface.innerHTML = '<button>Standard edition</button>';
+    document.body.append(surface);
+    expect(highlightPinned("Standard edition", "button")).toMatchObject({ found: true });
+    expect(surface.querySelector("guiderail-overlay")).not.toBeNull();
+    expect(highlightPinned("Create", "button")).toMatchObject({ found: true });
+    expect(document.documentElement.querySelector(":scope > guiderail-overlay")).not.toBeNull();
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    expect(request({ kind: "highlight", text: "Gone", generation: snap.generation, index: snap.elements.length + 1, name: "Gone" })).toMatchObject({ found: false });
+    expect(document.querySelector("guiderail-overlay")?.shadowRoot?.querySelector<HTMLElement>(".ring")?.hidden).toBe(true);
+  });
+  it("refuses a renamed or duplicated pinned Journey target", () => {
+    document.body.innerHTML = '<button>Create</button>';
+    const read = request({ kind: "read_page" }) as PageSnapshot;
+    const create = read.elements.find((e) => e.name === "Create")!;
+    document.querySelector("button")!.textContent = "Create database";
+    expect(request({ kind: "highlight", text: "Create", generation: read.generation, index: create.i, name: "Create" })).toMatchObject({ found: false });
+    document.body.innerHTML = '<button>Next</button><button>Next</button>';
+    const twins = request({ kind: "read_page" }) as PageSnapshot;
+    const next = twins.elements.find((e) => e.name === "Next")!;
+    expect(request({ kind: "highlight", text: "Next", generation: twins.generation, index: next.i, name: "Next" })).toMatchObject({ found: false });
+    expect(document.querySelector("guiderail-overlay")?.shadowRoot?.querySelector<HTMLElement>(".ring")?.hidden).toBe(true);
+  });
+  it("reads a transparent native radio with a visible painted label, but not a hidden wizard choice", () => {
+    document.body.insertAdjacentHTML("beforeend", '<label for="edition">Standard edition<input id="edition" type="radio" style="opacity:0" checked></label><label for="mode" style="visibility:hidden">Production mode<input id="mode" type="radio" style="opacity:0;visibility:hidden"></label>');
+    const snapshot = request({ kind: "read_page" });
+    expect(snapshot).toMatchObject({ elements: expect.arrayContaining([expect.objectContaining({ role: "radio", name: "Standard edition", value: "checked" })]) });
+    expect(snapshot).not.toMatchObject({ elements: expect.arrayContaining([expect.objectContaining({ name: "Production mode" })]) });
+    expect(highlightPinned("Standard edition", "radio")).toMatchObject({ found: true });
+    expect(document.querySelector<HTMLInputElement>("#edition")!.checked).toBe(true);
+  });
+  it("reads and highlights a visible ARIA radio without selecting it", () => {
+    const radio = document.createElement("div");
+    radio.setAttribute("role", "radio"); radio.setAttribute("aria-label", "Standard edition"); radio.setAttribute("aria-checked", "true");
+    document.body.append(radio); const clicked = vi.fn(); radio.addEventListener("click", clicked);
+    expect(request({ kind: "read_page" })).toMatchObject({ elements: expect.arrayContaining([{ i: expect.any(Number), role: "radio", name: "Standard edition", value: "checked" }]) });
+    expect(highlightPinned("Standard edition", "radio")).toMatchObject({ found: true, name: "Standard edition" });
+    expect(clicked).not.toHaveBeenCalled(); expect(radio.getAttribute("aria-checked")).toBe("true");
+  });
+  it("rejects a stale bound URL before reading or highlighting", () => {
+    expect(request({ kind: "read_page", expectedUrl: "https://accounts.google.com/" })).toHaveProperty("error");
+    expect(request({ kind: "highlight", text: "Create", expectedUrl: "https://accounts.google.com/" })).toHaveProperty("error");
+    expect(request({ kind: "read_page", expectedUrl: location.href })).toHaveProperty("elements");
+  });
   it("rejects arbitrary presets at the page boundary", () => {
     expect(request({ kind: "customize", preset: "body { display: none }" })).toHaveProperty("error");
     expect(document.querySelector("#guiderail-customize")).toBeNull();
