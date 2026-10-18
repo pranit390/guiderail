@@ -1052,3 +1052,32 @@ describe("demo sign-in", () => {
     expect(status()).toBe("Sign in to use GuideRail");
   });
 });
+
+describe("Firestore Guard panel", () => {
+  it("renders the block reason, safe choice and location source, then clears on Production", async () => {
+    await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
+    const firestore = { ...form, url: "console.firebase.google.com/project/practice-only/firestore", fields: { "Start in test mode": "checked", "Start in Production mode": "" } };
+    policy.violations = [{ ruleId: "firestore-no-test-mode", field: "Start in test mode", severity: "block", message: "Test mode allows anyone to read and overwrite your data. Choose Start in Production mode before Create." }];
+    sendMessage.mockResolvedValue({ shown: ["Start in test mode"] });
+    page({ kind: "form_changed", form: firestore });
+    await vi.waitFor(() => expect($("#issues").hidden).toBe(false));
+    expect($("#issues-list li").dataset.severity).toBe("block");
+    expect($("#issues-list").textContent).toContain("allows anyone to read and overwrite your data");
+    expect($("#issues-list").textContent).toContain("Start in Production mode");
+    expect($("#firestore-guidance").textContent).toContain("location cannot be changed after creation");
+    $("#issues-list button").click();
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, { kind: "show_field", field: "Start in test mode" }));
+    policy.violations = [];
+    page({ kind: "form_changed", form: { ...firestore, fields: { "Start in test mode": "", "Start in Production mode": "checked" } } });
+    await vi.waitFor(() => expect($("#issues").hidden).toBe(true));
+    expect($("#firestore-guidance").textContent).toContain("Production mode is selected");
+    page({ kind: "form_changed", form: { ...firestore, fields: {}, sections: ["Create a database"] } });
+    await vi.waitFor(() => expect($("#firestore-guidance").textContent).toContain("Security mode not checked"));
+    page({ kind: "form_changed", form: { ...firestore, fields: {} } });
+    await vi.waitFor(() => expect($("#firestore-guidance").hidden).toBe(true));
+    page({ kind: "form_changed", form: { ...firestore, fields: {}, sections: ["Create a database"] } });
+    await vi.waitFor(() => expect($("#firestore-guidance").hidden).toBe(false));
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect($("#firestore-guidance").hidden).toBe(true));
+  });
+});

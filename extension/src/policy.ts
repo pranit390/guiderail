@@ -41,6 +41,14 @@ export type Context = { firstName?: string; consoleCreate: boolean };
 
 const globToRegex = (glob: string) => new RegExp("^" + glob.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
 
+const fieldKey = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+
+/** Field Rules match accessible names case-insensitively, with whitespace collapsed. */
+export function fieldValue(form: Pick<FormState, "fields">, field: string): string | undefined {
+  const key = fieldKey(field);
+  return Object.entries(form.fields).find(([name]) => fieldKey(name) === key)?.[1];
+}
+
 const isFieldCheck = (c: Check): c is Extract<Check, { field: string }> => c.kind === "field_value_not_in" || c.kind === "field_value_regex";
 
 // Label checks need their section on screen; field checks only need the field itself (they skip
@@ -59,7 +67,7 @@ export function rulesFor(rules: Rule[], form: Pick<FormState, "url" | "sections"
 export function sectionOnScreen(rules: Rule[], form: FormState, section: string): boolean {
   return (
     form.sections.includes(section) ||
-    rulesFor(rules, form, section, false).some((r) => isFieldCheck(r.check) && r.check.field in form.fields)
+    rulesFor(rules, form, section, false).some((r) => isFieldCheck(r.check) && fieldValue(form, r.check.field) !== undefined)
   );
 }
 
@@ -90,12 +98,12 @@ export function evaluate(rules: Rule[], form: FormState): Violation[] {
         break;
       }
       case "field_value_not_in": {
-        const v = form.fields[c.field];
+        const v = fieldValue(form, c.field);
         if (v && c.values.some((x) => x.toLowerCase() === v.toLowerCase())) fail(r, c.field);
         break;
       }
       case "field_value_regex": {
-        const v = form.fields[c.field];
+        const v = fieldValue(form, c.field);
         if (v && !new RegExp(c.pattern).test(v)) fail(r, c.field);
         break;
       }

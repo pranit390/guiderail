@@ -239,7 +239,7 @@ export function labelValueInput(key: string): Element | null {
 export function violationFieldElement(field: string): Element | null {
   if (field.startsWith("label:")) return labelValueInput(field.slice("label:".length));
   const candidates = [...document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD},[role=radio],[role=checkbox],[role=switch]`)];
-  return candidates.find((e) => norm(nameOf(e)) === norm(field)) ?? null;
+  return candidates.find((e) => isVisible(e) && norm(nameOf(e)) === norm(field)) ?? null;
 }
 
 export function violationFieldLabel(field: string): string {

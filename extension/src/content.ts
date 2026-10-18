@@ -9,6 +9,7 @@ import { readDocument, findDocumentHeading } from "./document.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
+import { FIRESTORE_CREATE_DIALOG } from "./firestore.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -303,13 +304,15 @@ function readForm(): FormState {
   }
   const fields: Record<string, string> = {};
   for (const el of document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD}`)) {
-    if (labelInputs.has(el) || isSecret(el)) continue;
+    if (labelInputs.has(el) || isSecret(el) || !isVisible(el)) continue;
     const name = maskValue(nameOf(el));
     const value = safeValueOf(el);
     if (name) fields[name] = value || fields[name] || "";
   }
   const sections = section ? ["Labels"] : [];
   if (findSection("Grant access")) sections.push("Grant access");
+  const createDialog = findSection(FIRESTORE_CREATE_DIALOG);
+  if (createDialog && isVisible(createDialog)) sections.push(FIRESTORE_CREATE_DIALOG);
   return { url: effectiveUrl(), labels, fields, sections };
 }
 

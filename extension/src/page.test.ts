@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BAD_DARK, BAD_LIGHT, contrastRatio, EDGE_DARK, EDGE_LIGHT, findSection, isSecret, labelValueInput, nameOf, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 
 beforeEach(() => {
@@ -12,6 +12,8 @@ beforeEach(() => {
     <div role="tabpanel" id="p1"><input aria-label="Key 1"></div>
     <h3>Containers, networking, security</h3>`;
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("page helpers", () => {
   it("names inputs by their label element", () => {
@@ -45,7 +47,9 @@ describe("page helpers", () => {
   });
 
   it("maps label:key to its exact value input, never the whole Labels section", () => {
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 100, 200, 60));
     document.body.innerHTML = `
+      <style>* { opacity: 1; }</style>
       <section aria-labelledby="lh"><h3 id="lh">Labels</h3>
         <input aria-label="Key 1" value="environment"><input aria-label="Value 1" value="production">
         <input aria-label="Key 2" value="owner"><input aria-label="Value 2" value="bad@example.com">
@@ -62,6 +66,11 @@ describe("page helpers", () => {
     expect(violationFieldElement("label:environment")).toBeNull();
     // Generic fields resolve the real observed control by accessible name.
     expect(violationFieldElement("Role")).toBe(document.getElementById("role"));
+    expect(violationFieldElement("Test mode")?.getAttribute("role")).toBe("radio");
+    const hiddenRadio = document.createElement("input");
+    hiddenRadio.setAttribute("aria-label", "Test mode");
+    hiddenRadio.style.visibility = "hidden";
+    document.body.prepend(hiddenRadio);
     expect(violationFieldElement("Test mode")?.getAttribute("role")).toBe("radio");
     // A field whose real control is gone is not mapped to a heading or button with the same name.
     document.body.insertAdjacentHTML("beforeend", `<h3>Database ID</h3><button>Save</button>`);
