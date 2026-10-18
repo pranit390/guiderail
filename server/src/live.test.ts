@@ -167,13 +167,11 @@ describe("Live limits", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
-  it("closes the Live session immediately at the eighth reply", async () => {
+  it("keeps the Live session open however many replies it gives", async () => {
     const { client } = await start();
-    for (let i = 0; i < 7; i++) live.callbacks!.onmessage({ serverContent: { turnComplete: true } });
+    for (let i = 0; i < 20; i++) live.callbacks!.onmessage({ serverContent: { turnComplete: true } });
     expect(live.session.close).not.toHaveBeenCalled();
-    live.callbacks!.onmessage({ serverContent: { turnComplete: true } });
-    expect(live.session.close).toHaveBeenCalledOnce();
-    expect(client.close).toHaveBeenCalledWith(4000, "reply allowance reached");
+    expect(client.close).not.toHaveBeenCalled();
   });
 
   it("closes the Live session immediately when input exceeds the allowance", async () => {

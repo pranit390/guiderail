@@ -54,7 +54,6 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
   const started = Date.now();
   let audioBytes = 0;
   let textChars = 0;
-  let turns = 0;
   const pendingTools = new Map<string, string>();
   let idle: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
@@ -104,9 +103,6 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
             if (stopped) return;
             forward(msg, send, session, pendingTools);
             if (msg.serverContent || msg.toolCall) active();
-            if (msg.serverContent?.turnComplete && ++turns >= 8) {
-              end("reply allowance reached", "This demo session reached its eight-reply allowance. Reconnect if today's allowance remains.");
-            }
           },
           onerror: (e) => send({ type: "error", message: String(e.message ?? e) }),
           onclose: () => { shutdown(); client.close(); },

@@ -590,31 +590,45 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   } catch {
     tabId = null;
   }
-  const snap = bound;
-  const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
-  if (!actionAuthorized(decision)) {
-    say("system", highlightOutcome(decision));
-    await clearBoundHighlight();
-    return highlightResult(decision);
+  // A changed screen isn't a reason to give up: read it again and try once more.
+  const refresh = async () => {
+    try {
+      const tab = binding.tabId !== undefined ? await binding.tab() : await activeTab();
+      if (tab.id !== undefined) await readSnapshot(tab);
+    } catch { /* keep the old snapshot; the stale result below explains it */ }
+  };
+  if (boundStale || !bound) await refresh();
+  for (let attempt = 0; ; attempt++) {
+    const snap = bound;
+    const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
+    if (!actionAuthorized(decision)) {
+      if (decision.reason === "stale" && attempt === 0) { await refresh(); continue; }
+      say("system", highlightOutcome(decision));
+      await clearBoundHighlight();
+      return highlightResult(decision);
+    }
+    const live = await toPage<HighlightResult>({
+      kind: "highlight",
+      text,
+      ...(role ? { role } : {}),
+      ...(section ? { section } : {}),
+      generation: snap!.generation,
+      index: decision.i,
+      name: decision.name,
+    }, snap!.tabId);
+    if (!live.found) {
+      if (live.reason === "stale") {
+        boundStale = true;
+        if (attempt === 0) { await refresh(); continue; }
+      }
+      say("system", highlightOutcome(live));
+      await clearBoundHighlight();
+      return live;
+    }
+    const target = snap!.elements.find((e) => e.i === decision.i);
+    stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
+    return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
   }
-  const live = await toPage<HighlightResult>({
-    kind: "highlight",
-    text,
-    ...(role ? { role } : {}),
-    ...(section ? { section } : {}),
-    generation: snap!.generation,
-    index: decision.i,
-    name: decision.name,
-  }, snap!.tabId);
-  if (!live.found) {
-    if (live.reason === "stale") boundStale = true;
-    say("system", highlightOutcome(live));
-    await clearBoundHighlight();
-    return live;
-  }
-  const target = snap!.elements.find((e) => e.i === decision.i);
-  stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
-  return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
 }
 
 function clearJourneyPointer(): Promise<unknown> {

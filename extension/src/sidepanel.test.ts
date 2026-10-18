@@ -624,7 +624,7 @@ describe("highlight wiring", () => {
     await connected();
   });
 
-  it("asks which Save, pins a unique target to the read, and refuses after the page moves on", async () => {
+  it("asks which Save, pins a unique target to the read, and re-reads after the page moves on", async () => {
     await call("read", "read_page", {});
 
     const save = await call("save", "highlight", { text: "Save", role: "button" });
@@ -639,10 +639,23 @@ describe("highlight wiring", () => {
 
     const listener = (globalThis as any).chrome.runtime.onMessage.addListener.mock.calls[0][0];
     listener({ kind: "page_event", text: "Page changed.", generation: 4 }, { tab: { id: 1 } }, () => {});
+    const reads = () => sendMessage.mock.calls.filter(([, msg]) => msg.kind === "read_page").length;
+    const readsBefore = reads();
     const after = await call("after", "highlight", { text: "Database ID" });
-    expect(after).toMatchObject({ found: false, reason: "stale" });
-    expect(logText()).toContain("This screen changed since I last read it, so I won't point at or fill anything.");
-    expect(highlights()).toHaveLength(1);
+    // The changed screen is read again on its own, then the same control is pointed at.
+    expect(reads()).toBe(readsBefore + 1);
+    expect(after).toMatchObject({ found: true, name: "Database ID" });
+    expect(logText()).not.toContain("This screen changed since I last read it");
+    expect(highlights()).toHaveLength(2);
+  });
+
+  it("re-reads once when the page reports a stale target, then gives up clearly", async () => {
+    await call("read", "read_page", {});
+    sendMessage.mockImplementation(async (_tab: number, msg: { kind: string }) =>
+      msg.kind === "read_page" ? snapshot : msg.kind === "highlight" ? { found: false, reason: "stale", alternatives: [] } : { ok: true });
+    const result = await call("gone", "highlight", { text: "Database ID" });
+    expect(result).toMatchObject({ found: false, reason: "stale" });
+    expect(highlights()).toHaveLength(2);
     expect(sendMessage).toHaveBeenCalledWith(1, { kind: "clear_highlight" });
   });
 

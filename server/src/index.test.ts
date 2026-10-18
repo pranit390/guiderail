@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { AddressInfo } from "node:net";
 import { once } from "node:events";
 import WebSocket from "ws";
@@ -17,6 +20,8 @@ vi.mock("@google/genai", async (original) => ({
 
 beforeAll(async () => {
   vi.stubEnv("PORT", "0");
+  // An empty Journey cache, so a developer's local data/journeys can't change the results.
+  vi.stubEnv("JOURNEY_CACHE_DIR", mkdtempSync(join(tmpdir(), "guiderail-journeys-")));
   vi.stubEnv("DISABLE_DRAFT", "true");
   const { server } = await import("./index.ts");
   if (!server.listening) await new Promise((resolve) => server.once("listening", resolve));
