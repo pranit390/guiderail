@@ -64,6 +64,22 @@ describe("recorder", () => {
     change("svc", "ocr-service");
     expect(events[0]).toMatchObject({ t: "field", target: { name: "Service name" }, value: "ocr-service" });
   });
+  it.each(["radio", "checkbox"])("records a native %s using the guard's checked value", (type) => {
+    const field = document.createElement("input");
+    field.type = type;
+    field.setAttribute("aria-label", "Allow unauthenticated");
+    field.value = "on";
+    document.body.append(field);
+    field.checked = true;
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    field.checked = false;
+    field.dispatchEvent(new Event("change", { bubbles: true }));
+    expect(events).toEqual([
+      expect.objectContaining({ t: "field", target: expect.objectContaining({ name: "Allow unauthenticated" }), value: "checked" }),
+      expect.objectContaining({ t: "field", value: "unchecked" }),
+    ]);
+  });
+
   it("masks secret-looking values", () => {
     change("tok", "AIzaSyD-abcdefghijklmnopqrstuvwxyz12345");
     expect(events[0]).toMatchObject({ t: "field", value: "«masked»" });

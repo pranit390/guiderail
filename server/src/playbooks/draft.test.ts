@@ -27,10 +27,11 @@ describe("buildDraftPrompt", () => {
     expect(p).toContain("Always us-central1 unless it's an EU customer");
     expect(p).toContain('"name":"Region"');
   });
-  it("tells the model which sections Rules can fire in", () => {
+  it("tells the model label Rules live in Labels and how to check create-form fields", () => {
     const p = buildDraftPrompt(payload);
     expect(p).toContain('"Labels"');
-    expect(p).toContain('"Grant access"');
+    expect(p).toContain("field_value_regex");
+    expect(p).toContain('values: ["checked"]');
   });
 });
 
@@ -84,16 +85,23 @@ describe("isRule", () => {
     expect(isRule(base())).toBe(true);
     expect(isRule({ ...base(), scope: { url: "console.cloud.google.com/*", section: "Labels" }, check: { kind: "label_required", key: "owner" } })).toBe(true);
   });
-  it("drops a Rule scoped to a section the extension never checks", () => {
-    expect(isRule({ ...base(), scope: { url: "console.cloud.google.com/run*", section: "Configure" } })).toBe(false);
+  it("drops a label Rule outside the Labels section", () => {
+    expect(isRule({ ...base(), scope: { url: "console.cloud.google.com/run*", section: "Configure" }, check: { kind: "label_required", key: "owner" } })).toBe(false);
+  });
+  it("keeps field Rules in any section, e.g. the Cloud Run create form", () => {
+    expect(isRule({ ...base(), scope: { url: "console.cloud.google.com/run*", section: "Authentication" }, check: { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] } })).toBe(true);
+    expect(isRule({ ...base(), scope: { url: "console.cloud.google.com/run*", section: "Configure" }, check: { kind: "field_value_regex", field: "Service name", pattern: "^[a-z]+-[a-z0-9-]+-service$" } })).toBe(true);
+  });
+  it("drops a field_value_regex Rule with an invalid pattern", () => {
+    expect(isRule({ ...base(), check: { kind: "field_value_regex", field: "Service name", pattern: "(" } })).toBe(false);
   });
   it("drops a Rule whose scope.url is not a string", () => {
     expect(isRule({ ...base(), scope: { url: 5, section: "Labels" } })).toBe(false);
     expect(isRule({ ...base(), scope: { section: "Labels" } })).toBe(false);
   });
-  it("parseDraft drops Rules in other sections", () => {
+  it("parseDraft drops label Rules in other sections", () => {
     const d = JSON.parse(good);
-    d.suggestedRules.push({ ...d.suggestedRules[0], id: "cfg", scope: { url: "x*", section: "Configure" } });
+    d.suggestedRules.push({ ...d.suggestedRules[0], id: "cfg", scope: { url: "x*", section: "Configure" }, check: { kind: "label_required", key: "owner" } });
     expect(parseDraft(JSON.stringify(d)).suggestedRules.map((r) => r.id)).toEqual(["region-us"]);
   });
 });

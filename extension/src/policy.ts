@@ -7,6 +7,7 @@ export type Check =
   | { kind: "label_value_regex"; key: string; pattern: string }
   | { kind: "label_all_regex"; pattern: string }
   | { kind: "field_value_not_in"; field: string; values: string[] }
+  | { kind: "field_value_regex"; field: string; pattern: string }
   | { kind: "llm_judge"; key: string; question: string }
   | { kind: "element_interaction"; text: string };
 
@@ -40,14 +41,25 @@ export type Context = { firstName?: string; consoleCreate: boolean };
 
 const globToRegex = (glob: string) => new RegExp("^" + glob.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
 
-// Checks need the section on screen; guidance doesn't (a form may have no Labels field
-// even though the resource still needs labels, e.g. Cloud Run's create form).
+const isFieldCheck = (c: Check): c is Extract<Check, { field: string }> => c.kind === "field_value_not_in" || c.kind === "field_value_regex";
+
+// Label checks need their section on screen; field checks only need the field itself (they skip
+// when it's absent). Guidance needs neither (a form may have no Labels field even though the
+// resource still needs labels, e.g. Cloud Run's create form).
 export function rulesFor(rules: Rule[], form: Pick<FormState, "url" | "sections">, section?: string, onScreen = true): Rule[] {
   return rules.filter(
     (r) =>
       globToRegex(r.scope.url).test(form.url) &&
-      (!onScreen || form.sections.includes(r.scope.section)) &&
+      (!onScreen || isFieldCheck(r.check) || form.sections.includes(r.scope.section)) &&
       (!section || r.scope.section.toLowerCase() === section.toLowerCase()),
+  );
+}
+
+// A section is on screen when the page shows it, or when a field its field Rules check is on the form.
+export function sectionOnScreen(rules: Rule[], form: FormState, section: string): boolean {
+  return (
+    form.sections.includes(section) ||
+    rulesFor(rules, form, section, false).some((r) => isFieldCheck(r.check) && r.check.field in form.fields)
   );
 }
 
@@ -82,6 +94,11 @@ export function evaluate(rules: Rule[], form: FormState): Violation[] {
         if (v && c.values.some((x) => x.toLowerCase() === v.toLowerCase())) fail(r, c.field);
         break;
       }
+      case "field_value_regex": {
+        const v = form.fields[c.field];
+        if (v && !new RegExp(c.pattern).test(v)) fail(r, c.field);
+        break;
+      }
       // llm_judge and element_interaction need the server or a click watcher; not checked here yet.
     }
   }
@@ -94,7 +111,7 @@ function suggest(source: string | null, form: FormState, ctx: Context): string |
   switch (source) {
     case "user.firstName": return ctx.firstName ? slug(ctx.firstName) : null;
     case "form.serviceName": {
-      const name = form.fields["Service name"] ?? Object.entries(form.fields).find(([k]) => /name/i.test(k))?.[1];
+      const name = form.fields["Service name"] || Object.entries(form.fields).find(([k, v]) => v && /name/i.test(k))?.[1];
       return name ? slug(name) : null;
     }
     case "resource.type": return /\/run\//.test(form.url) ? "api" : null;
