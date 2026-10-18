@@ -1,4 +1,5 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
+import { STATES, stateGlyph, violationState } from "./states.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
@@ -42,10 +43,35 @@ let draft: any = null;
 const mic = new Mic();
 const speaker = new Speaker();
 let talking = false;
+let voiceOn = true;
+const voice = $<HTMLButtonElement>("#voice");
+voice.disabled = true;
+function renderVoice() {
+  speaker.setMuted(!voiceOn);
+  voice.setAttribute("aria-pressed", String(voiceOn));
+  voice.textContent = voiceOn ? "Voice on" : "Voice off";
+  voice.title = `Spoken replies ${voiceOn ? "on" : "off"} (Alt+Shift+V)`;
+}
+function toggleVoice() {
+  if (voice.disabled) return;
+  voiceOn = !voiceOn;
+  renderVoice();
+  $("#voice-status").textContent = voiceOn
+    ? "Spoken replies on · next reply will be spoken"
+    : "Spoken replies off · replies stay in the chat";
+  void chrome.storage.local.set({ voiceOut: voiceOn }).catch(() => {
+    $("#voice-status").textContent += " · preference could not be saved";
+  });
+}
+voice.addEventListener("click", toggleVoice);
 
 // ---------- Startup ----------
 
 async function init() {
+  const saved = await chrome.storage.local.get("voiceOut").catch(() => ({ voiceOut: undefined }));
+  voiceOn = saved.voiceOut !== false;
+  renderVoice();
+  voice.disabled = false;
   await loadRules();
   const profile = await chrome.identity.getProfileUserInfo({ accountStatus: chrome.identity.AccountStatus.ANY }).catch(() => null);
   firstName = profile?.email ? profile.email.split("@")[0].split(/[._-]/)[0] : undefined;
@@ -61,7 +87,7 @@ async function loadRules() {
 }
 
 function setStatus(text: string, state: "on" | "off" | "busy") {
-  status.textContent = text;
+  status.replaceChildren(stateGlyph(state === "on" ? "go" : "check"), document.createTextNode(text));
   status.dataset.state = state;
 }
 
@@ -95,6 +121,9 @@ function connect() {
   sock.onclose = () => {
     if (ws !== sock) return;
     setStatus("Disconnected. Click to reconnect", "off");
+    speaker.interrupt();
+    speaker.turnEnded();
+    held.audio = [];
     if (talking) stopTalking();
   };
   sock.onerror = () => { if (ws === sock) setStatus("Can't reach the GuideRail server on localhost:8787", "off"); };
@@ -111,10 +140,11 @@ async function onServer(msg: any) {
       if (memory.size) sendServer({ type: "session", text: memory.summary() });
       break;
     case "audio":
+      speaker.beginTurn();
       if (mode === "teach") held.audio.push(msg.data);
       else speaker.play(msg.data);
       break;
-    case "interrupted": speaker.interrupt(); held.audio = []; break;
+    case "interrupted": speaker.interrupt(); speaker.turnEnded(); held.audio = []; break;
     case "transcript":
       teach?.heard(msg.role, msg.text);
       if (msg.role === "user" || mode !== "teach") turnText[msg.role as "user" | "model"] += msg.text;
@@ -139,6 +169,7 @@ async function onServer(msg: any) {
       open = null;
       teach?.endTurn("user");
       teach?.endTurn("model");
+      speaker.turnEnded();
       break;
     case "resumption":
       if (mode === "guide") { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
@@ -204,7 +235,8 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       return { opened: true, note: "The user must review and click Send." };
     }
     case "complete_step":
-      say("system", `✓ ${args.summary}`);
+      say("step", `Done · ${args.summary}`);
+      log.lastElementChild?.prepend(stateGlyph("go"));
       return { ok: true };
     default:
       return { error: `Unknown tool ${name}` };
@@ -217,7 +249,7 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
   card.hidden = items.length === 0;
   card.replaceChildren();
   const h = document.createElement("h2");
-  h.textContent = "Suggested labels";
+  h.replaceChildren(stateGlyph("check"), document.createTextNode("Suggested labels"));
   card.append(h);
   for (const s of items) {
     const row = document.createElement("div");
@@ -252,9 +284,10 @@ async function updateViolations(form: FormState) {
     ...violations.map((v) => {
       const li = document.createElement("li");
       li.dataset.severity = v.severity;
+      const state = violationState(v.severity);
       const field = document.createElement("span");
       field.className = "field";
-      field.textContent = violationFieldLabel(v.field);
+      field.append(stateGlyph(state), document.createTextNode(`${STATES[state].label} · ${violationFieldLabel(v.field)}`));
       const msg = document.createElement("span");
       msg.className = "rule-msg";
       msg.textContent = v.message;
@@ -272,10 +305,11 @@ async function updateViolations(form: FormState) {
   );
 }
 
-type TabChanged = { kind: "tab_changed"; tabId: number; url?: string };
+type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply) => {
   switch (msg.kind) {
+    case "toggle_voice": toggleVoice(); break;
     case "customize_event":
       say("system", msg.text);
       appEvent(msg.text);
@@ -356,7 +390,7 @@ function showTeachButton(on: boolean) {
   const button = $<HTMLButtonElement>("#teach");
   button.toggleAttribute("data-on", on);
   button.setAttribute("aria-pressed", String(on));
-  button.textContent = on ? "● Teaching" : "Teach";
+  button.replaceChildren(...(on ? [stateGlyph("check"), document.createTextNode("Teaching")] : [document.createTextNode("Teach")]));
   button.title = on ? "Stop teaching and draft a Playbook" : "Show GuideRail how your team does a task";
 }
 

@@ -20,7 +20,7 @@
     <ul id="issues-list"></ul>
   </section>
   <section id="teachbar" class="card" hidden>
-    <p><span class="rec" aria-hidden="true"></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
+    <p><span class="rec state-glyph check" aria-hidden="true"><span>!</span></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
     <button id="teachstop" type="button">Stop and draft Playbook</button>
   </section>
   <section id="draft" class="card" hidden>
@@ -34,10 +34,12 @@
     <button id="calmer" type="button">Calmer</button>
     <button id="restore" type="button">Restore</button>
   </div>
+  <p id="voice-status" class="voice-status" role="status" aria-live="polite"></p>
   <form id="form">
     <button id="talk" type="button">Talk</button>
     <input id="text" type="text" placeholder="Ask, or type a task and press Teach" autocomplete="off">
     <button type="submit">Send</button>
+    <button id="voice" type="button" aria-pressed="true" title="Spoken replies on (Alt+Shift+V)">Voice on</button>
   </form>
   <script type="module" src="sidepanel.js"></script>
 </body>

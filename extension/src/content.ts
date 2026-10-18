@@ -4,6 +4,7 @@ import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, T
 import { allElements, BAD_DARK, BAD_LIGHT, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
+import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
 
 const MAX_ELEMENTS = 150;
@@ -71,33 +72,34 @@ const host = document.createElement("guiderail-overlay");
 const shadow = host.attachShadow({ mode: "open" });
 shadow.innerHTML = `<style>
   :host { all: initial; }
-  .layer > * { --gr-edge:${EDGE_LIGHT}; --gr-halo:rgba(224,161,0,.20); --gr-bad:${BAD_LIGHT}; }
-  .layer > [data-theme="dark"] { --gr-edge:${EDGE_DARK}; --gr-halo:rgba(242,185,39,.22); --gr-bad:${BAD_DARK}; }
-  .layer { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
-  .ring { position: fixed; border-radius: 6px; outline: 2px solid var(--gr-edge); outline-offset: 2px;
-          box-shadow: 0 0 10px 3px var(--gr-halo); transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease; }
-  .ring.pulse { animation: gr-pulse 1.4s ease-in-out 2; }
-  @keyframes gr-pulse { 0%,100% { box-shadow: 0 0 6px 2px var(--gr-halo); } 50% { box-shadow: 0 0 16px 6px var(--gr-halo); } }
-  .bad { position: fixed; border-radius: 6px; outline: 2px solid var(--gr-bad); outline-offset: 1px; background: transparent; }
-  .cue { position: fixed; left: 50%; transform: translateX(-50%); background: #161d28; color: #fff; font: 600 12px/1.3 system-ui, sans-serif;
-         padding: 4px 10px; border-radius: 999px; border: 2px solid var(--gr-edge); }
-  .cue.above { top: 12px; }
-  .cue.below { bottom: 12px; }
-  .chip { position: fixed; max-width: 260px; background: #161d28; color: #fff; font: 500 11px/1.3 system-ui, sans-serif;
-          padding: 4px 7px; border-radius: 6px; box-shadow: 0 4px 14px rgba(0,0,0,.25); }
-  .toast { position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); background: #161d28; color: #fff;
-           font: 600 14px/1.4 system-ui, sans-serif; padding: 10px 14px; border-radius: 8px; border-left: 4px solid #e5484d;
-           box-shadow: 0 6px 24px rgba(0,0,0,.25); max-width: 420px; }
-  .rec { position: fixed; left: 16px; bottom: 16px; background: #000; color: #fff; border: 2px solid #fff;
-         font: 600 13px/1.2 system-ui, sans-serif; padding: 6px 10px; border-radius: 999px; box-shadow: 0 2px 10px rgba(0,0,0,.4); }
-  .rec .dot { color: #ff5c5c; }
-  :host(.gr-calm) .ring { animation: none; transition: none; }
-  :host(.gr-calm) .rec { animation: none; }
+  ${GLYPH_CSS}
+  .layer > * { --gr-edge:${EDGE_LIGHT}; --gr-halo:rgba(95,224,168,.3); --gr-check:${STATES.check.light}; --gr-bad:${BAD_LIGHT}; --gr-on-stop:#fff; }
+  .layer > [data-theme="dark"] { --gr-edge:${EDGE_DARK}; --gr-check:${STATES.check.dark}; --gr-bad:${BAD_DARK}; --gr-on-stop:#2d0805; }
+  .layer { position:fixed; inset:0; pointer-events:none; z-index:2147483647; }
+  .ring, .bad { position:fixed; border-radius:6px; outline:2px solid var(--gr-edge); outline-offset:3px; background:transparent; }
+  .ring::after, .bad.check::after { content:""; position:absolute; inset:-4px; border-radius:inherit; box-shadow:0 0 12px 4px var(--gr-halo); opacity:.35; }
+  .ring.pulse::after { animation:gr-breathe 2400ms cubic-bezier(.45,0,.55,1) 3; }
+  @keyframes gr-breathe { 50% { opacity:1; } }
+  .bad.stop { outline-color:var(--gr-bad); box-shadow:0 0 0 7px color-mix(in srgb,var(--gr-bad) 12%,transparent); animation:gr-settle 320ms cubic-bezier(.3,1.35,.5,1); }
+  .bad.check { outline:2px dashed var(--gr-check); }
+  .bad.check::after { --gr-halo:rgba(255,210,63,.3); animation:gr-breathe 1400ms ease-in-out 2; }
+  @keyframes gr-settle { from { opacity:0; transform:scale(1.04); } }
+  .cue { position:fixed; left:50%; transform:translateX(-50%); background:#16211c; color:#fff; font:600 12px/1.3 system-ui,sans-serif; padding:4px 10px; border-radius:999px; border:2px solid var(--gr-edge); }
+  .cue.above { top:12px; } .cue.below { bottom:12px; }
+  .chip { position:fixed; max-width:260px; background:#16211c; color:#fff; font:500 11px/1.3 system-ui,sans-serif; padding:4px 7px; border-radius:6px; box-shadow:0 4px 14px rgba(0,0,0,.25); }
+  .chip .state-glyph.stop { color:${BAD_DARK}; --gr-on-stop:#2d0805; }
+  .chip .state-glyph.check { color:${STATES.check.dark}; }
+  .chip .state-glyph.go { color:${EDGE_DARK}; }
+  .toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#16211c; color:#fff; font:600 14px/1.4 system-ui,sans-serif; padding:10px 14px; border-radius:8px; border:2px dashed ${STATES.check.dark}; max-width:420px; }
+  .rec { position:fixed; right:16px; top:16px; background:#16211c; color:${STATES.check.dark}; border:2px dashed currentColor; font:600 13px/1.2 system-ui,sans-serif; padding:6px 10px; border-radius:6px; }
+  :host(.gr-calm) .ring::after, :host(.gr-calm) .bad, :host(.gr-calm) .bad::after { animation:none; transition:none; }
   .gr-shade { position: fixed; box-shadow: 0 0 0 100vmax rgba(0,0,0,.08); }
-  @media (prefers-reduced-motion: reduce) { .ring { animation: none !important; transition: none; } }
+  @media (prefers-reduced-motion: reduce) { .ring, .ring::after, .bad, .bad::after { animation:none !important; transition:none; } }
   @media (forced-colors: active) {
     .ring { outline: 2px solid Highlight; box-shadow: none; forced-color-adjust: none; }
-    .bad { outline: 2px solid Highlight; forced-color-adjust: none; }
+    .bad.stop { outline-color:Mark; box-shadow:none; forced-color-adjust:none; }
+    .bad.check { outline-color:Highlight; forced-color-adjust:none; }
+    .ring::after, .bad::after { display:none; }
     .chip, .cue { forced-color-adjust: auto; }
   }
 </style><div class="layer"></div>`;
@@ -110,6 +112,10 @@ const ring = document.createElement("div");
 ring.className = "ring";
 ring.hidden = true;
 ring.setAttribute("aria-hidden", "true");
+const stepChip = document.createElement("div");
+stepChip.className = "chip step-chip";
+stepChip.hidden = true;
+layer.append(stepChip);
 layer.append(ring);
 const cue = document.createElement("div");
 cue.hidden = true;
@@ -188,7 +194,9 @@ function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   applyTheme(cue, el);
   ring.hidden = false;
   place(ring, el, 4);
-  // Pulse twice (~1.4s each) then settle; never under reduced motion.
+  stepChip.replaceChildren(stateGlyph("go"), document.createTextNode(`Here · ${nameOf(el)}`));
+  placeChip(stepChip, el);
+  // Three soft breaths, then a static halo.
   ring.classList.remove("pulse");
   if (!reducedMotion()) { void ring.offsetWidth; ring.classList.add("pulse"); }
   // No unsolicited scrolling while the person interacts; an off-screen Step gets a cue instead. Never smooth under reduced motion or calm.
@@ -214,10 +222,10 @@ function follow() {
   if (!alive()) return shutdown();
   calm.follow(highlighted, badBoxes.map(({ el }) => el));
   if (highlighted) {
-    if (highlighted.isConnected && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); }
+    if (highlighted.isConnected && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); placeChip(stepChip, highlighted); }
     else { ring.hidden = true; highlighted = null; }
   } else ring.hidden = true;
-  if (!highlighted) cue.hidden = true;
+  if (!highlighted) { cue.hidden = true; stepChip.hidden = true; }
   badBoxes = badBoxes.filter(({ el, box, chip }) => {
     if (!el.isConnected || !isVisible(el)) { box.remove(); chip.remove(); return false; }
     place(box, el, 3);
@@ -251,7 +259,7 @@ function setRecording(on: boolean) {
   if (on) startRecording((event) => send({ kind: "teach_event", event }));
   else stopRecording();
   badge.hidden = !on;
-  badge.innerHTML = on ? `<span class="dot" aria-hidden="true">●</span> GuideRail is recording` : "";
+  badge.replaceChildren(...(on ? [stateGlyph("check"), document.createTextNode("Recording · GuideRail")] : []));
 }
 
 // ---------- Forms ----------
@@ -294,12 +302,13 @@ function showViolations(violations: ViolationDetail[]): string[] {
     if (!el) continue;
     shown.push(field);
     const box = document.createElement("div");
-    box.className = "bad";
+    const state = items.some((item) => item.severity === "block") ? "stop" : violationState("warn");
+    box.className = `bad ${state}`;
     applyTheme(box, el);
     layer.append(box);
     const chip = document.createElement("div");
     chip.className = "chip";
-    chip.textContent = `${violationFieldLabel(field)}: ${items.map((i) => i.message).join(" ")}`;
+    chip.append(stateGlyph(state), document.createTextNode(`${STATES[state].label} · ${violationFieldLabel(field)}: ${items.map((i) => i.message).join(" ")}`));
     layer.append(chip);
     badBoxes.push({ el, box, chip });
     place(box, el, 3);

@@ -12,6 +12,10 @@
   "side_panel": { "default_path": "sidepanel.html" },
   "action": { "default_title": "Open GuideRail" },
   "commands": {
+    "toggle-voice": {
+      "suggested_key": { "default": "Alt+Shift+V" },
+      "description": "Toggle spoken replies"
+    },
     "_execute_action": {
       "suggested_key": { "default": "Ctrl+Shift+K", "mac": "Command+Shift+K" },
       "description": "Open GuideRail"
