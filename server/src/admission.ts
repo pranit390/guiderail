@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 const MINUTE = 60_000;
-export const DAILY_LIVE_MS = 3 * MINUTE;
+export const DAILY_LIVE_MS = 5 * MINUTE;
 export const SESSION_MS = 10 * MINUTE;
 
 type Admission = { allowed: true; release: () => void } | { allowed: false; message: string };

@@ -7,51 +7,151 @@ import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { PUBLIC_DOCS } from "./document.ts";
 
 const audio = vi.hoisted(() => ({ setMuted:vi.fn(), play:vi.fn(), beginTurn:vi.fn(), turnEnded:vi.fn(), interrupt:vi.fn() }));
-vi.mock("./audio.ts", () => ({ Mic: class {}, Speaker: class {
-  setMuted = audio.setMuted; play = audio.play; beginTurn = audio.beginTurn; turnEnded = audio.turnEnded; interrupt = audio.interrupt;
-} }));
+const mic = vi.hoisted(() => ({ onChunk: undefined as ((data: string) => void) | undefined }));
+vi.mock("./audio.ts", () => ({
+  Mic: class { async start(onChunk: (data: string) => void) { mic.onChunk = onChunk; } stop() {} },
+  Speaker: class {
+    setMuted = audio.setMuted; play = audio.play; beginTurn = audio.beginTurn; turnEnded = audio.turnEnded; interrupt = audio.interrupt;
+  },
+}));
+vi.mock("./config.ts", () => ({ HTTP: "https://coach.example", SERVER: "wss://coach.example", SERVER_HOST: "coach.example" }));
 let savedVoice: boolean | undefined;
 const storageSet = vi.fn().mockImplementation(async (value: { voiceOut:boolean }) => { savedVoice = value.voiceOut; });
 
 class Socket {
   static OPEN = 1;
   readyState = Socket.OPEN;
-  onmessage: ((event: { data: string }) => Promise<void>) | undefined;
+  onmessage: ((event: { data: string }) => void) | undefined;
   onclose: (() => void) | undefined;
+  onerror: (() => void) | undefined;
   send = vi.fn();
   close = vi.fn(() => { this.readyState = 3; this.onclose?.(); });
-  constructor(public url: string) { sockets.push(this); }
+  constructor(readonly url: string) { sockets.push(this); }
   get params() { return new URL(this.url).searchParams; }
+  receive(msg: object) { this.onmessage?.({ data: JSON.stringify(msg) }); }
 }
 let sockets: Socket[];
 const sendMessage = vi.fn().mockResolvedValue({ ok: true });
 const queryTabs = vi.fn();
 const getTab = vi.fn();
 const session = { set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) };
+const fetchMock = vi.fn(async (url: string): Promise<{ ok: boolean; json: () => Promise<unknown> }> => url.endsWith("/session")
+  ? { ok: true, json: async () => ({ credential: "one-use" }) }
+  : { ok: true, json: async () => ({ rules: [] }) });
+const sessionRequests = () => fetchMock.mock.calls.filter(([url]) => url.endsWith("/session")).length;
+const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
+const status = () => $("#status").lastChild?.textContent;
+const sent = (socket: Socket) => socket.send.mock.calls.map(([raw]) => JSON.parse(raw));
+
+function type(text: string) {
+  $<HTMLInputElement>("#text").value = text;
+  $<HTMLFormElement>("#form").dispatchEvent(new Event("submit", { cancelable: true }));
+}
+
+async function connected() {
+  type("hello");
+  await vi.waitFor(() => expect(sockets).toHaveLength(1));
+  sockets[0].receive({ type: "ready" });
+  sockets[0].send.mockClear();
+  return sockets[0];
+}
 
 beforeEach(async () => {
   vi.resetModules();
   sockets = [];
+  mic.onChunk = undefined;
+  sendMessage.mockReset().mockResolvedValue({ ok: true });
   storageSet.mockClear();
   Object.values(audio).forEach((mock) => mock.mockClear());
-  sendMessage.mockReset().mockResolvedValue({ ok: true });
+  fetchMock.mockClear();
   getTab.mockReset().mockResolvedValue({ id: 1 });
   queryTabs.mockReset().mockResolvedValue([{ id: 1 }]);
   document.body.innerHTML = readFileSync("public/sidepanel.html", "utf8")
     .replace(/<head>[\s\S]*?<\/head>/, "").replace(/<script[\s\S]*?<\/script>/g, "");
   vi.stubGlobal("WebSocket", Socket);
-  vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ rules: [] }) }));
+  vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("chrome", {
-    storage: { local: { get:vi.fn().mockImplementation(async () => ({ voiceOut:savedVoice })), set:storageSet }, session },
     identity: { AccountStatus: { ANY: "ANY" }, getProfileUserInfo: vi.fn().mockResolvedValue({}) },
-    runtime: { onMessage: { addListener: vi.fn() } },
-    tabs: { query: queryTabs, get: getTab, sendMessage },
+    runtime: { onMessage: { addListener: vi.fn() }, getURL: (path: string) => path },
+    storage: {
+      local: { get:vi.fn().mockImplementation(async () => ({ voiceOut:savedVoice })), set:storageSet },
+      session,
+    },
+    tabs: { query: queryTabs, get: getTab, sendMessage, create: vi.fn() },
   });
   await import("./sidepanel.ts");
-  await vi.waitFor(() => expect(sockets).toHaveLength(1));
+  await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("https://coach.example/rules"));
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("lazy Live connection", () => {
+  it("does not request a session or open a socket when the panel opens", async () => {
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sessionRequests()).toBe(0);
+    expect(sockets).toHaveLength(0);
+    expect(status()).toBe("Type or press Talk to connect to coach.example");
+  });
+
+  it("connects on the first typed message and delivers it once the relay is ready", async () => {
+    type("where are labels?");
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(sessionRequests()).toBe(1);
+    expect(sockets[0].url).toContain("credential=one-use");
+    expect(sockets[0].send).not.toHaveBeenCalled();
+    sockets[0].receive({ type: "ready" });
+    expect(status()).toBe("Connected to coach.example");
+    expect(sent(sockets[0])).toEqual([{ type: "text", text: "where are labels?" }]);
+  });
+
+  it("connects on Talk and delivers the first speech once the relay is ready", async () => {
+    $<HTMLButtonElement>("#talk").click();
+    await vi.waitFor(() => expect(mic.onChunk).toBeDefined());
+    mic.onChunk!("AAAA");
+    mic.onChunk!("BBBB");
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(sessionRequests()).toBe(1);
+    sockets[0].receive({ type: "ready" });
+    expect(sent(sockets[0])).toEqual([{ type: "audio", data: "AAAA" }, { type: "audio", data: "BBBB" }]);
+  });
+
+  it("switches between Teach and Guide without connecting", async () => {
+    const socket = await connected();
+    $<HTMLButtonElement>("#teach").click();
+    await vi.waitFor(() => expect(socket.close).toHaveBeenCalled());
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sockets).toHaveLength(1);
+    expect(sessionRequests()).toBe(1);
+    expect(status()).toBe("Type or press Talk to connect to coach.example");
+    type("why this region?");
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    expect(sockets[1].url).toContain("mode=teach");
+  });
+
+  it("stays disconnected after the relay closes until the next input", async () => {
+    const socket = await connected();
+    socket.receive({ type: "error", message: "Disconnected after one minute without activity." });
+    socket.onclose?.();
+    expect(status()).toBe("Disconnected. Type or press Talk to reconnect");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sockets).toHaveLength(1);
+    type("next step?");
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    sockets[1].receive({ type: "ready" });
+    expect(sent(sockets[1])).toContainEqual({ type: "text", text: "next step?" });
+  });
+
+  it("drops queued input when the coach is busy", async () => {
+    fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
+    type("hello");
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
+    expect(sockets).toHaveLength(0);
+    type("again");
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].receive({ type: "ready" });
+    expect(sent(sockets[0]).filter((m) => m.type === "text")).toEqual([{ type: "text", text: "again" }]);
+  });
+});
 
 describe("calmer panel paths", () => {
   it("announces Journey changes through one conversation live region and keeps the current Step outside it", () => {
@@ -61,29 +161,26 @@ describe("calmer panel paths", () => {
     expect(document.querySelector("#journey [aria-live], #journey [role=status]")).toBeNull();
   });
   it("applies and restores from the buttons without a microphone or model", async () => {
-    document.querySelector<HTMLButtonElement>("#calmer")!.click();
+    $<HTMLButtonElement>("#calmer").click();
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, { kind: "customize", preset: "calm" }));
-    document.querySelector<HTMLButtonElement>("#restore")!.click();
+    $<HTMLButtonElement>("#restore").click();
     await vi.waitFor(() => expect(sendMessage).toHaveBeenLastCalledWith(1, { kind: "customize", preset: null }));
+    expect(sockets).toHaveLength(0);
   });
 
   it.each(["calm", null])("routes the Live model's customize call for %s and replies", async (preset) => {
-    sockets[0].onmessage?.({ data: JSON.stringify({ type: "tool_call", id: "call-1", name: "customize", args: { preset } }) });
+    const socket = await connected();
+    socket.receive({ type: "tool_call", id: "call-1", name: "customize", args: { preset } });
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, { kind: "customize", preset }));
-    await vi.waitFor(() => expect(sockets[0].send).toHaveBeenCalledWith(JSON.stringify({ type: "tool_result", id: "call-1", name: "customize", response: { ok: true } })));
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalledWith(JSON.stringify({ type: "tool_result", id: "call-1", name: "customize", response: { ok: true } })));
   });
 
   it("rejects arbitrary model CSS before messaging the page", async () => {
-    sockets[0].onmessage?.({ data: JSON.stringify({ type: "tool_call", id: "bad", name: "customize", args: { preset: "body{display:none}" } }) });
-    await vi.waitFor(() => expect(sockets[0].send).toHaveBeenCalled());
+    const socket = await connected();
+    socket.receive({ type: "tool_call", id: "bad", name: "customize", args: { preset: "body{display:none}" } });
+    await vi.waitFor(() => expect(socket.send).toHaveBeenCalled());
     expect(sendMessage).not.toHaveBeenCalled();
-    expect(JSON.parse(sockets[0].send.mock.calls[0][0]).response.error).toContain("Choose preset");
-  });
-
-  it("leaves typed requests available without starting the microphone", () => {
-    document.querySelector<HTMLInputElement>("#text")!.value = "make it calmer";
-    document.querySelector<HTMLFormElement>("#form")!.dispatchEvent(new Event("submit", { cancelable: true }));
-    expect(sockets[0].send).toHaveBeenCalledWith(JSON.stringify({ type: "text", text: "make it calmer" }));
+    expect(sent(socket)[0].response.error).toContain("Choose preset");
   });
 });
 
@@ -91,6 +188,7 @@ function receive(message: object) { sockets[0].onmessage?.({ data:JSON.stringify
 describe("spoken replies", () => {
   afterEach(() => { savedVoice = undefined; });
   it("defaults on, mutes independently of input, persists off and keeps captions", async () => {
+    await connected();
     const voice = document.querySelector<HTMLButtonElement>("#voice")!;
     expect(voice.getAttribute("aria-pressed")).toBe("true");
     voice.click();
@@ -109,7 +207,8 @@ describe("spoken replies", () => {
     savedVoice = false;
     vi.resetModules();
     await import("./sidepanel.ts");
-    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url.endsWith("/rules"))).toHaveLength(2));
+    expect(sockets).toHaveLength(0);
     expect(audio.setMuted).toHaveBeenLastCalledWith(true);
     expect(document.querySelector("#voice")!.getAttribute("aria-pressed")).toBe("false");
   });
@@ -338,11 +437,12 @@ describe("highlight wiring", () => {
   const logText = () => document.querySelector("#log")!.textContent ?? "";
   const highlights = () => sendMessage.mock.calls.filter(([, msg]) => msg.kind === "highlight");
 
-  beforeEach(() => {
+  beforeEach(async () => {
     sendMessage.mockImplementation(async (_tab: number, msg: { kind: string; index?: number; name?: string }) =>
       msg.kind === "read_page" ? snapshot
         : msg.kind === "highlight" ? { found: true, i: msg.index, name: msg.name, confidence: 1 }
           : { ok: true });
+    await connected();
   });
 
   it("asks which Save, pins a unique target to the read, and refuses after the page moves on", async () => {
@@ -390,6 +490,7 @@ describe("indistinguishable Saves", () => {
       msg.kind === "read_page"
         ? { url: "http://127.0.0.1/same-save", title: "Same Save", generation: 3, elements: [{ i: 1, role: "button", name: "Save" }, { i: 2, role: "button", name: "Save" }] }
         : { ok: true });
+    await connected();
     const call = async (id: string, name: string, args: Record<string, unknown>) => {
       sockets[0].onmessage?.({ data: JSON.stringify({ type: "tool_call", id, name, args }) });
       let result: any;
@@ -427,6 +528,7 @@ describe("duplicate-Save sandbox end to end", () => {
     await import("./content.ts");
     const page = chrome.runtime.onMessage.addListener.mock.calls[1][0];
     sendMessage.mockImplementation((_tab: number, msg: unknown) => new Promise((resolve) => page(msg, {}, resolve)));
+    await connected();
   });
 
   afterEach(() => { (globalThis as any).chrome.runtime.id = ""; });
