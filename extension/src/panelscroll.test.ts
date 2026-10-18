@@ -215,7 +215,7 @@ describe("PanelScroll reveal while the coach streams", () => {
     expect(issues.scrollIntoView).toHaveBeenCalledTimes(3);
     expect(issues.scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", behavior: "smooth" });
 
-    scroll.scrollTop = maxTop();
+    scroll.scrollTop = logHeight();
     scroll.dispatchEvent(new Event("scrollend"));
     const cardAt = cardTop();
     panel.append(line());
@@ -268,21 +268,36 @@ describe("PanelScroll reveal while the coach streams", () => {
   it.each([false, true])("keeps the card in view when the viewport shrinks during a reveal (reduced motion: %s)", (still) => {
     reduced = still;
     scroll.scrollTop = logHeight() - VIEW;
+    issues.scrollIntoView = vi.fn(() => (scroll.scrollTop = logHeight()));
     violate("Test mode lets anyone read your data");
+    scroll.dispatchEvent(new Event("scrollend"));
     viewBottom = 70;
+    log.getBoundingClientRect = () => ({ top: 30 - top, bottom: logHeight() + 30 - top }) as DOMRect;
+    issues.getBoundingClientRect = () => ({ top: logHeight() + 30 - top, bottom: logHeight() + 130 - top }) as DOMRect;
     resized();
     expect(issues.scrollIntoView).toHaveBeenCalledTimes(2);
     expect(issues.scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", behavior: still ? "auto" : "smooth" });
   });
 
-  it("leaves the viewport alone on resize once the reveal is over or the reader has taken over", () => {
+  it("finishes a reveal cut short by layout when its scroll ends", () => {
+    violate("Test mode lets anyone read your data");
+    scroll.dispatchEvent(new Event("scrollend"));
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(2);
+    scroll.scrollTop = logHeight();
+    scroll.dispatchEvent(new Event("scrollend"));
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(2);
+  });
+
+  it("leaves the viewport alone on resize once the reader has taken over or the log has moved on", () => {
     violate("Test mode lets anyone read your data");
     scroll.dispatchEvent(new Event("wheel"));
     viewBottom = 70;
     resized();
     viewBottom = VIEW;
     violate("Test mode lets anyone read your data", "Pick a location");
+    scroll.scrollTop = logHeight();
     scroll.dispatchEvent(new Event("scrollend"));
+    panel.append(line());
     viewBottom = 70;
     resized();
     expect(issues.scrollIntoView).toHaveBeenCalledTimes(2);

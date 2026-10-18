@@ -4,7 +4,7 @@ const shown = (el: HTMLElement) => (el.hidden ? "" : el.textContent ?? "");
 export class PanelScroll {
   // Cards changed while the person was typing or reading history, oldest first.
   private pending = new Map<HTMLElement, () => string>();
-  // The card a reveal is bringing into view, until that scroll ends or the card is hidden or settled in view.
+  // The card a reveal is keeping in view, until the reader scrolls, or the card is hidden or settled in view as the log grows.
   private revealing: HTMLElement | null = null;
 
   constructor(
@@ -18,7 +18,7 @@ export class PanelScroll {
       if (card) this.reveal(card);
     });
     scroll.addEventListener("scrollend", () => {
-      this.revealing = null;
+      if (this.revealing && !this.settled(this.revealing)) this.scrollTo(this.revealing);
       for (const card of this.pending.keys()) if (this.settled(card)) this.pending.delete(card);
       this.showChip();
     });
