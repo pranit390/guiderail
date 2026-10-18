@@ -82,7 +82,7 @@ shadow.innerHTML = `<style>
   @keyframes gr-breathe { 50% { opacity:1; } }
   .bad.stop { outline-color:var(--gr-bad); box-shadow:0 0 0 7px color-mix(in srgb,var(--gr-bad) 12%,transparent); animation:gr-settle 320ms cubic-bezier(.3,1.35,.5,1); }
   .bad.check { outline:2px dashed var(--gr-check); }
-  .bad.check::after { --gr-halo:rgba(255,179,107,.3); animation:gr-breathe 1400ms ease-in-out 2; }
+  .bad.check::after { --gr-halo:rgba(255,210,63,.3); animation:gr-breathe 1400ms ease-in-out 2; }
   @keyframes gr-settle { from { opacity:0; transform:scale(1.04); } }
   .cue { position:fixed; left:50%; transform:translateX(-50%); background:#16211c; color:#fff; font:600 12px/1.3 system-ui,sans-serif; padding:4px 10px; border-radius:999px; border:2px solid var(--gr-edge); }
   .cue.above { top:12px; } .cue.below { bottom:12px; }

@@ -1,7 +1,7 @@
 /** The three guiding states. Stop is reserved for a blocking Rule. */
 export const STATES = {
   go: { light: "#0f7a4a", dark: "#5fe0a8", label: "Here", glyph: "✓", shape: "circle", line: "solid" },
-  check: { light: "#9a5200", dark: "#ffb36b", label: "Check", glyph: "!", shape: "diamond", line: "dashed" },
+  check: { light: "#7a5c00", dark: "#ffd23f", label: "Check", glyph: "!", shape: "diamond", line: "dashed" },
   stop: { light: "#c5221f", dark: "#ff7a70", label: "Rule", glyph: "×", shape: "octagon", line: "solid" },
 } as const;
 export type GuidingState = keyof typeof STATES;

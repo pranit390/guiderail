@@ -27,7 +27,7 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 
 Use **Voice on / Voice off** beside the input (or **Alt+Shift+V**) to toggle spoken replies. Voice is on by default and your choice survives panel reloads. Turning it off fades current playback; chat captions keep arriving and microphone input remains independent. Turning it back on during a reply takes effect on the next reply.
 
-Green means Here / Done, amber means Check / Suggested / Recording, and red marks only blocking Rule Violations. Shapes, line patterns and labels carry the same meaning without colour. Reduced motion keeps these states static. See [the design contract](DESIGN.md) for tokens and motion.
+Green means Here / Done, yellow means Check / Suggested / Recording, and red marks only blocking Rule Violations. Shapes, line patterns and labels carry the same meaning without colour. Reduced motion keeps these states static. See [the design contract](DESIGN.md) for tokens and motion.
 
 ## Google stack
 

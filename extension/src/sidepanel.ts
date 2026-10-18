@@ -1,5 +1,5 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
-import { stateGlyph, violationState } from "./states.ts";
+import { STATES, stateGlyph, violationState } from "./states.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
@@ -287,7 +287,7 @@ async function updateViolations(form: FormState) {
       const state = violationState(v.severity);
       const field = document.createElement("span");
       field.className = "field";
-      field.append(stateGlyph(state), document.createTextNode(`${state === "stop" ? "Rule" : "Check"} · ${violationFieldLabel(v.field)}`));
+      field.append(stateGlyph(state), document.createTextNode(`${STATES[state].label} · ${violationFieldLabel(v.field)}`));
       const msg = document.createElement("span");
       msg.className = "rule-msg";
       msg.textContent = v.message;

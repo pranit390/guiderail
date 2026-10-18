@@ -4,7 +4,7 @@ The authorized creative report (18 October 2026) is the visual contract. Preserv
 
 ## Tokens and contrast
 
-Light: background #f4f7f5, surface #ffffff, secondary #eef2ef, separator #dde4df, control #7d8a83, ink #16211c, muted #56635c. Go #0f7a4a / tint #e3f6ec; Check #9a5200 / tint #fff1e0; Stop #c5221f / tint #fde8e6. Dark: background #0d1110, surface #141a18, secondary #1a2220, separator #2a3530, control #5d6f66, ink #e9efe9, muted #9aa79f. Go #5fe0a8 / tint #133528; Check #ffb36b / tint #3a2a17; Stop #ff7a70 / tint #3a1a17. Bright green is a decorative halo on light pages. Light state ink exceeds 4.5:1 on white, Google grey #f1f3f4 and selection blue #e8f0fe. Page cues sample their own surroundings; controls never receive an opaque overlay fill.
+Light: background #f4f7f5, surface #ffffff, secondary #eef2ef, separator #dde4df, control #7d8a83, ink #16211c, muted #56635c. Go #0f7a4a / tint #e3f6ec; Check #7a5c00 / tint #fff6d6; Stop #c5221f / tint #fde8e6. Dark: background #0d1110, surface #141a18, secondary #1a2220, separator #2a3530, control #5d6f66, ink #e9efe9, muted #9aa79f. Go #5fe0a8 / tint #133528; Check #ffd23f / tint #3a3212; Stop #ff7a70 / tint #3a1a17. Bright green is a decorative halo on light pages. Light state ink exceeds 4.5:1 on white, Google grey #f1f3f4 and selection blue #e8f0fe. Page cues sample their own surroundings; controls never receive an opaque overlay fill.
 
 ## Typography and geometry
 
