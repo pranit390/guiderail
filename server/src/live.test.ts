@@ -47,7 +47,8 @@ afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe("Live voice setup", () => {
   it.each([
-    { override: undefined, expected: "Aoede" },
+    { override: undefined, expected: "Erinome" },
+    { override: "", expected: "Erinome" },
     { override: "Kore", expected: "Kore" },
   ])("uses $expected with LIVE_VOICE=$override", async ({ override, expected }) => {
     vi.stubEnv("LIVE_VOICE", override);

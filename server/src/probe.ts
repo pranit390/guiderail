@@ -1,6 +1,7 @@
 // One-off check that Vertex Live connects, calls a tool and answers with audio.
 // Run: npm run probe -w server
 import { GoogleGenAI, Modality, type LiveServerMessage } from "@google/genai";
+import { liveSpeechConfig } from "./live-voice.ts";
 
 const project = process.env.GOOGLE_CLOUD_PROJECT ?? "zoop-innovation";
 const location = process.env.GOOGLE_CLOUD_LOCATION ?? "us-central1";
@@ -16,7 +17,7 @@ const session = await ai.live.connect({
   model,
   config: {
     responseModalities: [Modality.AUDIO],
-    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.LIVE_VOICE ?? "Aoede" } } },
+    speechConfig: liveSpeechConfig(),
     outputAudioTranscription: {},
     systemInstruction: "You guide users through web UIs. Always call read_page before answering where something is.",
     tools: [{ functionDeclarations: [{ name: "read_page", description: "List the interactive elements on the current page." }] }],
