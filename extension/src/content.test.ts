@@ -155,5 +155,23 @@ describe("calmer content messages", () => {
     (value as HTMLInputElement).focus();
     vi.advanceTimersByTime(20);
     expect(chip.hidden).toBe(false);
+    expect(parseFloat(chip.style.top)).toBeCloseTo(94 - chip.offsetHeight);
+
+    const over = document.createElement("input");
+    over.setAttribute("aria-label", "Over");
+    under.after(over);
+    blockers.Over = new DOMRect(40, 40, 400, 60);
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(true);
+  });
+
+  it("narrows a Rule chip to the room beside its field so it can sit there", () => {
+    vi.stubGlobal("innerWidth", 520);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 280, 60));
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip")!;
+    vi.advanceTimersByTime(20);
+    expect(chip.style.maxWidth).toBe("174px");
+    expect(chip.style.left).toBe("328px");
   });
 });

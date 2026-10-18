@@ -128,17 +128,21 @@ function placeChip(chip: HTMLElement, el: Element) {
   chip.hidden = !!offscreen(el);
   if (chip.hidden) return;
   const r = el.getBoundingClientRect();
-  const w = chip.offsetWidth, h = chip.offsetHeight;
   const rtl = getComputedStyle(el).direction === "rtl";
+  // Narrow the chip to the room beside the field (gap 8px, margin 4px, padding 14px) so it can sit there.
+  const room = (rtl ? r.left : window.innerWidth - r.right) - 26;
+  chip.style.maxWidth = `${room >= 120 ? Math.min(260, room) : 260}px`;
+  const w = chip.offsetWidth, h = chip.offsetHeight;
   // Beside the field at its inline end, vertically centred; else just below it. Never over another form control.
   const beside = new DOMRect(rtl ? r.left - 8 - w : r.right + 8, r.top + (r.height - h) / 2, w, h);
   const belowLeft = Math.min(window.innerWidth - w - 4, Math.max(4, rtl ? r.left : r.right - w));
   const below = new DOMRect(belowLeft, r.bottom + 6, w, h);
-  const spot = [beside, below].find((s) => fitsViewport(s) && !coversControl(s, el));
-  // No free spot: show the chip only while its field is focused, below the field.
-  if (!spot && !el.contains(document.activeElement)) { chip.hidden = true; return; }
-  const { left, top } = spot ?? below;
-  Object.assign(chip.style, { left: `${left}px`, top: `${top}px` });
+  // No free spot beside or below: only the focused field's chip may also try just above it.
+  const spots = el.contains(document.activeElement) ? [beside, below, new DOMRect(belowLeft, r.top - 6 - h, w, h)] : [beside, below];
+  const spot = spots.find((s) => fitsViewport(s) && !coversControl(s, el));
+  // Still no free spot: keep the chip hidden; the panel row carries the Rule message.
+  if (!spot) { chip.hidden = true; return; }
+  Object.assign(chip.style, { left: `${spot.left}px`, top: `${spot.top}px` });
 }
 
 function fitsViewport(s: DOMRect) {
