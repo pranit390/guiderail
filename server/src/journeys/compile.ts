@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from "@google/genai";
 import { CompileError, FIRESTORE_GOAL, STEP_CONTROLS, parseCompiledJourney, parseJourneyDraft, type CompileResult } from "../../../shared/journey.ts";
-import { journeyStore, type JourneyStore } from "./store.ts";
+import type { JourneyStore } from "./store.ts";
+import { journeyStore } from "../storage.ts";
 
 export const compilePrompt = `Compile vendor documentation for Goal ${FIRESTORE_GOAL.id}, method firebase-console.
 Read these server-selected sources with URL context: ${FIRESTORE_GOAL.sourceUrls.join("\n")}.

@@ -5,20 +5,20 @@ import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
 import { CompileError, parseCompileRequest } from "../../shared/journey.ts";
 import { journeyCompiler, CompileBusyError, CompileDisabledError } from "./journeys/compile.ts";
-import { draftPlaybook, DraftError, isRule } from "./playbooks/draft.ts";
+import { draftPlaybook, DraftError, parsePlaybook } from "./playbooks/draft.ts";
 import { isAllowedOrigin } from "./origin.ts";
 import { LiveAdmission, SessionTickets } from "./admission.ts";
 import { DAILY_LIVE_MS, IDLE_MS, SESSION_MS } from "./live-limits.ts";
-import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
+import { playbookStore, ruleStore } from "./storage.ts";
+import { loadPlaybooks } from "./playbooks/load.ts";
 import { approvals, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
 import { authMode, authorize, tokenFromProtocols, WS_PROTOCOL } from "./auth.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOT = join(import.meta.dirname, "..", "..");
 const SANDBOX = join(ROOT, "sandbox");
-export const playbookStore = new FilePlaybookStore(join(ROOT, "data", "playbooks"));
-export const ruleStore = new FileRuleStore(join(ROOT, "data", "rules"));
+export { playbookStore, ruleStore };
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
 const LANDING = `<!doctype html>
@@ -165,21 +165,19 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     const body = (await readJson(req)) as { draft?: Partial<PlaybookDraft>; ruleIds?: unknown } | undefined;
     const d = body?.draft;
     if (!d || typeof d !== "object") return json(res, 400, { error: "Send the draft to publish." });
-    if (!isSafeId(d.id)) return json(res, 400, { error: "The draft id must be lowercase letters, numbers and dashes." });
-    if (typeof d.title !== "string" || typeof d.markdown !== "string" || !d.markdown) {
-      return json(res, 400, { error: "The draft needs a title and markdown." });
-    }
-    if (!Array.isArray(d.appliesTo) || !Array.isArray(d.goals) || !Array.isArray(d.suggestedRules)) {
-      return json(res, 400, { error: "The draft needs appliesTo, goals and suggestedRules arrays." });
+    let draft: PlaybookDraft;
+    try { draft = parsePlaybook(d); }
+    catch (err) {
+      if (!(err instanceof DraftError)) throw err;
+      return json(res, 400, { error: err.message });
     }
     if (body?.ruleIds !== undefined && !(Array.isArray(body.ruleIds) && body.ruleIds.every((x) => typeof x === "string"))) {
       return json(res, 400, { error: "ruleIds must be an array of strings." });
     }
-    const draft = d as PlaybookDraft;
     const keep = new Set((body?.ruleIds as string[] | undefined) ?? []);
     try {
-      await playbookStore.publish(draft);
-      await ruleStore.replace(draft.id, draft.suggestedRules.filter((r) => isRule(r) && keep.has(r.id)));
+      await playbookStore.publish(draft, uid);
+      await ruleStore.replace(draft.id, draft.suggestedRules.filter((r) => keep.has(r.id)), uid);
     } catch (err) {
       return json(res, 500, { error: (err as Error).message });
     }
@@ -187,7 +185,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   }
 
   if (url.pathname === "/playbooks" && req.method === "GET") {
-    return json(res, 200, { playbooks: await playbookStore.list() });
+    return json(res, 200, { playbooks: await loadPlaybooks() });
   }
 
   if (url.pathname === "/role") {
