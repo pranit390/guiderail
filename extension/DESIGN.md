@@ -36,7 +36,7 @@ Existing 1px line borders, surface backgrounds, 8px card and 6px control radii.
 No new shadows or decorative layers.
 
 ## 8. Accessibility constraints and scope
-Status changes inherit the conversation live region. Current Step uses aria-current=step. Keep source
+Journey status uses its own status region; completed replies use a separate status region so transcript fragments stay quiet. Current Step uses aria-current=step. Keep source
 headings and prerequisites visible and preserve focus while status updates.
 This task extends the existing component vocabulary; global panel redesign and
 its separate acceptance backlog remain outside this Journey slice.

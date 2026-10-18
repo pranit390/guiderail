@@ -13,6 +13,10 @@
     <button id="teach" type="button" aria-pressed="false" title="Show GuideRail how your team does a task">Teach</button>
     <span id="status" role="status" data-state="idle"></span>
   </header>
+  <section id="server-banner" class="card recovery" hidden aria-label="Server connection">
+    <p id="server-message" role="status" aria-atomic="true"></p>
+    <button id="server-retry" type="button">Retry connection</button>
+  </section>
   <main id="scroll" aria-label="Guidance and conversation" tabindex="0">
     <section id="signin" class="card" hidden aria-labelledby="signin-title">
       <h2 id="signin-title">Sign in to GuideRail</h2>
@@ -28,16 +32,22 @@
     </section>
     <section id="current-step" aria-label="Current Journey Step" hidden></section>
     <section id="assist" class="card" aria-label="Firestore assistance"></section>
-    <div id="log" aria-live="polite">
+    <p id="reply-status" class="sr-only" role="status" aria-atomic="true"></p>
+    <div id="log">
       <section id="journey" class="card"></section>
       <p class="msg system">Open a Google page, press Talk (or type), and say what you want to do.</p>
     </div>
     <section id="guidance" class="card" hidden></section>
     <section id="issues" class="card" hidden aria-label="Policy issues">
+      <p id="policy-override" role="alert" hidden></p>
       <h2 id="issues-summary" role="status" aria-live="polite"></h2>
       <ul id="issues-list"></ul>
     </section>
     <section id="firestore-guidance" class="card" hidden aria-label="Firestore guidance"></section>
+    <section id="teach-failed" class="card recovery" hidden>
+      <p id="teach-error" role="status"></p>
+      <button id="teach-retry" type="button">Retry draft</button>
+    </section>
     <section id="teachbar" class="card" hidden>
       <p><span class="rec state-glyph check" aria-hidden="true"><span>!</span></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
       <button id="teachstop" type="button">Stop and draft Playbook</button>

@@ -84,6 +84,15 @@ describe("approved Database ID pin", () => {
 });
 
 describe("calmer content messages", () => {
+  it("announces a soft guard override without changing the second-click behavior", () => {
+    request({ kind: "show_violations", violations: [{ field: "Labels", message: "Add owner", severity: "block" }] });
+    const button = document.querySelector("button")!;
+    const click = () => button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    expect(click()).toBe(false);
+    const notice = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector('[role="alert"]');
+    expect(notice?.textContent).toContain("Click again to continue anyway");
+    expect(click()).toBe(true);
+  });
   it("places the pointer inside a wizard top layer and returns it to the page", () => {
     const surface = document.createElement("dialog");
     surface.setAttribute("open", "");

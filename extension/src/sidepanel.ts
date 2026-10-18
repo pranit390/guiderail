@@ -289,6 +289,7 @@ let open: { role: string; el: HTMLElement } | null = null;
 
 function say(role: "user" | "model" | "system" | "step" | "alert", text: string) {
   const standalone = role === "system" || role === "step" || role === "alert";
+  if (role === "system" || role === "step") $("#reply-status").textContent = text;
   if (open && open.role === role && !standalone) {
     open.el.textContent += text;
   } else {
@@ -305,9 +306,25 @@ function say(role: "user" | "model" | "system" | "step" | "alert", text: string)
 // ---------- Connection to the relay ----------
 
 const IDLE_STATUS = `Type or press Talk to connect to ${SERVER_HOST}`;
+let retryTimer: ReturnType<typeof setTimeout> | undefined;
+let retries = 0;
+const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000];
+
+function connectionLost(text: string, retry = true) {
+  disconnect(text);
+  $("#server-banner").hidden = false;
+  const delay = retry ? RETRY_DELAYS[retries++] : undefined;
+  $("#server-message").textContent = `${text}. Unsent text stays in the box; press Send after reconnecting.${delay ? ` Retrying in ${delay / 1000} seconds…` : " Retry when you're ready."}`;
+  if (delay) retryTimer = setTimeout(() => { void connect(); }, delay);
+}
+
+$("#server-retry").addEventListener("click", () => { retries = 0; void connect(); });
+window.addEventListener("pagehide", () => disconnect(IDLE_STATUS, "idle"));
 
 async function connect() {
   if (signedOut) return;
+  clearTimeout(retryTimer);
+  if (!$("#server-banner").hidden) $("#server-message").textContent = `Connecting to ${SERVER_HOST}… Unsent text stays in the box.`;
   restartPending = false;
   const attempt = ++connectionAttempt;
   const previous = ws;
@@ -324,12 +341,16 @@ async function connect() {
   try {
     const response = await authFetch(`${HTTP}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const body = await response.json();
-    if (!response.ok || typeof body.credential !== "string") throw new Error(body.error ?? "Session admission failed.");
+    if (!response.ok || typeof body.credential !== "string") {
+      if (attempt === connectionAttempt) connectionLost(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`, false);
+      say("system", body.error ?? "Session admission failed.");
+      return;
+    }
     credential = body.credential;
   } catch (error) {
     // A rejected sign-in has already shown the form and closed this attempt.
     if (attempt !== connectionAttempt || error instanceof AuthError) return;
-    disconnect(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`);
+    connectionLost(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`);
     say("system", error instanceof Error ? error.message : "Session admission failed.");
     return;
   }
@@ -345,13 +366,15 @@ async function connect() {
     if (msg.type === "ready") onReady();
     void onServer(msg);
   };
-  sock.onclose = () => { if (ws === sock) disconnect("Disconnected. Type or press Talk to reconnect"); };
-  sock.onerror = () => { if (ws === sock) setStatus(`Can't reach ${SERVER_HOST}`, "off"); };
+  sock.onclose = () => { if (ws === sock) connectionLost("Disconnected. Type or press Talk to reconnect"); };
+  sock.onerror = () => { if (ws === sock) connectionLost(`Can't reach ${SERVER_HOST}`); };
 }
 
 function onReady() {
   ready = true;
   connecting = false;
+  retries = 0;
+  $("#server-banner").hidden = true;
   setStatus(`Connected to ${SERVER_HOST}`, "on");
   const summary = memory.summary();
   if (summary) sendServer({ type: "session", text: summary });
@@ -362,6 +385,7 @@ function onReady() {
   for (const { raw, remember, composerText } of queued) {
     ws?.send(raw);
     if (remember) memory.add(...remember);
+    if (composerText !== undefined) deliveredText(composerText);
     if (composerText !== undefined && input.value === composerText) input.value = "";
   }
   input.readOnly = false;
@@ -370,6 +394,8 @@ function onReady() {
 // Closes the Live connection without opening another; the next typed message or Talk press reconnects.
 function disconnect(text: string, state: "off" | "idle" = "off") {
   assist.stop("Connection ended. Assist stopped.");
+  clearTimeout(retryTimer);
+  $("#server-banner").hidden = true;
   connectionAttempt++;
   const sock = ws;
   ws = undefined;
@@ -397,11 +423,18 @@ function sendServer(msg: object) {
   return true;
 }
 
+function deliveredText(text: string) {
+  say("user", text);
+  open = null;
+  lastSent = { text, at: Date.now() };
+}
+
 // User input: delivered now, or kept and delivered once the connection it opens is ready.
 function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }, remember?: [Entry["kind"], string], composerText?: string) {
   if (signedOut) return;
   if (sendServer(msg)) {
     if (remember) memory.add(...remember);
+    if (composerText !== undefined) deliveredText(composerText);
     if (composerText !== undefined && input.value === composerText) input.value = "";
     return;
   }
@@ -423,6 +456,7 @@ async function onServer(msg: any) {
       break;
     case "interrupted": speaker.interrupt(); speaker.turnEnded(); held.audio = []; break;
     case "transcript":
+      if (msg.role === "model" && !turnText.model) $("#reply-status").textContent = "";
       teach?.heard(msg.role, msg.text);
       if (msg.role === "user" || mode !== "teach") turnText[msg.role as "user" | "model"] += msg.text;
       if (mode === "teach" && msg.role === "model") held.text += msg.text;
@@ -442,6 +476,7 @@ async function onServer(msg: any) {
       }
       memory.add("user", turnText.user);
       memory.add("model", turnText.model);
+      $("#reply-status").textContent = turnText.model;
       turnText = { user: "", model: "" };
       open = null;
       teach?.endTurn("user");
@@ -711,6 +746,7 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 async function updateViolations(form: FormState) {
   renderFirestoreGuidance($("#firestore-guidance"), form);
   violations = evaluate(rules, form);
+  if (!violations.some((v) => v.severity === "block")) $("#policy-override").hidden = true;
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations }).catch(() => undefined))?.shown ?? [];
   issues.hidden = violations.length === 0;
   const heading = $("#issues-summary");
@@ -820,6 +856,10 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       if (mode === "teach") break;
       void updateViolations(msg.form).then(() => {
         const blocking = violations.filter((v) => v.severity === "block");
+        if (blocking.length) {
+          $("#policy-override").textContent = `${violationCountText(summarizeViolations(violations))}. Review before ${msg.label}. This is a soft guard: a second click within 10 seconds continues anyway.`;
+          $("#policy-override").hidden = false;
+        }
         // The values let the model check what rules can't, e.g. a Region that doesn't fit the customer.
         const values = Object.entries(msg.form.fields).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(", ");
         const text = blocking.length
@@ -836,7 +876,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       });
       break;
     case "teach_event":
-      if (!teach) break;
+      if (!teach || mode !== "teach") break;
       teach.add(msg.event);
       $("#teachcount").textContent = String(teach.count);
       {
@@ -866,6 +906,7 @@ async function followTab(tabId: number) {
 
 async function setTeach(on: boolean) {
   assist.setEnabled(!on);
+  $("#teach-failed").hidden = true;
   if (on && binding.tabId !== undefined) journeyPanel.endJourney();
   mode = on ? "teach" : "guide";
   docsTabId = undefined;
@@ -874,6 +915,7 @@ async function setTeach(on: boolean) {
   disconnect(IDLE_STATUS, "idle");
   if (on) {
     violations = [];
+    $("#policy-override").hidden = true;
     issues.hidden = true;
     $("#firestore-guidance").hidden = true;
     $("#issues-list").replaceChildren();
@@ -924,8 +966,22 @@ $("#teachstop").addEventListener("click", async () => {
   try { await stopAndDraft(); } finally { drafting = false; }
 });
 
+$("#teach-retry").addEventListener("click", () => $("#teachstop").click());
+
+function draftFailed(message: string) {
+  $("#teachbar").hidden = true;
+  $("#teach-failed").hidden = false;
+  const count = pendingPayload?.events.length ?? 0;
+  $("#teach-error").textContent = count
+    ? `Recording stopped. Your ${count} steps are saved here. ${message}`
+    : "No steps recorded. Start a new recording with Teach.";
+  $<HTMLButtonElement>("#teach-retry").hidden = count === 0;
+  scroll.scrollTop = scroll.scrollHeight;
+}
+
 async function stopAndDraft() {
   if (!teach) return;
+  $("#teach-failed").hidden = true;
   if (!pendingPayload) {
     teach.endTurn("user");
     teach.endTurn("model");
@@ -939,26 +995,23 @@ async function stopAndDraft() {
     res = await authFetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
   } catch (error) {
     if (error instanceof AuthError) {
-      say("system", `${error.message} Your recording is kept; press "Stop and draft Playbook" after signing in.`);
-      $("#teachbar").hidden = false;
+      draftFailed(`${error.message} Sign in, then retry draft.`);
       return;
     }
-    say("system", `Couldn't reach ${SERVER_HOST}. Try drafting again.`);
-    $("#teachbar").hidden = false;
+    draftFailed("Couldn't reach the server. Retry draft.");
     return;
   }
   if (!res.ok) {
-    say("system", `Couldn't draft the Playbook: ${await errorText(res)}. Press "Stop and draft Playbook" to try again.`);
-    $("#teachbar").hidden = false;
+    draftFailed(`Couldn't draft the Playbook: ${await errorText(res)}. Retry draft.`);
     return;
   }
   let body: any;
   try { body = await res.json(); } catch {
-    say("system", `Couldn't draft the Playbook: ${res.statusText || "bad response"}. Press "Stop and draft Playbook" to try again.`);
-    $("#teachbar").hidden = false;
+    draftFailed("The server returned an unreadable draft. Retry draft.");
     return;
   }
   teach = null;
+  $("#teach-failed").hidden = true;
   pendingPayload = null;
   draft = body;
   $("#draftmd").textContent = draft.markdown;
@@ -1020,11 +1073,20 @@ $("#form").addEventListener("submit", (e) => {
     say("system", `This message is ${text.length} characters; the coach accepts up to ${RELAY_TEXT_LIMIT}. Shorten it and send again.`);
     return;
   }
-  say("user", text);
-  open = null;
-  lastSent = { text, at: Date.now() };
   sendInput({ type: "text", text }, ["user", text], text);
 });
+
+let micSetup: Promise<unknown> | undefined;
+function openMicSetup() {
+  return micSetup ??= (async () => {
+    const url = chrome.runtime.getURL("welcome.html");
+    const [existing] = await chrome.tabs.query({ url });
+    if (existing?.id !== undefined) {
+      await chrome.tabs.update(existing.id, { active: true });
+      if (existing.windowId !== undefined) await chrome.windows.update(existing.windowId, { focused: true });
+    } else await chrome.tabs.create({ url });
+  })().finally(() => { micSetup = undefined; });
+}
 
 async function startTalking() {
   try {
@@ -1034,8 +1096,8 @@ async function startTalking() {
     talk.textContent = "Stop";
     talk.dataset.on = "true";
   } catch {
-    say("system", "GuideRail needs the microphone. Opening the setup page.");
-    void chrome.tabs.create({ url: chrome.runtime.getURL("welcome.html") });
+    say("system", "Microphone is blocked. Allow it on the setup page; typing still works.");
+    await openMicSetup().catch(() => say("system", "Open GuideRail setup to allow the microphone. Typing still works."));
   }
 }
 

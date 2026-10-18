@@ -272,6 +272,7 @@ document.addEventListener("scroll", onViewportChange, true);
 function toast(text: string) {
   const t = document.createElement("div");
   t.className = "toast";
+  t.setAttribute("role", "alert");
   t.textContent = text;
   layer.append(t);
   setTimeout(() => t.remove(), 5000);

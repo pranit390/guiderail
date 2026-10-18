@@ -7,9 +7,9 @@ import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { PUBLIC_DOCS } from "./document.ts";
 
 const audio = vi.hoisted(() => ({ setMuted:vi.fn(), play:vi.fn(), beginTurn:vi.fn(), turnEnded:vi.fn(), interrupt:vi.fn() }));
-const mic = vi.hoisted(() => ({ onChunk: undefined as ((data: string) => void) | undefined }));
+const mic = vi.hoisted(() => ({ denied: false, onChunk: undefined as ((data: string) => void) | undefined }));
 vi.mock("./audio.ts", () => ({
-  Mic: class { async start(onChunk: (data: string) => void) { mic.onChunk = onChunk; } stop() {} },
+  Mic: class { async start(onChunk: (data: string) => void) { if (mic.denied) throw new Error("denied"); mic.onChunk = onChunk; } stop() {} },
   Speaker: class {
     setMuted = audio.setMuted; play = audio.play; beginTurn = audio.beginTurn; turnEnded = audio.turnEnded; interrupt = audio.interrupt;
   },
@@ -72,6 +72,7 @@ beforeEach(async () => {
   vi.resetModules();
   sockets = [];
   mic.onChunk = undefined;
+  mic.denied = false;
   policy.violations = [];
   sendMessage.mockReset().mockResolvedValue({ ok: true });
   storageSet.mockClear();
@@ -97,7 +98,108 @@ beforeEach(async () => {
   await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("https://coach.example/rules"));
 });
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  window.dispatchEvent(new Event("pagehide"));
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
+
+describe("audit recovery and announcements", () => {
+  it("keeps offline text out of delivered chat, retries connection, then requires Send", async () => {
+    type("  retain this exact draft  ");
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect(document.querySelector("#log .user")).toBeNull();
+    sockets[0].onerror?.();
+    sockets[0].onclose?.();
+    expect($("#server-banner").hidden).toBe(false);
+    expect($("#server-message").textContent).toContain("Can't reach coach.example");
+    expect($<HTMLInputElement>("#text").value).toBe("  retain this exact draft  ");
+    expect(document.querySelector("#log .user")).toBeNull();
+    $("#server-retry").click();
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    sockets[1].receive({ type: "ready" });
+    expect($("#server-banner").hidden).toBe(true);
+    expect(sent(sockets[1])).toEqual([]);
+    type($<HTMLInputElement>("#text").value);
+    expect(sent(sockets[1])).toEqual([{ type: "text", text: "  retain this exact draft  " }]);
+    expect(document.querySelector("#log .user")?.textContent).toBe("  retain this exact draft  ");
+    expect($<HTMLInputElement>("#text").value).toBe("");
+  });
+
+  it("backs off 2, 4, 8, 16, 30 seconds and stops after five automatic retries", async () => {
+    await connected();
+    vi.useFakeTimers();
+    for (const [index, delay] of [2000, 4000, 8000, 16000, 30000].entries()) {
+      sockets[index].onclose?.();
+      await vi.advanceTimersByTimeAsync(delay - 1);
+      expect(sockets).toHaveLength(index + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(sockets).toHaveLength(index + 2);
+    }
+    sockets[5].onclose?.();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(6);
+    expect($("#server-message").textContent).toContain("Retry when you're ready");
+  });
+
+  it("announces the completed reply once instead of streaming fragments", async () => {
+    const socket = await connected();
+    socket.receive({ type: "transcript", role: "model", text: "First " });
+    socket.receive({ type: "transcript", role: "model", text: "reply." });
+    expect($("#log").hasAttribute("aria-live")).toBe(false);
+    expect($("#reply-status").textContent).toBe("");
+    socket.receive({ type: "turn_complete" });
+    expect($("#reply-status").getAttribute("role")).toBe("status");
+    expect($("#reply-status").textContent).toBe("First reply.");
+  });
+
+  it.each([0, 2])("stops recording after a failed draft with %s captured steps", async (count) => {
+    $("#teach").click();
+    await vi.waitFor(() => expect($("#teachbar").hidden).toBe(false));
+    for (let i = 0; i < count; i++) page({ kind: "teach_event", event: { t: "navigate", at: Date.now(), url: `https://example.com/${i}`, title: `Page ${i}` } });
+    fetchMock.mockImplementation(async (url) => url.endsWith("/playbooks/draft")
+      ? { ok: false, json: async () => ({ error: "Draft rejected" }) } : defaultFetch(url));
+    $("#teachstop").click();
+    await vi.waitFor(() => expect($("#teach-failed").hidden).toBe(false));
+    expect($("#teachbar").hidden).toBe(true);
+    expect($("#teach").getAttribute("aria-pressed")).toBe("false");
+    expect($("#teach-error").textContent).toContain(count ? "Recording stopped. Your 2 steps are saved here" : "No steps recorded. Start a new recording");
+    expect($("#teach-retry").hidden).toBe(count === 0);
+    if (count) {
+      $("#teach-retry").click();
+      await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([url]) => url.endsWith("/playbooks/draft"))).toHaveLength(2));
+      expect($("#teachbar").hidden).toBe(true);
+    }
+  });
+
+  it("keeps a named override warning until blocking issues are cleared", async () => {
+    policy.violations = [{ ruleId: "owner", field: "Role", message: "Avoid Owner", severity: "block" }];
+    page({ kind: "submit_intent", label: "Save", form });
+    await vi.waitFor(() => expect($("#policy-override").hidden).toBe(false));
+    expect($("#policy-override").getAttribute("role")).toBe("alert");
+    expect($("#policy-override").textContent).toContain("Review before Save");
+    expect($("#policy-override").textContent).toContain("second click within 10 seconds");
+    policy.violations = [];
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect($("#policy-override").hidden).toBe(true));
+  });
+
+  it("reuses and focuses the single microphone setup tab after repeated denials", async () => {
+    mic.denied = true;
+    const update = vi.fn().mockResolvedValue({});
+    const focus = vi.fn().mockResolvedValue({});
+    Object.assign(chrome.tabs, { update });
+    Object.assign(chrome, { windows: { update: focus } });
+    queryTabs.mockImplementation(async (query) => query.url ? [] : [{ id: 1 }]);
+    $("#talk").click();
+    await vi.waitFor(() => expect(chrome.tabs.create).toHaveBeenCalledTimes(1));
+    queryTabs.mockImplementation(async (query) => query.url ? [{ id: 2, windowId: 3 }] : [{ id: 1 }]);
+    $("#talk").click();
+    await vi.waitFor(() => expect(update).toHaveBeenCalledWith(2, { active: true }));
+    expect(focus).toHaveBeenCalledWith(3, { focused: true });
+    expect(chrome.tabs.create).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe("lazy Live connection", () => {
   it("does not request a session or open a socket when the panel opens", async () => {
@@ -312,11 +414,12 @@ describe("explicit email proposal confirmation", () => {
 });
 
 describe("calmer panel paths", () => {
-  it("announces Journey changes through one conversation live region and keeps the current Step outside it", () => {
+  it("announces Journey status separately from transcript fragments", () => {
     const status = document.querySelector("[data-status]")!;
-    expect(status.closest('[aria-live="polite"]')?.id).toBe("log");
+    expect(status.getAttribute("role")).toBe("status");
+    expect($("#log").hasAttribute("aria-live")).toBe(false);
     expect(document.querySelector("#current-step")!.closest("#log")).toBeNull();
-    expect(document.querySelector("#journey [aria-live], #journey [role=status]")).toBeNull();
+    expect(document.querySelectorAll("#journey [role=status]")).toHaveLength(1);
   });
   it("applies and restores from the buttons without a microphone or model", async () => {
     $<HTMLButtonElement>("#calmer").click();
