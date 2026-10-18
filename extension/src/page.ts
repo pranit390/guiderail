@@ -1,7 +1,7 @@
 import { STATES } from "./states.ts";
 
 export const INTERACTIVE =
-  'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
+  'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
 
 export function effectiveUrl(): string {
   // Sandbox pages declare which Google page they stand in for.
@@ -23,7 +23,12 @@ export function isVisible(el: Element): boolean {
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return false;
   const s = getComputedStyle(el);
-  return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0;
+  if (s.visibility === "hidden" || s.display === "none") return false;
+  if (Number(s.opacity) > 0) return true;
+  // Material paints the radio/checkbox through its associated label while the
+  // native hit target is transparent. Hidden wizard panels still fail above.
+  return el instanceof HTMLInputElement && (el.type === "radio" || el.type === "checkbox")
+    && [...(el.labels ?? [])].some((label) => isVisible(label));
 }
 
 export function textOf(el: Element | null): string {
