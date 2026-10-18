@@ -99,6 +99,78 @@ beforeEach(async () => {
 
 afterEach(() => vi.unstubAllGlobals());
 
+describe("readable current panel guidance", () => {
+  it("renders streamed model emphasis and code while leaving HTML and unsafe links literal", async () => {
+    const socket = await connected();
+    socket.receive({ type: "transcript", role: "model", text: "Choose **Production" });
+    socket.receive({ type: "transcript", role: "model", text: " mode** and *review* `Next`. <img src=x onerror=alert(1)> [x](javascript:alert(1))" });
+    const reply = $(".msg.model");
+    expect(reply.querySelector("strong")?.textContent).toBe("Production mode");
+    expect(reply.querySelector("em")?.textContent).toBe("review");
+    expect(reply.querySelector("code")?.textContent).toBe("Next");
+    expect(reply.querySelector("img,a,script")).toBeNull();
+    expect(reply.textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+  it("keeps repeated page and passing-submit events in model context without adding chat noise", async () => {
+    const socket = await connected();
+    for (let i = 0; i < 4; i++) page({ kind: "page_event", text: 'User clicked "Next".' });
+    page({ kind: "submit_intent", label: "Next", form });
+    await vi.waitFor(() => expect(sent(socket).filter((m) => m.type === "event")).toHaveLength(5));
+    expect($("#log").textContent).not.toContain("User clicked");
+  });
+  it("uses one working line for concurrent slow tools and settles after failure", async () => {
+    const socket = await connected();
+    const finishes: ((result: unknown) => void)[] = [];
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finishes.push(resolve); }));
+    socket.receive({ type: "tool_call", id: "read", name: "read_page", args: {} });
+    await vi.waitFor(() => expect(finishes).toHaveLength(1));
+    expect($("#working").textContent).toBe("Reading the page…");
+    socket.receive({ type: "tool_call", id: "check", name: "check_policy", args: {} });
+    await vi.waitFor(() => expect(finishes).toHaveLength(2));
+    expect(document.querySelectorAll("#working")).toHaveLength(1);
+    expect($("#working").textContent).toBe("Checking policy…");
+    expect($("#log").getAttribute("aria-busy")).toBe("true");
+    finishes[0]({ url: "https://console.firebase.google.com/", title: "Firestore", generation: 1, elements: [] });
+    await vi.waitFor(() => expect(sent(socket).some((m) => m.id === "read")).toBe(true));
+    expect($("#working").hidden).toBe(false);
+    finishes[1]({ error: "The page changed." });
+    await vi.waitFor(() => expect($("#working").hidden).toBe(true));
+    expect($("#log").getAttribute("aria-busy")).toBe("false");
+  });
+  it.each(["turn_complete", "error", "interrupted", "disconnect"])("clears pending working state on %s, including late tool completion", async (event) => {
+    const socket = await connected();
+    let finish: (result: unknown) => void = () => {};
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    socket.receive({ type: "tool_call", id: "read", name: "read_page", args: {} });
+    await vi.waitFor(() => expect($("#working").hidden).toBe(false));
+    if (event === "disconnect") socket.onclose?.(); else socket.receive({ type: event, message: "Fixture error" });
+    expect($("#working").hidden).toBe(true);
+    finish({ url: "https://console.firebase.google.com/", title: "Firestore", generation: 1, elements: [] });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect($("#working").hidden).toBe(true);
+    expect($("#log").getAttribute("aria-busy")).toBe("false");
+  });
+  it("clears resolved Violations and rejects a stale response after navigation", async () => {
+    await connected();
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner.", severity: "block" }];
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect($("#issues").hidden).toBe(false));
+    policy.violations = [];
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect($("#issues").hidden).toBe(true));
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner.", severity: "block" }];
+    let finish: (result: unknown) => void = () => {};
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    page({ kind: "tab_changed", tabId: 1, url: "https://console.firebase.google.com/project/other/firestore" });
+    finish({ shown: ["Labels"] });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect($("#issues").hidden).toBe(true);
+    expect($("#issues-list").children).toHaveLength(0);
+  });
+});
+
 describe("lazy Live connection", () => {
   it("does not request a session or open a socket when the panel opens", async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));

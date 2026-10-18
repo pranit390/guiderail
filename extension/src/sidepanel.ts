@@ -15,6 +15,7 @@ import { SessionLog, type Entry } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 import { isSensitiveUrl } from "./privacy.ts";
 import { fitToolResult } from "./toolresult.ts";
+import { renderMarkdown } from "./markdown.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 import { AuthError, authFetch, authRequired, currentUser, onAuthLost, signIn, signOut, wsProtocols } from "./auth.ts";
@@ -250,21 +251,50 @@ function setStatus(text: string, state: "on" | "off" | "busy" | "idle") {
 
 // ---------- Conversation log ----------
 
-let open: { role: string; el: HTMLElement } | null = null;
+let open: { role: string; el: HTMLElement; text: string } | null = null;
 
 function say(role: "user" | "model" | "system" | "step" | "alert", text: string) {
   const standalone = role === "system" || role === "step" || role === "alert";
   if (open && open.role === role && !standalone) {
-    open.el.textContent += text;
+    open.text += text;
+    if (role === "model") renderMarkdown(open.el, open.text);
+    else open.el.textContent = open.text;
   } else {
-    const el = document.createElement("p");
+    const el = document.createElement(role === "model" ? "div" : "p");
     el.className = `msg ${role}`;
     if (role === "alert") el.setAttribute("role", "alert");
-    el.textContent = text;
+    if (role === "model") renderMarkdown(el, text);
+    else el.textContent = text;
     log.append(el);
-    open = standalone ? null : { role, el };
+    open = standalone ? null : { role, el, text };
   }
   scroll.scrollTop = scroll.scrollHeight;
+}
+
+const pendingTools = new Map<symbol, string>();
+function renderWorking() {
+  const text = [...pendingTools.values()].at(-1) ?? "";
+  const working = $("#working");
+  if (working.textContent !== text) working.textContent = text;
+  working.hidden = !text;
+  log.setAttribute("aria-busy", String(!!text));
+}
+function settleWorking() { pendingTools.clear(); renderWorking(); }
+function workingLabel(name: string) {
+  if (name === "highlight" || name === "highlight_document") return "Pointing at the control…";
+  if (name === "check_policy") return "Checking policy…";
+  if (name === "read_page" || name === "get_guidance") return "Reading the page…";
+  return "Working on your request…";
+}
+
+let guidanceRevision = 0;
+function clearGuidance() {
+  guidanceRevision++;
+  card.hidden = true;
+  issues.hidden = true;
+  violations = [];
+  $("#issues-list").replaceChildren();
+  $("#issues-summary").textContent = "";
 }
 
 // ---------- Connection to the relay ----------
@@ -334,6 +364,7 @@ function onReady() {
 
 // Closes the Live connection without opening another; the next typed message or Talk press reconnects.
 function disconnect(text: string, state: "off" | "idle" = "off") {
+  settleWorking();
   connectionAttempt++;
   const sock = ws;
   ws = undefined;
@@ -385,7 +416,7 @@ async function onServer(msg: any) {
       if (mode === "teach") held.audio.push(msg.data);
       else speaker.play(msg.data);
       break;
-    case "interrupted": speaker.interrupt(); speaker.turnEnded(); held.audio = []; break;
+    case "interrupted": settleWorking(); speaker.interrupt(); speaker.turnEnded(); held.audio = []; break;
     case "transcript":
       teach?.heard(msg.role, msg.text);
       if (msg.role === "user" || mode !== "teach") turnText[msg.role as "user" | "model"] += msg.text;
@@ -396,6 +427,7 @@ async function onServer(msg: any) {
       }
       break;
     case "turn_complete":
+      settleWorking();
       if (mode === "teach") {
         if (shouldSpeak(held.text, held.expertSpoke)) {
           say("model", held.text.trim());
@@ -416,13 +448,15 @@ async function onServer(msg: any) {
     case "resumption":
       if (mode === "guide" && !restartPending) { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
       break;
-    case "error": say("system", msg.message); break;
+    case "error": settleWorking(); say("system", msg.message); break;
     case "tool_call": {
       toolCalls++;
+      const token = Symbol();
+      pendingTools.set(token, workingLabel(msg.name)); renderWorking();
       try {
         const response = await runTool(msg.name, msg.args).catch((err: Error) => ({ error: err.message }));
         sendServer({ type: "tool_result", id: msg.id, name: msg.name, response: fitToolResult(msg.id, msg.name, response) });
-      } finally { toolCalls--; }
+      } finally { toolCalls--; pendingTools.delete(token); renderWorking(); }
       break;
     }
   }
@@ -492,9 +526,10 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     case "customize":
       return toPage({ kind: "customize", preset: parseCalmPreset(args.preset) });
     case "get_guidance": {
+      const revision = guidanceRevision;
       const form = await toPage<FormState>({ kind: "read_form" });
       const items = guidance(rules, form, { firstName, consoleCreate: true }, args.section ?? "Labels");
-      renderGuidance(items);
+      if (revision === guidanceRevision && mode === "guide") renderGuidance(items);
       const section = args.section ?? "Labels";
       return { section, onScreen: sectionOnScreen(rules, form, section), requirements: items };
     }
@@ -629,6 +664,7 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     }
     const target = snap!.elements.find((e) => e.i === decision.i);
     stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
+    journeyPanel.pointed(decision.name);
     return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
   }
 }
@@ -673,8 +709,11 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 // ---------- Guard: Violations ----------
 
 async function updateViolations(form: FormState) {
-  violations = evaluate(rules, form);
-  const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations }).catch(() => undefined))?.shown ?? [];
+  const revision = guidanceRevision;
+  const checked = evaluate(rules, form);
+  const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations: checked }).catch(() => undefined))?.shown ?? [];
+  if (revision !== guidanceRevision || mode !== "guide") return;
+  violations = checked;
   issues.hidden = violations.length === 0;
   const heading = $("#issues-summary");
   // The heading is the live region: only a change in the counts is announced, not every rebuild while typing.
@@ -745,11 +784,11 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       appEvent(msg.text);
       break;
     case "tab_changed":
+      clearGuidance();
       boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
         if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
         else journeyPanel.invalidate("The tab changed. Return to the bound Firestore tab and re-read this Step.");
-        card.hidden = true; issues.hidden = true;
       } else if (mode === "teach") void followTab(msg.tabId);
       // A reload of the coached tab drops the content script's generation counter, so the old snapshot cannot authorize a target.
       if (bound && msg.tabId === bound.tabId && msg.url) {
@@ -758,6 +797,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       }
       break;
     case "page_event":
+      if (msg.generation !== undefined) clearGuidance();
       if (binding.tabId !== undefined) {
         if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control. Choose I did this · Next step, or re-read this Step.");
         else journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -766,7 +806,6 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
         boundStale = true;
         void clearBoundHighlight();
       }
-      say("system", msg.text);
       memory.add("page", msg.text);
       sendServer({ type: "event", text: msg.text });
       break;
@@ -784,7 +823,6 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
         const text = blocking.length
           ? `User is about to click "${msg.label}" but ${violationCountText(summarizeViolations(violations))} remain: ${blocking.map((v) => v.message).join(" ")} Form: ${values}`
           : `User clicked "${msg.label}" with ${violations.length ? violationCountText(summarizeViolations(violations)) : "no rule Violations"}. Form: ${values}. Compare it with the Goal and the playbook now and say at once if anything is off.`;
-        say("system", text);
         // A blocking warning is worth a connection: the coach should say it out loud.
         const event = { type: "event" as const, text };
         if (sendServer(event) || !blocking.length) memory.add("page", text);
@@ -831,10 +869,7 @@ async function setTeach(on: boolean) {
   showTeachButton(on);
   disconnect(IDLE_STATUS, "idle");
   if (on) {
-    violations = [];
-    issues.hidden = true;
-    $("#issues-list").replaceChildren();
-    $("#issues-summary").textContent = "";
+    clearGuidance();
     await toPage({ kind: "show_violations", violations: [] }).catch(() => {});
   }
   await toPage({ kind: "teach", on }).catch(() => {});
@@ -918,7 +953,8 @@ async function stopAndDraft() {
   teach = null;
   pendingPayload = null;
   draft = body;
-  $("#draftmd").textContent = draft.markdown;
+  clearGuidance();
+  renderMarkdown($("#draftmd"), String(draft.markdown));
   $("#draftrules").replaceChildren(...draft.suggestedRules.map((r: any) => {
     const label = document.createElement("label");
     label.innerHTML = `<input type="checkbox" checked> <span></span>`;
