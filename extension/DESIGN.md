@@ -69,6 +69,8 @@ The existing dark Here tag retains its 11px type, 4px/7px padding and 260px
 maximum width. Placement measures text line boxes and interactive surfaces,
 including open shadow roots: right, left, above, below; 12px target gap, 4px
 content clearance, 8px viewport margin. Hide when no empty candidate fits.
+The ring tracks every frame; the tag hides while the target moves and is
+re-placed 200ms after it settles. Full page scans run at most every 200ms.
 
 ## 8. Accessibility constraints and scope
 Status changes inherit the conversation live region. Current Step uses aria-current=step. Keep source
