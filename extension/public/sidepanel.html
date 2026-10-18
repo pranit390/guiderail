@@ -29,6 +29,17 @@
     <div id="draftrules"></div>
     <button id="publish" type="button">Publish</button>
   </section>
+  <section id="compose-confirmation" class="card" hidden aria-labelledby="compose-confirmation-title">
+    <h2 id="compose-confirmation-title">Review proposed email</h2>
+    <p>Open this draft only if it matches your request. You will still review it before sending.</p>
+    <dl>
+      <dt>To</dt><dd><pre id="compose-to"></pre></dd>
+      <dt>Subject</dt><dd><pre id="compose-subject"></pre></dd>
+      <dt>Body</dt><dd><pre id="compose-body"></pre></dd>
+    </dl>
+    <button id="compose-confirm" type="button">Open compose window</button>
+    <button id="compose-cancel" type="button">Cancel</button>
+  </section>
   <div class="page-look" role="group" aria-label="Page appearance">
     <span>Page appearance</span>
     <button id="calmer" type="button">Calmer</button>

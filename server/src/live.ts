@@ -3,6 +3,7 @@ import type { WebSocket } from "ws";
 import { runServerTool, SERVER_TOOLS, tools } from "./tools.ts";
 import { instructionFor, playbookTitle, type Mode } from "./instructions.ts";
 import { loadPlaybooks, loadRuleLines } from "./playbooks/load.ts";
+import { untrustedData, untrustedToolResult, UNTRUSTED_DATA_INSTRUCTION } from "./untrusted.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
 // 16 kHz from the client, 24 kHz to the client.
@@ -89,7 +90,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         config: {
           responseModalities: [Modality.AUDIO],
           maxOutputTokens: 512,
-          systemInstruction: await buildInstruction(mode, goal),
+          systemInstruction: `${await buildInstruction(mode, goal)}\n\n${UNTRUSTED_DATA_INSTRUCTION}`,
           tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
           inputAudioTranscription: {},
           outputAudioTranscription: {},
@@ -134,14 +135,15 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
       if (msg.type === "tool_result") {
         if (pendingTools.get(msg.id) !== msg.name) return;
         pendingTools.delete(msg.id); // Each issued call can be answered only once.
-        const chars = msg.id.length + msg.name.length + JSON.stringify(msg.response).length;
+        const chars = msg.id.length + msg.name.length + JSON.stringify(untrustedToolResult("tool result", msg.response)).length;
         textChars += chars;
         if (chars > 4000) {
           end("input allowance reached", "This demo session reached its input allowance.");
           return;
         }
       }
-      if ("text" in msg) textChars += msg.text.length;
+      const modelText = "text" in msg ? textForModel(msg) : undefined;
+      if (modelText !== undefined) textChars += modelText.length;
       if (msg.type === "audio") audioBytes += Buffer.byteLength(msg.data, "base64");
       if (textChars > 24_000 || audioBytes > (Date.now() - started) * 32 + 64_000) {
         end("input allowance reached", "This demo session reached its input allowance.");
@@ -156,26 +158,37 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
           session.sendRealtimeInput({ audioStreamEnd: true });
           break;
         case "text":
-          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: msg.text }] }], turnComplete: true });
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: modelText }] }], turnComplete: true });
           break;
         case "event":
-          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: true });
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: modelText }] }], turnComplete: true });
           break;
         case "session":
-          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[session so far]\n${msg.text}` }] }], turnComplete: false });
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: modelText }] }], turnComplete: false });
           break;
         case "app":
-          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[app event] ${msg.text}` }] }], turnComplete: false });
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: modelText }] }], turnComplete: false });
           break;
         case "context":
           // Context only: the model takes it in without starting a reply.
-          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: false });
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: modelText }] }], turnComplete: false });
           break;
         case "tool_result":
-          session.sendToolResponse({ functionResponses: [{ id: msg.id, name: msg.name, response: msg.response }] });
+          session.sendToolResponse({ functionResponses: [{ id: msg.id, name: msg.name, response: untrustedToolResult("tool result", msg.response) }] });
           break;
       }
     });
+  }
+}
+
+function textForModel(msg: Extract<ClientMessage, { text: string }>): string {
+  switch (msg.type) {
+    case "text": return msg.text;
+    case "event": return `[page event]\n${untrustedData("page event", msg.text)}`;
+    case "context": return `[page event]\n${untrustedData("page context", msg.text)}`;
+    case "session": return `[session so far]\n${untrustedData("session history", msg.text)}`;
+    case "app": return `[app event]\n${untrustedData("app event", msg.text)}`;
+    default: return ""; // Unknown wire message types are ignored by the relay switch.
   }
 }
 
@@ -187,7 +200,7 @@ function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, sessi
     if (SERVER_TOOLS.has(name)) {
       void runServerTool(name, args)
         .catch((err: Error) => ({ error: err.message }))
-        .then((response) => session?.sendToolResponse({ functionResponses: [{ id: call.id, name, response }] }));
+        .then((response) => session?.sendToolResponse({ functionResponses: [{ id: call.id, name, response: untrustedToolResult("server tool result", response) }] }));
       continue;
     }
     if (!call.id || !name) continue;

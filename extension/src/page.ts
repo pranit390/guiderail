@@ -244,7 +244,13 @@ export function violationFieldLabel(field: string): string {
 // A single value boundary for page/form reads and Teach. Field semantics catch
 // ordinary-looking secrets; value patterns catch secrets pasted elsewhere.
 export function isSecretControl(el: Element): boolean {
-  const name = [nameOf(el), el.id, el.getAttribute("name"), el.getAttribute("autocomplete")].filter(Boolean).join(" ");
+  const references = ["aria-labelledby", "aria-describedby", "aria-details", "aria-errormessage"]
+    .flatMap((attribute) => (el.getAttribute(attribute) ?? "").split(/\s+/))
+    .map((id) => textOf(document.getElementById(id)));
+  const labels = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
+    ? [...(el.labels ?? [])].map(textOf) : [];
+  const aria = [...el.attributes].filter((attribute) => attribute.name.startsWith("aria-")).map((attribute) => attribute.value);
+  const name = [nameOf(el), el.id, el.getAttribute("name"), el.getAttribute("autocomplete"), textOf(el.closest("label")), ...labels, ...aria, ...references].filter(Boolean).join(" ");
   if (isSecret(el) || isSecretField({ name, section: sectionOf(el) })) return true;
   if (sectionOf(el) === "Labels") {
     const inputs = [...(el.closest("section,fieldset,[role=region]")?.querySelectorAll("input") ?? [])];

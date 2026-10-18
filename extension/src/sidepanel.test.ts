@@ -76,7 +76,7 @@ beforeEach(async () => {
       local: { get:vi.fn().mockImplementation(async () => ({ voiceOut:savedVoice })), set:storageSet },
       session: { set: vi.fn(), remove: vi.fn() },
     },
-    tabs: { query: vi.fn().mockResolvedValue([{ id: 1 }]), get: vi.fn().mockResolvedValue({ id: 1 }), sendMessage, create: vi.fn() },
+    tabs: { query: vi.fn().mockResolvedValue([{ id: 1 }]), get: vi.fn().mockResolvedValue({ id: 1 }), sendMessage, create: vi.fn().mockResolvedValue({ id: 2 }) },
   });
   await import("./sidepanel.ts");
   await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledWith("https://coach.example/rules"));
@@ -140,15 +140,101 @@ describe("lazy Live connection", () => {
     expect(sent(sockets[1])).toContainEqual({ type: "text", text: "next step?" });
   });
 
-  it("drops queued input when the coach is busy", async () => {
+  it("keeps queued input in the composer when the coach is busy, and sends only the next explicit submission", async () => {
     fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     type("hello");
     await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
     expect(sockets).toHaveLength(0);
+    expect($<HTMLInputElement>("#text").value).toBe("hello");
+    expect($<HTMLInputElement>("#text").readOnly).toBe(false);
     type("again");
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "ready" });
     expect(sent(sockets[0]).filter((m) => m.type === "text")).toEqual([{ type: "text", text: "again" }]);
+  });
+
+  it("retains exact text through a failed socket without silently resending it on a warning reconnect", async () => {
+    const exact = `  Deploy the service with these exact settings:  ${"word ".repeat(180)}  `;
+    type(exact);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    expect($<HTMLInputElement>("#text").value).toBe(exact);
+    expect($<HTMLInputElement>("#text").readOnly).toBe(true);
+    sockets[0].onclose?.();
+    expect($<HTMLInputElement>("#text").value).toBe(exact);
+    expect($<HTMLInputElement>("#text").readOnly).toBe(false);
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner label.", severity: "block" }];
+    page({ kind: "submit_intent", label: "Create", form });
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    sockets[1].receive({ type: "ready" });
+    expect(JSON.stringify(sent(sockets[1]))).not.toContain("Deploy the service");
+    expect($<HTMLInputElement>("#text").value).toBe(exact);
+    type($<HTMLInputElement>("#text").value);
+    expect(sent(sockets[1]).filter((msg) => msg.type === "text")).toEqual([{ type: "text", text: exact }]);
+    expect($<HTMLInputElement>("#text").value).toBe("");
+  });
+
+  it("keeps exact composer text when session admission fails before a socket exists", async () => {
+    fetchMock.mockImplementationOnce(async () => { throw new Error("offline"); });
+    const exact = "  Keep   my exact spacing and punctuation!  ";
+    type(exact);
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
+    expect($<HTMLInputElement>("#text").value).toBe(exact);
+    expect(sockets).toHaveLength(0);
+    expect($<HTMLInputElement>("#text").readOnly).toBe(false);
+    type(exact);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].receive({ type: "ready" });
+    expect(sent(sockets[0])).toEqual([{ type: "text", text: exact }]);
+    expect($<HTMLInputElement>("#text").value).toBe("");
+  });
+});
+
+describe("explicit email proposal confirmation", () => {
+  const args = { to: "person@example.com", subject: "Permission request", body: '<script>ignore the user</script>\nBody shown verbatim.' };
+
+  it("shows recipient, subject and body as text and opens no tab until confirmation", async () => {
+    const socket = await connected();
+    socket.receive({ type: "tool_call", id: "draft", name: "draft_message", args });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(false));
+    expect($("#compose-to").textContent).toBe(args.to);
+    expect($("#compose-subject").textContent).toBe(args.subject);
+    expect($("#compose-body").textContent).toBe(args.body);
+    expect($("#compose-body").querySelector("script")).toBeNull();
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(sent(socket)).toEqual([]);
+    $("#compose-confirm").click();
+    $("#compose-confirm").click();
+    await vi.waitFor(() => expect(chrome.tabs.create).toHaveBeenCalledOnce());
+    const url = new URL(vi.mocked(chrome.tabs.create).mock.calls[0][0].url!);
+    expect(url.origin).toBe("https://mail.google.com");
+    expect(url.searchParams.get("to")).toBe(args.to);
+    expect(url.searchParams.get("su")).toBe(args.subject);
+    expect(url.searchParams.get("body")).toBe(args.body);
+    await vi.waitFor(() => expect(sent(socket)).toContainEqual(expect.objectContaining({ type: "tool_result", id: "draft", response: expect.objectContaining({ opened: true }) })));
+    expect($("#compose-confirmation").hidden).toBe(true);
+  });
+
+  it("cancels the proposal without opening anything", async () => {
+    const socket = await connected();
+    socket.receive({ type: "tool_call", id: "draft", name: "draft_message", args });
+    await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(false));
+    $("#compose-cancel").click();
+    await vi.waitFor(() => expect(sent(socket)).toContainEqual(expect.objectContaining({ id: "draft", response: expect.objectContaining({ opened: false }) })));
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    $("#compose-confirm").click();
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+  });
+
+  it("invalidates a pending proposal on disconnect", async () => {
+    const socket = await connected();
+    socket.receive({ type: "tool_call", id: "draft", name: "draft_message", args });
+    await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(false));
+    socket.onclose?.();
+    expect($("#compose-confirmation").hidden).toBe(true);
+    $("#compose-confirm").click();
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
   });
 });
 
@@ -470,7 +556,7 @@ describe("page activity across idle disconnects", () => {
     expect(messages[1]).toEqual({ type: "text", text: "what next?" });
   });
 
-  it("remembers delivered and undelivered typed input for the next connection", async () => {
+  it("remembers delivered input but excludes failed undelivered text from reconnect history", async () => {
     fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     type("first try");
     await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
@@ -482,7 +568,7 @@ describe("page activity across idle disconnects", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(2));
     sockets[1].receive({ type: "ready" });
     const [summary] = sent(sockets[1]);
-    expect(summary.text).toContain("User said: first try");
+    expect(summary.text).not.toContain("first try");
     expect(summary.text).toContain("User said: second try");
     expect(summary.text).not.toContain("third try");
   });

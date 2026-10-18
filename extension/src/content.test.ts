@@ -51,6 +51,26 @@ afterEach(() => {
 });
 
 describe("calmer content messages", () => {
+  it.each([
+    '<label for="private">Recovery code</label><input id="private" aria-label="Display name">',
+    '<input name="seed_phrase" aria-label="Display name">',
+    '<span id="hint">Session cookie</span><textarea aria-describedby="hint" aria-label="Display name"></textarea>',
+    '<input aria-label="Display name" aria-description="Client secret">',
+    '<input aria-label="Display name" aria-valuetext="Private key">',
+    '<input aria-label="Security answer">',
+    '<input aria-label="Wallet phrase">',
+  ])("masks plausible secret metadata even when the primary label looks ordinary: %s", (markup) => {
+    document.body.innerHTML = markup + '<input aria-label="Region" value="us-central1">';
+    const secret = document.querySelector<HTMLInputElement | HTMLTextAreaElement>("input,textarea")!;
+    secret.value = "AB12-CD34";
+    for (const result of [request({ kind: "read_page" }), form()]) {
+      const output = JSON.stringify(result);
+      expect(output).not.toContain("AB12-CD34");
+      expect(output).toContain("«masked»");
+      expect(output).toContain("us-central1");
+    }
+  });
+
   it("masks non-password secrets in page and form reads, including label values", () => {
     document.body.innerHTML = `<input aria-label="API token" value="synthetic-secret">
       <textarea name="credential">plain-looking-secret</textarea>
