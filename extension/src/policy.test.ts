@@ -129,6 +129,30 @@ describe("summarizeViolations", () => {
   });
 });
 
+describe("field rules on a create form", () => {
+  const rule = (id: string, check: Rule["check"]): Rule => ({
+    id, check, severity: "block", message: id,
+    scope: { url: "console.cloud.google.com/run/create*", section: "Authentication" },
+    guide: { explain: "", format: "", examples: [], suggest: null },
+  });
+  const taught = [
+    rule("require-auth", { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] }),
+    rule("name-pattern", { kind: "field_value_regex", field: "Service name", pattern: "^[a-z]+-[a-z0-9-]+-service$" }),
+  ];
+  const form = (fields: Record<string, string>): FormState => ({ url: "console.cloud.google.com/run/create", labels: {}, fields, sections: [] });
+
+  it("fires without a Labels or Grant access section on screen", () => {
+    expect(ids(evaluate(taught, form({ "Allow unauthenticated": "checked", "Service name": "invoices" }))).sort()).toEqual(["name-pattern", "require-auth"]);
+  });
+  it("passes a form that follows the playbook", () => {
+    expect(evaluate(taught, form({ "Require authentication": "checked", "Service name": "payment-invoice-service" }))).toEqual([]);
+  });
+  it("skips fields absent from the form and Rules for a different page", () => {
+    expect(evaluate(taught, form({}))).toEqual([]);
+    expect(evaluate(taught, { ...form({ "Allow unauthenticated": "checked" }), url: "console.cloud.google.com/iam-admin/iam" })).toEqual([]);
+  });
+});
+
 describe("guidance", () => {
   it("returns one Labels entry per key, with suggestions from the form and context", () => {
     const suggestions = guidance(

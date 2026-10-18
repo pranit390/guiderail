@@ -677,9 +677,11 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       if (mode === "teach") break;
       void updateViolations(msg.form).then(() => {
         const blocking = violations.filter((v) => v.severity === "block");
+        // The values let the model check what rules can't, e.g. a Region that doesn't fit the customer.
+        const values = Object.entries(msg.form.fields).map(([k, v]) => `${k}=${v}`).join(", ");
         const text = blocking.length
-          ? `User is about to click "${msg.label}" but ${violationCountText(summarizeViolations(violations))} remain: ${blocking.map((v) => v.message).join(" ")}`
-          : `User clicked "${msg.label}" and all policy checks pass.`;
+          ? `User is about to click "${msg.label}" but ${violationCountText(summarizeViolations(violations))} remain: ${blocking.map((v) => v.message).join(" ")} Form: ${values}`
+          : `User clicked "${msg.label}" with ${violations.length ? violationCountText(summarizeViolations(violations)) : "no rule Violations"}. Form: ${values}. Compare it with the Goal and the playbook now and say at once if anything is off.`;
         say("system", text);
         // A blocking warning is worth a connection: the coach should say it out loud.
         const event = { type: "event" as const, text };
