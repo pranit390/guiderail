@@ -139,8 +139,6 @@ const assist = mountAssist($("#assist"), {
   rules: () => rules,
   checked: updateViolations,
   receipt(event) {
-    // Receipt seam for the persistence consumer. No values or raw page content.
-    $("#assist").dispatchEvent(new CustomEvent("guiderail-receipt", { detail: event, bubbles: true }));
     appEvent(`Assist ${event.kind}: ${event.outcome}. You click Create.`);
   },
 });
@@ -425,7 +423,6 @@ async function onServer(msg: any) {
       break;
     case "interrupted": speaker.interrupt(); speaker.turnEnded(); held.audio = []; break;
     case "transcript":
-      if (msg.role === "user" && /\bstop\b/i.test(msg.text)) assist.stop();
       teach?.heard(msg.role, msg.text);
       if (msg.role === "user" || mode !== "teach") turnText[msg.role as "user" | "model"] += msg.text;
       if (mode === "teach" && msg.role === "model") held.text += msg.text;
@@ -1019,7 +1016,6 @@ $("#form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value;
   if (!text.trim() || input.readOnly) return;
-  if (/\bstop\b/i.test(text)) assist.stop();
   if (text.length > RELAY_TEXT_LIMIT) {
     say("system", `This message is ${text.length} characters; the coach accepts up to ${RELAY_TEXT_LIMIT}. Shorten it and send again.`);
     return;

@@ -502,6 +502,13 @@ describe("bound Journey tool and event routing", () => {
     expect(sendMessage).toHaveBeenCalledWith(7, { kind: "show_violations", violations: [], expectedUrl: boundUrl });
     expect(document.querySelector(".assist-stop")?.closest("#scroll")).toBeNull();
   });
+  it("keeps a reviewed plan when a typed or spoken message mentions stop", async () => {
+    await planAssist();
+    sockets.at(-1)!.receive({ type: "transcript", role: "user", text: "stop" });
+    type("Do I need to stop and pick a location first?");
+    expect($<HTMLButtonElement>("[data-approve]").disabled).toBe(false);
+    expect($("[data-assist-status]").textContent).not.toContain("Assist stopped");
+  });
   it.each(["Stop", "an ID edit", "a Test mode choice"])("%s during the final tab check cancels the fill before dispatch", async (change) => {
     await planAssist();
     let release!: () => void;

@@ -37,9 +37,7 @@ The Copy Database ID control remains available for manual handoff after a
 field mismatch. Copy failure explicitly asks the user to type the displayed
 value. This is a recovery path, not a claim that a real-console fill passed.
 
-Receipt events are emitted as `guiderail-receipt` on the assistance card,
-with kind, timestamp, field and outcome, excluding values and page dumps.
-Persistence and receipt reload are outside this slice. Candidate values that
+Candidate values that
 match the existing secret masker are refused before reaching a page or relay.
 
 ## Validation boundary
