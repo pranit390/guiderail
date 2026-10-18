@@ -365,6 +365,48 @@ describe("duplicate-Save sandbox end to end", () => {
   });
 });
 
+describe("large real page read", () => {
+  beforeEach(async () => {
+    const buttons = Array.from({ length: 160 }, (_, k) => `<button>Control ${k + 1} for the advanced container settings and label review</button>`).join("");
+    document.body.insertAdjacentHTML("beforeend", `<main><section aria-label="Advanced container settings"><h2>Advanced container settings</h2>${buttons}</section></main>`);
+    let top = 0;
+    for (const el of document.querySelectorAll<HTMLElement>("*")) {
+      const rect = new DOMRect(40, (top += 50), 200, 40);
+      el.getBoundingClientRect = () => rect;
+      el.getClientRects = () => [rect] as unknown as DOMRectList;
+      el.scrollIntoView = () => {};
+      el.style.opacity = "1";
+    }
+    const chrome = (globalThis as any).chrome;
+    Object.assign(chrome.runtime, { id: "test-extension", sendMessage: vi.fn().mockResolvedValue({}) });
+    await import("./content.ts");
+    const content = chrome.runtime.onMessage.addListener.mock.calls[1][0];
+    sendMessage.mockImplementation((_tab: number, msg: unknown) => new Promise((resolve) => content(msg, {}, resolve)));
+  });
+
+  afterEach(() => { (globalThis as any).chrome.runtime.id = ""; });
+
+  it("sends a 150-control read within the relay's per-result allowance and keeps answering tools", async () => {
+    const socket = await connected();
+    socket.receive({ type: "tool_call", id: "function-call-read-1", name: "read_page", args: {} });
+    let raw = "";
+    await vi.waitFor(() => {
+      raw = socket.send.mock.calls.map(([frame]) => frame as string).find((frame) => JSON.parse(frame).id === "function-call-read-1")!;
+      expect(raw).toBeDefined();
+    });
+    const result = JSON.parse(raw);
+    expect(result.id.length + result.name.length + JSON.stringify(result.response).length).toBeLessThanOrEqual(4000);
+    expect(result.response.truncated).toMatchObject({ total: 150 });
+    expect(result.response.elements.length).toBe(result.response.truncated.shown);
+    expect(result.response.elements).toContainEqual(expect.objectContaining({ role: "button", name: expect.stringMatching(/^Control \d+ for/) }));
+
+    const last = result.response.elements.at(-1);
+    socket.receive({ type: "tool_call", id: "function-call-point-1", name: "highlight", args: { text: last.name, role: "button" } });
+    await vi.waitFor(() => expect(sent(socket)).toContainEqual(expect.objectContaining({ type: "tool_result", id: "function-call-point-1", response: expect.objectContaining({ found: true, i: last.i }) })));
+    expect(socket.close).not.toHaveBeenCalled();
+  });
+});
+
 describe("page activity across idle disconnects", () => {
   it("does not forward account-page messages even from the bound tab", async () => {
     const socket = await connected();

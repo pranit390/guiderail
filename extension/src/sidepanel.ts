@@ -9,6 +9,7 @@ import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts"
 import { SessionLog, type Entry } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 import { isSensitiveUrl } from "./privacy.ts";
+import { fitToolResult } from "./toolresult.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 
@@ -264,7 +265,7 @@ async function onServer(msg: any) {
     case "error": say("system", msg.message); break;
     case "tool_call": {
       const response = await runTool(msg.name, msg.args).catch((err: Error) => ({ error: err.message }));
-      sendServer({ type: "tool_result", id: msg.id, name: msg.name, response });
+      sendServer({ type: "tool_result", id: msg.id, name: msg.name, response: fitToolResult(msg.id, msg.name, response) });
       break;
     }
   }
