@@ -124,6 +124,9 @@ function place(box: HTMLElement, el: Element, pad: number) {
 }
 
 function placeChip(chip: HTMLElement, el: Element) {
+  // A chip with no field beside it is noise; hide it while its field is off-screen, as the box is.
+  chip.hidden = !!offscreen(el);
+  if (chip.hidden) return;
   const r = el.getBoundingClientRect();
   const top = Math.max(4, r.top - chip.offsetHeight - 8);
   const left = Math.min(window.innerWidth - chip.offsetWidth - 8, Math.max(4, r.right - chip.offsetWidth));

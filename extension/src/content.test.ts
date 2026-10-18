@@ -108,4 +108,20 @@ describe("calmer content messages", () => {
     expect(shadow.querySelector<HTMLElement>(".ring")!.dataset.theme).toBe("light");
     expect(shadow.querySelector<HTMLElement>(".bad")!.dataset.theme).toBe("dark");
   });
+
+  it("hides a Violation's Rule chip once its field scrolls out of view, and shows it again on return", () => {
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    const chip = shadow.querySelector<HTMLElement>(".chip")!;
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, -400, 200, 60));
+    document.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(true);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 200, 60));
+    document.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+  });
 });
