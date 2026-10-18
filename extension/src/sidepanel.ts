@@ -16,6 +16,7 @@ import { SessionLog, type Entry } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 import { isSensitiveUrl } from "./privacy.ts";
 import { fitToolResult } from "./toolresult.ts";
+import { mountAssist } from "./assist.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 import { AuthError, authFetch, authRequired, currentUser, onAuthLost, signIn, signOut, wsProtocols } from "./auth.ts";
@@ -48,7 +49,7 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   changed: appEvent,
   clear: clearJourneyPointer,
   currentRegion: $("#current-step"),
-  reset() { binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
+  reset() { assist.stop("Journey ended. Assist stopped."); binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
   compiled() {
     compiledGoal = true;
     restartPending = true;
@@ -110,6 +111,39 @@ let rules: Rule[] = [];
 let firstName: string | undefined;
 let violations: Violation[] = [];
 let mode: "guide" | "teach" = "guide";
+const assist = mountAssist($("#assist"), {
+  async context() {
+    if (mode !== "guide") throw new Error("Leave Teach mode before using Assist.");
+    const tab = await binding.tab();
+    const bindingGeneration = binding.generation;
+    const snapshot = await readSnapshot(tab);
+    return { tabId: tab.id!, url: tab.url!, bindingGeneration, snapshot };
+  },
+  async current() {
+    const tab = await binding.tab();
+    return { tabId: tab.id!, url: tab.url!, bindingGeneration: binding.generation };
+  },
+  readForm: () => toPage<FormState>({ kind: "read_form" }),
+  async pin({ snapshot }, fieldIndex) {
+    const result = await toPage<{ pin?: unknown }>({ kind: "pin_field", generation: snapshot.generation, index: fieldIndex });
+    if (typeof result.pin !== "number") throw new Error("Database ID could not be pinned. Re-read this step, or type your value manually.");
+    return result.pin;
+  },
+  async fill({ context, pin, value, retry, guard }) {
+    const tab = await binding.tab();
+    if (tab.id !== context.tabId || tab.url !== context.url || binding.generation !== context.bindingGeneration) throw new Error("Journey changed. Review a new plan.");
+    guard();
+    const result: unknown = await chrome.tabs.sendMessage(context.tabId, { kind: "fill_field", fieldName: "Database ID", value, pin, retry, expectedUrl: context.url } satisfies ToPage);
+    if (!result || typeof result !== "object" || !("filled" in result) || result.filled !== true) throw new Error("Database ID changed or the fill could not be confirmed. Re-read this step, or copy and type your value manually.");
+  },
+  rules: () => rules,
+  checked: updateViolations,
+  receipt(event) {
+    appEvent(`Assist ${event.kind}: ${event.outcome}. You click Create.`);
+  },
+});
+assist.stopControl.className = "assist-stop";
+$(".page-look").before(assist.stopControl);
 let teach: TeachSession | null = null;
 let draft: any = null;
 const mic = new Mic();
@@ -335,6 +369,7 @@ function onReady() {
 
 // Closes the Live connection without opening another; the next typed message or Talk press reconnects.
 function disconnect(text: string, state: "off" | "idle" = "off") {
+  assist.stop("Connection ended. Assist stopped.");
   connectionAttempt++;
   const sock = ws;
   ws = undefined;
@@ -749,6 +784,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       break;
     case "tab_changed":
       $("#firestore-guidance").hidden = true;
+      assist.invalidate("The tab or page changed. Review a new plan.");
       boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
         if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -762,6 +798,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       }
       break;
     case "page_event":
+      if (msg.generation !== undefined) assist.invalidate("The page changed. Review a new plan.");
       if (binding.tabId !== undefined) {
         if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control. Choose I did this · Next step, or re-read this Step.");
         else journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -828,6 +865,7 @@ async function followTab(tabId: number) {
 }
 
 async function setTeach(on: boolean) {
+  assist.setEnabled(!on);
   if (on && binding.tabId !== undefined) journeyPanel.endJourney();
   mode = on ? "teach" : "guide";
   docsTabId = undefined;

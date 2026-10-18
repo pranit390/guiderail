@@ -25,6 +25,8 @@ export type ToPage = (
   | { kind: "clear_highlight" }
   | { kind: "customize"; preset: CalmPreset }
   | { kind: "read_form" }
+  | { kind: "pin_field"; generation: number; index: number }
+  | { kind: "fill_field"; fieldName: "Database ID"; value: string; pin: number; retry: boolean }
   | { kind: "show_violations"; violations: ViolationDetail[] }
   | { kind: "show_field"; field: string }
   | { kind: "clear" }

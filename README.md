@@ -21,7 +21,7 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 2. **Explains policy up front:** at a form section with Rules, it explains what's required and suggests values, e.g. `owner=pranit`, `managed-by=manual`.
 3. **Guards:** it checks every field change against company Rules and flags Create until the form is compliant.
 4. **Clears blockers:** on *permission denied* it finds the least-privilege role, drafts the request in Gmail (you click Send) and guides the Approver through IAM. Then it picks up where you left off.
-5. **Never acts for you:** there is no click, type or send tool.
+5. **Never acts for you:** there is no click, type or send tool. The one exception is opt-in: in Firestore Assist, your Approve click fills only the Database ID; you still click Create ([details](docs/firestore-assist.md)).
 
 ## Spoken replies and guiding colours
 

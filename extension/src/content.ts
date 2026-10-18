@@ -1,5 +1,6 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
-// It never clicks, types or submits for the user (ADR 0001).
+// Only approved Database ID text assistance is supported; never clicks or submits.
+import { fillDatabaseId } from "./assist-field.ts";
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
 import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isSensitivePage, isVisible, nameOf, norm, roleOf, sectionOf, textOf, safeValueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
@@ -17,6 +18,9 @@ const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
 let indexed = new Map<number, Element>();
 let snapshotRoles = new Map<number, string>();
 let generation = 0;
+// The approved Assist target survives later reads; only navigation or a reload drops it.
+let assistPin: { token: number; el: Element } | undefined;
+let pins = 0;
 let highlighted: Element | null = null;
 let violationSummary = summarizeViolations([]);
 let warnedSubmitAt = 0;
@@ -398,6 +402,7 @@ const urlTimer = setInterval(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
     generation += 1;
+    assistPin = undefined;
     clearHighlight();
     send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).`, generation });
   }
@@ -433,6 +438,18 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "highlight": reply(highlightRequest(msg)); break;
     case "clear_highlight": clearHighlight(); reply({ ok: true }); break;
     case "read_form": reply(readForm()); break;
+    case "pin_field": {
+      const el = msg.generation === generation ? indexed.get(msg.index) : undefined;
+      if (el) assistPin = { token: ++pins, el };
+      reply(el ? { pin: pins } : { error: "The page read is stale. Review a new plan." });
+      break;
+    }
+    case "fill_field":
+      try {
+        if (msg.fieldName !== "Database ID" || !assistPin || msg.pin !== assistPin.token) throw new Error("The approved page read is stale. Review a new plan.");
+        reply(fillDatabaseId(assistPin.el, msg.value, msg.retry));
+      } catch (error) { reply({ error: error instanceof Error ? error.message : "Fill refused." }); }
+      break;
     case "show_violations": reply({ shown: showViolations(msg.violations) }); break;
     case "show_field": showField(msg.field); reply({ ok: true }); break;
     case "clear": highlighted = null; ring.hidden = true; cue.hidden = true; showViolations([]); reply({ ok: true }); break;

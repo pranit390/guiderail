@@ -56,6 +56,33 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+describe("approved Database ID pin", () => {
+  function pinDatabaseId() {
+    document.body.innerHTML = '<label for="db">Database ID</label><input id="db" type="text" value="(default)">';
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const el = snap.elements.find((e) => e.name === "Database ID")!;
+    return request({ kind: "pin_field", generation: snap.generation, index: el.i }) as { pin: number };
+  }
+  it("keeps the approved element across later reads", () => {
+    const { pin } = pinDatabaseId();
+    request({ kind: "read_page" });
+    expect(request({ kind: "fill_field", fieldName: "Database ID", value: "customer-db", pin, retry: false })).toEqual({ filled: true });
+    expect(document.querySelector<HTMLInputElement>("#db")!.value).toBe("customer-db");
+  });
+  it("refuses a replacement element and a pin from a stale read", () => {
+    const { pin } = pinDatabaseId();
+    const input = document.querySelector<HTMLInputElement>("#db")!;
+    input.replaceWith(input.cloneNode(true));
+    request({ kind: "read_page" });
+    expect(request({ kind: "fill_field", fieldName: "Database ID", value: "customer-db", pin, retry: false })).toHaveProperty("error");
+    expect(document.querySelector<HTMLInputElement>("#db")!.value).toBe("(default)");
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    request({ kind: "read_page" });
+    expect(request({ kind: "pin_field", generation: snap.generation, index: 0 })).toHaveProperty("error");
+    expect(request({ kind: "fill_field", fieldName: "Database ID", value: "customer-db", pin: pin + 1, retry: false })).toHaveProperty("error");
+  });
+});
+
 describe("calmer content messages", () => {
   it("places the pointer inside a wizard top layer and returns it to the page", () => {
     const surface = document.createElement("dialog");

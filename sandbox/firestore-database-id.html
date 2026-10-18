@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="guiderail-url" content="console.firebase.google.com/project/fixture-project/firestore/databases">
+<title>Practice copy · Firestore Database ID</title>
+<style>body{font:16px/1.5 system-ui;max-width:650px;margin:40px auto;padding:20px}label{display:block;margin-top:16px}input,select,button{font:inherit;padding:8px}fieldset{margin:20px 0}fieldset label{display:inline-block;margin-right:20px}aside{padding:12px;background:#fff6d6}</style></head>
+<body><aside>Labelled practice copy. Synthetic Database ID step, not the signed-in Firebase console.</aside>
+<main><h1>Create a database</h1><h2>Database ID and location</h2>
+<label for="database-id">Database ID</label><input id="database-id" type="text" value="(default)" autocomplete="off">
+<label for="location">Location</label><select id="location"><option>eur3 (Europe)</option><option>nam5 (United States)</option></select>
+<p>Location cannot be changed later. You select it yourself.</p>
+<fieldset><legend>Security mode · fixture controls</legend>
+<label><input type="radio" name="mode" value="production" checked>Production mode</label>
+<label><input type="radio" name="mode" value="test">Test mode</label></fieldset>
+<button type="button" id="create">Create</button><p>You click Create. This practice button creates no resource.</p>
+<output id="human-clicks">0 human Create clicks</output></main>
+<script>let clicks=0;document.querySelector('#create').onclick=()=>document.querySelector('#human-clicks').textContent=`${++clicks} human Create clicks`;</script>
+</body></html>
