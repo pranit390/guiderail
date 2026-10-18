@@ -20,6 +20,7 @@ import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
+const scroll = $("#scroll");
 const status = $("#status");
 const card = $("#guidance");
 const issues = $("#issues");
@@ -180,7 +181,7 @@ function say(role: "user" | "model" | "system" | "step" | "alert", text: string)
     log.append(el);
     open = standalone ? null : { role, el };
   }
-  log.scrollTop = log.scrollHeight;
+  scroll.scrollTop = scroll.scrollHeight;
 }
 
 // ---------- Connection to the relay ----------

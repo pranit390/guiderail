@@ -12,37 +12,39 @@
     <button id="teach" type="button" aria-pressed="false" title="Show GuideRail how your team does a task">Teach</button>
     <span id="status" role="status" data-state="idle"></span>
   </header>
-  <section id="current-step" aria-label="Current Journey Step" hidden></section>
-  <main id="log" aria-live="polite">
-    <section id="journey" class="card"></section>
-    <p class="msg system">Open a Google page, press Talk (or type), and say what you want to do.</p>
+  <main id="scroll" aria-label="Guidance and conversation" tabindex="0">
+    <section id="current-step" aria-label="Current Journey Step" hidden></section>
+    <div id="log" aria-live="polite">
+      <section id="journey" class="card"></section>
+      <p class="msg system">Open a Google page, press Talk (or type), and say what you want to do.</p>
+    </div>
+    <section id="guidance" class="card" hidden></section>
+    <section id="issues" class="card" hidden aria-label="Policy issues">
+      <h2 id="issues-summary" role="status" aria-live="polite"></h2>
+      <ul id="issues-list"></ul>
+    </section>
+    <section id="teachbar" class="card" hidden>
+      <p><span class="rec state-glyph check" aria-hidden="true"><span>!</span></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
+      <button id="teachstop" type="button">Stop and draft Playbook</button>
+    </section>
+    <section id="draft" class="card" hidden>
+      <h2>Playbook draft</h2>
+      <pre id="draftmd"></pre>
+      <div id="draftrules"></div>
+      <button id="publish" type="button">Publish</button>
+    </section>
+    <section id="compose-confirmation" class="card" hidden aria-labelledby="compose-confirmation-title">
+      <h2 id="compose-confirmation-title">Review proposed email</h2>
+      <p>Open this draft only if it matches your request. You will still review it before sending.</p>
+      <dl>
+        <dt>To</dt><dd><pre id="compose-to"></pre></dd>
+        <dt>Subject</dt><dd><pre id="compose-subject"></pre></dd>
+        <dt>Body</dt><dd><pre id="compose-body"></pre></dd>
+      </dl>
+      <button id="compose-confirm" type="button">Open compose window</button>
+      <button id="compose-cancel" type="button">Cancel</button>
+    </section>
   </main>
-  <section id="guidance" class="card" hidden></section>
-  <section id="issues" class="card" hidden aria-label="Policy issues">
-    <h2 id="issues-summary" role="status" aria-live="polite"></h2>
-    <ul id="issues-list"></ul>
-  </section>
-  <section id="teachbar" class="card" hidden>
-    <p><span class="rec state-glyph check" aria-hidden="true"><span>!</span></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
-    <button id="teachstop" type="button">Stop and draft Playbook</button>
-  </section>
-  <section id="draft" class="card" hidden>
-    <h2>Playbook draft</h2>
-    <pre id="draftmd"></pre>
-    <div id="draftrules"></div>
-    <button id="publish" type="button">Publish</button>
-  </section>
-  <section id="compose-confirmation" class="card" hidden aria-labelledby="compose-confirmation-title">
-    <h2 id="compose-confirmation-title">Review proposed email</h2>
-    <p>Open this draft only if it matches your request. You will still review it before sending.</p>
-    <dl>
-      <dt>To</dt><dd><pre id="compose-to"></pre></dd>
-      <dt>Subject</dt><dd><pre id="compose-subject"></pre></dd>
-      <dt>Body</dt><dd><pre id="compose-body"></pre></dd>
-    </dl>
-    <button id="compose-confirm" type="button">Open compose window</button>
-    <button id="compose-cancel" type="button">Cancel</button>
-  </section>
   <div class="page-look" role="group" aria-label="Page appearance">
     <span>Page appearance</span>
     <button id="calmer" type="button">Calmer</button>

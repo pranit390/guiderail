@@ -13,8 +13,10 @@ System sans-serif body 14px/1.5; card headings 13px uppercase; status and
 citation chips 12px. Existing monospace appears only for values.
 
 ## 4. Spacing and layout
-Keep the existing 4/6/8/10/12px spacing vocabulary. The log owns scrolling;
-Journey rows wrap within the card. Header and composer remain outside the log.
+Keep the existing 4/6/8/10/12px spacing vocabulary. One region, #scroll, owns
+scrolling: current Step, log and cards scroll together, and new log messages
+follow the latest. The current Step stays outside the log live region. Header
+and composer stay pinned outside #scroll. Journey rows wrap within the card.
 
 ## 5. Components
 Reuse card, button, details and ordered Step rows. Citation chips are ordinary
