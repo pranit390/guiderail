@@ -161,7 +161,10 @@ body[data-signed-out] #scroll > :not(#signin) { display: none !important; }
 body:not([data-goal="journey"]) #journey, body:not([data-goal="journey"]) #assist { display:none; }
 body[data-goal] .msg.intro { display:none; }
 body[data-goal="journey"] #journey > h2, body[data-goal="journey"] #journey > p:not([data-status]), body[data-goal="journey"] #journey > button,
-body[data-goal="journey"] #journey [data-links], body[data-goal="journey"] #journey [data-result] > p:first-child { display:none; }
+body[data-goal="journey"] #journey [data-result] > p:first-child { display:none; }
+body[data-goal="journey"] #journey > button[data-compile][data-failed] { display:inline-block; }
+body:not([data-goal="journey"]) [data-docs] { display:none; }
+.goal-running { flex-wrap:wrap; }
 body[data-goal="journey"] #journey [data-status] { margin:0; color:var(--muted); font-size:12px; }
 body[data-goal="journey"] #assist > h2 { display:none; }
 body[data-goal="journey"] #assist [data-assist-body] > p:first-child { display:none; }

@@ -43,7 +43,7 @@ export function mountGoalPicker(container: HTMLElement, options: { start: (goal:
     container.dataset.goal = current?.id ?? "";
     buttons.forEach((b) => { b.disabled = !enabled; });
   }
-  async function pick(goal: Goal) {
+  async function pick(goal: Goal): Promise<string | undefined> {
     if (!enabled || current) return;
     error.hidden = true;
     current = goal; render();
@@ -53,6 +53,7 @@ export function mountGoalPicker(container: HTMLElement, options: { start: (goal:
       current = undefined; render();
       error.textContent = e instanceof Error ? e.message : "Couldn't start that goal.";
       error.hidden = false;
+      return error.textContent;
     }
   }
   function reset() {

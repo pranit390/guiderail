@@ -45,6 +45,11 @@ describe("Goal picker", () => {
     expect(picker.current).toBeUndefined();
     expect(container.querySelector<HTMLElement>("[data-list]")!.hidden).toBe(false);
   });
+  it("returns the start error to a programmatic pick", async () => {
+    const { picker } = mount(vi.fn().mockRejectedValue(new Error("No active tab.")));
+    await expect(picker.pick(GOALS[1])).resolves.toBe("No active tab.");
+    expect(picker.current).toBeUndefined();
+  });
   it("ignores picks while disabled", () => {
     const { start, goal, picker } = mount();
     picker.setEnabled(false);

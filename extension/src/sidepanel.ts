@@ -4,7 +4,7 @@ import { JourneyBinding } from "./journey-binding.ts";
 import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
 import { mountJourneyPanel } from "./journey-panel.ts";
-import { mountGoalPicker, type Goal } from "./goal-picker.ts";
+import { GOALS, mountGoalPicker, type Goal } from "./goal-picker.ts";
 import { briefPrompt, isPublicDoc, RELAY_TEXT_LIMIT, routePageTool, type DocumentSnapshot } from "./document.ts";
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
@@ -157,9 +157,14 @@ $("#mic-status").before(assist.stopControl);
 const goals = mountGoalPicker($("#goals"), {
   async start(goal: Goal) {
     document.body.dataset.goal = goal.kind;
-    if (goal.kind === "journey") { await journeyPanel.openJourney(); return; }
-    const tab = await activeTab();
-    if (tab.id !== undefined) await chrome.tabs.update(tab.id, { url: goal.startUrl });
+    try {
+      if (goal.kind === "journey") { await journeyPanel.openJourney(); return; }
+      const tab = await activeTab();
+      if (tab.id !== undefined) await chrome.tabs.update(tab.id, { url: goal.startUrl });
+    } catch (error) {
+      if (goals.current === goal) delete document.body.dataset.goal;
+      throw error;
+    }
     appEvent(`The user picked the goal "${goal.title}". Guide them with the matching Playbook, one Step at a time.`);
     sendInput({ type: "text", text: goal.prompt }, ["user", goal.prompt]);
     say("user", goal.prompt);
@@ -170,9 +175,13 @@ const goals = mountGoalPicker($("#goals"), {
     if (goal.kind === "journey" && binding.tabId !== undefined) journeyPanel.endJourney();
     void clearBoundHighlight();
     disconnect(IDLE_STATUS, "idle");
+    resumeHandle = undefined;
+    void chrome.storage.session.remove("resumeHandle");
+    memory.add("app", `The user stopped the goal "${goal.title}".`);
     say("system", "Goal stopped. Pick a new goal.");
   },
 });
+$("#goals [data-running]").append($("#journey [data-docs]"));
 let teach: TeachSession | null = null;
 let draft: any = null;
 const mic = new Mic();
@@ -619,7 +628,12 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     case "open_page":
       parseCompileRequest(args);
       if (goals.current?.kind === "playbook") return { error: "A Playbook goal is running. Ask the user to pick New goal first." };
-      if (!goals.current) { await goals.pick({ kind: "journey", id: "firestore", title: "Create a Firestore database", summary: "" }); return { opened: binding.tabId !== undefined, goalId: FIRESTORE_GOAL.id, note: "Journey bound. Choose your project yourself; Guide never clicks or fills." }; }
+      if (!goals.current) {
+        const journey = GOALS.find((g) => g.kind === "journey")!;
+        const error = await goals.pick(journey);
+        if (goals.current !== journey) return { error: error ?? "Turn off Learn mode before starting a Journey." };
+        return { opened: binding.tabId !== undefined, goalId: FIRESTORE_GOAL.id, note: "Journey bound. Choose your project yourself; Guide never clicks or fills." };
+      }
       await journeyPanel.openJourney();
       return { opened: true, goalId: FIRESTORE_GOAL.id, note: "Journey bound. Choose your project yourself; Guide never clicks or fills." };
     case "read_page":
