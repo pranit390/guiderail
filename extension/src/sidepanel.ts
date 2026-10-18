@@ -49,12 +49,10 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   read: async () => readSnapshot(await binding.tab()),
   point: (text, role) => runHighlight({ text, role }, false),
   changed: appEvent,
+  // Step prompts are shown, not spoken: GuideRail speaks only with its Gemini Live voice, so
+  // the browser's own text-to-speech must never talk over it.
   prompt(text) {
     say("step", text);
-    if (voiceOn && "speechSynthesis" in window) {
-      window.speechSynthesis.cancel();
-      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
-    }
   },
   clear: clearJourneyPointer,
   currentRegion: $("#current-step"),
@@ -192,7 +190,6 @@ const voice = $<HTMLButtonElement>("#voice");
 voice.disabled = true;
 function renderVoice() {
   speaker.setMuted(!voiceOn);
-  if (!voiceOn && "speechSynthesis" in window) window.speechSynthesis.cancel();
   voice.setAttribute("aria-pressed", String(voiceOn));
   voice.title = `Spoken replies ${voiceOn ? "on" : "off"} (Alt+Shift+V)`;
 }

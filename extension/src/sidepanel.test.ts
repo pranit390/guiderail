@@ -884,7 +884,7 @@ describe("bound Journey tool and event routing", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(2));
     expect(sockets[1].params.get("goalId")).toBe(FIRESTORE_GOAL.id); expect(sockets[1].params.has("resume")).toBe(false);
   });
-  it("auto-points on start and same-tab changes, advances a clicked Step, and speaks only with voice on", async () => {
+  it("auto-points on start and same-tab changes, advances a clicked Step, and never uses the browser's own voice", async () => {
     const speak = vi.fn(); const cancel = vi.fn();
     vi.stubGlobal("speechSynthesis", { speak, cancel });
     vi.stubGlobal("SpeechSynthesisUtterance", class { constructor(readonly text: string) {} });
@@ -899,7 +899,7 @@ describe("bound Journey tool and event routing", () => {
     await vi.advanceTimersByTimeAsync(600);
     expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ kind: "highlight", name }));
     expect($("#reply-status").textContent).toBe("Step 1: Databases & Storage. You operate this control.");
-    expect(speak).toHaveBeenCalledOnce();
+    expect(speak).not.toHaveBeenCalled();
     const listener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0];
     const stale = { tab: { id: 7 }, url: FIRESTORE_GOAL.consoleUrl } as chrome.runtime.MessageSender;
     listener({ kind: "page_event", text: 'User clicked "Databases & Storage".' }, stale, vi.fn());
@@ -911,7 +911,7 @@ describe("bound Journey tool and event routing", () => {
     await vi.advanceTimersByTimeAsync(600);
     expect(sendMessage).toHaveBeenCalledWith(7, expect.objectContaining({ kind: "highlight", name }));
     expect($("#reply-status").textContent).toContain("Step 2: Firestore");
-    expect(speak).toHaveBeenCalledOnce(); expect(cancel).toHaveBeenCalled();
+    expect(speak).not.toHaveBeenCalled();
     sendMessage.mockClear();
     listener({ kind: "tab_changed", tabId: 8 }, {}, vi.fn());
     await vi.advanceTimersByTimeAsync(10_000);
