@@ -47,7 +47,7 @@ GuideRail guides first and guards second. It coaches employees through any Googl
 
 ## Demo story (about 3.5–4 min)
 
-0. **Teach (40 s):** an expert types "Deploy a Cloud Run service our way" and presses **Teach**. They pick `us-central1` and GuideRail asks "Why us-central1?" ("Always, unless it's an EU customer"). They create the service, then add the 5 labels on the Services list. They stop, review the drafted Playbook and suggested Rules, and click **Publish**.
+0. **Teach (40 s):** an expert types "Deploy a Cloud Run service our way" and turns on **Learn mode**. They pick `us-central1` and GuideRail asks "Why us-central1?" ("Always, unless it's an EU customer"). They create the service, then add the 5 labels on the Services list. They turn Learn mode off, review the drafted Playbook and suggested Rules, and click **Publish**.
 1. **Hook:** a new engineer's first Cloud Run deploy, with docs in one tab and Slack in another.
 2. **Guided Steps:** "Deploy my app to Cloud Run." Each step is spoken and highlighted, using the expert's Playbook: "Use us-central1. Your team uses it unless it's an EU customer."
 3. **Blocker:** permission denied. GuideRail finds `roles/run.developer` and drafts the Gmail request. The user sends it.
