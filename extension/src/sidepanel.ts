@@ -287,7 +287,14 @@ async function loadRules() {
 }
 
 function setStatus(text: string, state: "on" | "off" | "busy" | "idle") {
-  status.replaceChildren(stateGlyph(state === "on" ? "go" : "check"), document.createTextNode(text));
+  const dot = document.createElement("span");
+  dot.className = "connection-dot";
+  dot.setAttribute("aria-hidden", "true");
+  const label = document.createElement("span");
+  label.textContent = text;
+  if (state === "on") label.className = "sr-only";
+  status.replaceChildren(dot, label);
+  status.title = text;
   status.dataset.state = state;
 }
 
@@ -989,10 +996,6 @@ async function setTeach(on: boolean) {
 function showTeachButton(on: boolean) {
   const button = $<HTMLButtonElement>("#teach");
   button.setAttribute("aria-checked", String(on));
-  $("#learn-state").textContent = on ? "On" : "Off";
-  button.title = on
-    ? "Learn mode on. Turn off to stop recording and draft a Playbook."
-    : "Learn mode off. Turn on to show GuideRail how your team does a task.";
 }
 
 $("#teach").addEventListener("click", async () => {

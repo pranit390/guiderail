@@ -26,7 +26,8 @@ and composer stay pinned outside #scroll. Journey rows wrap within the card.
 
 ## 5. Components
 Header Learn mode is a native button with switch semantics, a stable name,
-an explicit On/Off label and a 28x16px track with a 10px thumb. Its 36px
+the visible label Learn and a 28x16px track with a 10px thumb. aria-checked
+conveys state; its stable tooltip and accessible name explain Playbook drafting. Its 36px
 minimum target uses the existing 6px radius and 6/8px padding. On uses the
 amber Check tint and ink because GuideRail is recording an expert task.
 Composer icon buttons share a 36px minimum target, 6px padding and 20px
