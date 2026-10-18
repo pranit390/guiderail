@@ -113,10 +113,11 @@ describe("audit recovery and announcements", () => {
     sockets[0].onerror?.();
     sockets[0].closed(1006);
     expect($("#server-banner").hidden).toBe(false);
-    expect($("#server-message").textContent).toContain("Can't reach coach.example");
+    expect($("#server-message").textContent).toContain("Can't reach GuideRail");
     expect($<HTMLInputElement>("#text").value).toBe("  retain this exact draft  ");
     expect(document.querySelector("#log .user")).toBeNull();
     $("#server-retry").click();
+    expect($("#server-message").textContent).toBe("Connecting to GuideRail… Unsent text stays in the box.");
     await vi.waitFor(() => expect(sockets).toHaveLength(2));
     sockets[1].receive({ type: "ready" });
     expect($("#server-banner").hidden).toBe(true);
@@ -134,7 +135,7 @@ describe("audit recovery and announcements", () => {
     vi.useFakeTimers();
     for (const [index, delay] of [2000, 4000, 8000, 16000, 30000].entries()) {
       lose(sockets[index], index % 2 === 1);
-      expect($("#server-message").textContent).toContain(index % 2 ? "Can't reach coach.example" : "Disconnected");
+      expect($("#server-message").textContent).toContain(index % 2 ? "Can't reach GuideRail" : "Disconnected");
       await vi.advanceTimersByTimeAsync(delay - 1);
       expect(sockets).toHaveLength(index + 1);
       await vi.advanceTimersByTimeAsync(1);
@@ -403,7 +404,7 @@ describe("lazy Live connection", () => {
   it("keeps queued input in the composer when the coach is busy, and sends only the next explicit submission", async () => {
     fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     type("hello");
-    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or tap the mic to retry"));
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to GuideRail. Type or tap the mic to retry"));
     expect(sockets).toHaveLength(0);
     expect($<HTMLInputElement>("#text").value).toBe("hello");
     expect($<HTMLInputElement>("#text").readOnly).toBe(false);
@@ -437,7 +438,7 @@ describe("lazy Live connection", () => {
     fetchMock.mockImplementationOnce(async () => { throw new Error("offline"); });
     const exact = "  Keep   my exact spacing and punctuation!  ";
     type(exact);
-    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or tap the mic to retry"));
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to GuideRail. Type or tap the mic to retry"));
     expect($<HTMLInputElement>("#text").value).toBe(exact);
     expect(sockets).toHaveLength(0);
     expect($<HTMLInputElement>("#text").readOnly).toBe(false);
@@ -1210,7 +1211,7 @@ describe("page activity across idle disconnects", () => {
   it("remembers delivered input but excludes failed undelivered text from reconnect history", async () => {
     fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     type("first try");
-    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or tap the mic to retry"));
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to GuideRail. Type or tap the mic to retry"));
     type("second try");
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "ready" });

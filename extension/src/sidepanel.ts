@@ -386,6 +386,7 @@ let retries = 0;
 const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000];
 
 function connectionLost(text: string, retry = true) {
+  console.warn(`Relay ${SERVER_HOST}: ${text}`);
   disconnect(text);
   $("#server-banner").hidden = false;
   const delay = retry ? RETRY_DELAYS[retries++] : undefined;
@@ -400,7 +401,7 @@ async function connect(retrying = false) {
   if (signedOut) return;
   clearTimeout(retryTimer);
   if (!retrying) retries = 0;
-  if (!$("#server-banner").hidden) $("#server-message").textContent = `Connecting to ${SERVER_HOST}… Unsent text stays in the box.`;
+  if (!$("#server-banner").hidden) $("#server-message").textContent = `Connecting to GuideRail… Unsent text stays in the box.`;
   restartPending = false;
   const attempt = ++connectionAttempt;
   const previous = ws;
@@ -418,7 +419,7 @@ async function connect(retrying = false) {
     const response = await authFetch(`${HTTP}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const body = await response.json();
     if (!response.ok || typeof body.credential !== "string") {
-      if (attempt === connectionAttempt) connectionLost(`Can't connect to ${SERVER_HOST}. Type or tap the mic to retry`, false);
+      if (attempt === connectionAttempt) connectionLost(`Can't connect to GuideRail. Type or tap the mic to retry`, false);
       say("system", body.error ?? "Session admission failed.");
       return;
     }
@@ -426,7 +427,7 @@ async function connect(retrying = false) {
   } catch (error) {
     // A rejected sign-in has already shown the form and closed this attempt.
     if (attempt !== connectionAttempt || error instanceof AuthError) return;
-    connectionLost(`Can't connect to ${SERVER_HOST}. Type or tap the mic to retry`);
+    connectionLost(`Can't connect to GuideRail. Type or tap the mic to retry`);
     say("system", error instanceof Error ? error.message : "Session admission failed.");
     return;
   }
@@ -443,7 +444,7 @@ async function connect(retrying = false) {
     void onServer(msg);
   };
   sock.onclose = (event) => { if (ws === sock) connectionLost("Disconnected. Type or tap the mic to reconnect", !event.wasClean); };
-  sock.onerror = () => { if (ws === sock) connectionLost(`Can't reach ${SERVER_HOST}`); };
+  sock.onerror = () => { if (ws === sock) connectionLost(`Can't reach GuideRail`); };
 }
 
 function onReady() {
