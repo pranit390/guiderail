@@ -43,6 +43,9 @@ substituted `project/zoop-innovation` at the Chrome boundary. The shipped code
 has no such substitution. Catalog URL selection, argument rejection, and model
 tool routing are also exercised by automated tests. This is not evidence of
 an uninstrumented account/project-picker journey or a voice-model end-to-end run.
+Only `/project/<id>/firestore` console paths are accepted. The Firebase console
+puts secondary signed-in accounts under `/u/<n>/project/...`; those paths are
+unsupported and pause the Journey. The probe used a single signed-in account.
 
 The compile was a real provider request, not the test fixture: contract v3,
 `cacheHit:false`, 17,121 ms, retrieved-source metadata present. Later browser

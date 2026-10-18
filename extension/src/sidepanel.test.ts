@@ -216,6 +216,37 @@ describe("bound Journey tool and event routing", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(sendMessage).not.toHaveBeenCalled();
   });
+  it("returns the open_page result to the issuing session and reconnects with the Goal after that turn", async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 1, compiledAt: "2026-10-18T00:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } })));
+    chrome.tabs.create = vi.fn().mockResolvedValue({ id: 7, url: FIRESTORE_GOAL.consoleUrl });
+    const issuing = sockets[0];
+    expect(await tool("open_page", { goalId: FIRESTORE_GOAL.id })).toMatchObject({ opened: true, goalId: FIRESTORE_GOAL.id });
+    expect(sockets).toHaveLength(1); expect(issuing.close).not.toHaveBeenCalled();
+    receive({ type: "resumption", handle: "pre-goal" });
+    receive({ type: "turn_complete" });
+    expect(issuing.close).toHaveBeenCalled(); expect(sockets).toHaveLength(2);
+    expect(sockets[1].params.get("goalId")).toBe(FIRESTORE_GOAL.id); expect(sockets[1].params.has("resume")).toBe(false);
+  });
+  it("keeps the person's Next after they click the pointed control, but pauses on tab switch or unsupported navigation", async () => {
+    await start(); const listener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0];
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
+      ? { url: boundUrl, title: "Firestore", generation: 2, elements: [{ i: 1, role: "button", name: "Databases & Storage" }] }
+      : message.kind === "highlight" ? { found: true, i: message.index, name: message.name, confidence: 1 } : { ok: true });
+    const [reread, next] = document.querySelectorAll<HTMLButtonElement>("#journey [data-result] > div button");
+    const point = async () => { reread.click(); await vi.waitFor(() => expect(next.disabled).toBe(false)); };
+    const sender = { tab: { id: 7 }, url: boundUrl } as chrome.runtime.MessageSender;
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+    await point();
+    listener({ kind: "page_event", text: 'User clicked "Databases & Storage".' }, sender, vi.fn()); await settle();
+    listener({ kind: "page_event", text: "Page changed.", generation: 3 }, sender, vi.fn());
+    listener({ kind: "tab_changed", tabId: 7, url: boundUrl }, {}, vi.fn()); await settle();
+    expect(next.disabled).toBe(false);
+    listener({ kind: "tab_changed", tabId: 8 }, {}, vi.fn()); expect(next.disabled).toBe(true);
+    await point();
+    listener({ kind: "page_event", text: 'User clicked "Databases & Storage".' }, sender, vi.fn()); await settle();
+    listener({ kind: "page_event", text: "Page changed.", generation: 4 }, { tab: { id: 7 }, url: "https://accounts.google.com/signin" } as chrome.runtime.MessageSender, vi.fn());
+    expect(next.disabled).toBe(true);
+  });
   it("drops foreign-tab and sign-in events and refuses model completion", async () => {
     await start(); const listener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0];
     const socket = sockets.at(-1)!; socket.send.mockClear();

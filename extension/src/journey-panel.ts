@@ -98,7 +98,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     catch (error) { status.textContent = `${error instanceof Error ? error.message : "Couldn't brief this page."} Open a public doc above and retry.`; }
     finally { brief.disabled = !enabled; }
   });
-  return { openJourney, endJourney, invalidate(message: string) { walk?.invalidate(message); }, setEnabled(value: boolean) { enabled = value; walk?.setEnabled(value); reset.disabled = !value; compile.disabled = !enabled; brief.disabled = !enabled; start.disabled = !enabled; } };
+  return { openJourney, endJourney, acted(message: string) { walk?.acted(message); }, invalidate(message: string, sameTab = false) { walk?.invalidate(message, sameTab); }, setEnabled(value: boolean) { enabled = value; walk?.setEnabled(value); reset.disabled = !value; compile.disabled = !enabled; brief.disabled = !enabled; start.disabled = !enabled; } };
 }
 function appendCitation(parent: HTMLElement, item: Citation, context: string) {
   const p = document.createElement("p"); p.textContent = item.explanation;

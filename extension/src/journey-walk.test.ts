@@ -39,6 +39,22 @@ describe("cited Guide walk", () => {
     await vi.waitFor(() => expect(point).toHaveBeenCalled()); walk.invalidate("Tab changed"); finish({ found: true });
     await vi.waitFor(() => expect(reread.disabled).toBe(false)); expect(next.disabled).toBe(true);
   });
+  it("keeps Next after the person clicks the pointed control and the wizard moves on in the same tab", async () => {
+    const { read, reread, next, walk, parent } = mount(); read.mockResolvedValue(page(["Databases & Storage"])); reread.click();
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.acted("You clicked the highlighted control."); walk.invalidate("The page changed.", true);
+    expect(next.disabled).toBe(false); expect(parent.textContent).toContain("The page changed.");
+    walk.invalidate("The tab changed."); expect(next.disabled).toBe(true);
+  });
+  it("never enables Next from a click alone or carries it to the following Step", async () => {
+    const { read, reread, next, skip, walk } = mount();
+    walk.acted("You clicked the highlighted control."); walk.invalidate("The page changed.", true); expect(next.disabled).toBe(true);
+    read.mockResolvedValue(page(["Databases & Storage"])); reread.click();
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.acted("You clicked the highlighted control."); next.click();
+    walk.invalidate("The page changed.", true); expect(next.disabled).toBe(true);
+    skip.click(); walk.acted("clicked"); walk.invalidate("The page changed.", true); expect(next.disabled).toBe(true);
+  });
   it("requires manual progress and stops at the human Create boundary", async () => {
     const { read, point, reread, next, skip, parent } = mount();
     for (const step of result.journey.steps) {

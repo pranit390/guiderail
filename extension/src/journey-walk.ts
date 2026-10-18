@@ -16,6 +16,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   let busy = false;
   let enabled = true;
   let revision = 0;
+  let acted = -1;
   const statuses = rows.map(() => "Not checked on this screen.");
   const controls = document.createElement("div");
   const status = document.createElement("p");
@@ -60,5 +61,9 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   next.addEventListener("click", () => advance(false));
   skip.addEventListener("click", () => advance(true));
   render();
-  return { setEnabled(value: boolean) { enabled = value; revision++; next.disabled = true; render(); }, invalidate(message: string) { revision++; if (current < rows.length) statuses[current] = message; next.disabled = true; render(); } };
+  return {
+    setEnabled(value: boolean) { enabled = value; revision++; next.disabled = true; render(); },
+    acted(message: string) { revision++; if (current >= rows.length) return; if (!next.disabled) acted = current; statuses[current] = message; render(); },
+    invalidate(message: string, sameTab = false) { revision++; if (current < rows.length) statuses[current] = message; if (!sameTab || acted !== current) next.disabled = true; render(); },
+  };
 }

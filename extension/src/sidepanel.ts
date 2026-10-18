@@ -31,6 +31,9 @@ let bound: BoundSnapshot | null = null;
 let boundStale = false;
 let liveReady = false;
 let compiledGoal = false;
+// A compile finished during a tool call: reconnect with the compiled Goal once that turn ends.
+let restartPending = false;
+let toolCalls = 0;
 let docsTabId: number | undefined;
 const binding = new JourneyBinding();
 const journeyPanel = mountJourneyPanel($("#journey"), {
@@ -42,10 +45,12 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   reset() { binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
   compiled() {
     compiledGoal = true;
+    restartPending = true;
     resumeHandle = undefined;
     void chrome.storage.session.remove("resumeHandle");
     if (mode !== "guide") return;
     docsTabId = undefined;
+    if (toolCalls) return;
     ws?.close();
     connect();
   },
@@ -160,6 +165,7 @@ function say(role: "user" | "model" | "system" | "step", text: string) {
 // ---------- Connection to the relay ----------
 
 function connect() {
+  restartPending = false;
   liveReady = false;
   setStatus("Connecting…", "busy");
   const params = new URLSearchParams({ mode });
@@ -223,14 +229,18 @@ async function onServer(msg: any) {
       teach?.endTurn("user");
       teach?.endTurn("model");
       speaker.turnEnded();
+      if (restartPending && !toolCalls && mode === "guide") { ws?.close(); connect(); }
       break;
     case "resumption":
-      if (mode === "guide") { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
+      if (mode === "guide" && !restartPending) { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
       break;
     case "error": say("system", msg.message); break;
     case "tool_call": {
-      const response = await runTool(msg.name, msg.args).catch((err: Error) => ({ error: err.message }));
-      sendServer({ type: "tool_result", id: msg.id, name: msg.name, response });
+      toolCalls++;
+      try {
+        const response = await runTool(msg.name, msg.args).catch((err: Error) => ({ error: err.message }));
+        sendServer({ type: "tool_result", id: msg.id, name: msg.name, response });
+      } finally { toolCalls--; }
       break;
     }
   }
@@ -452,7 +462,10 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
   if (msg.kind === "tab_changed" || msg.kind === "toggle_voice") { handlePageMessage(msg, sender); return; }
   if (sender.frameId && sender.frameId !== 0) return;
   if (binding.tabId !== undefined) {
-    if (!sender.tab || !binding.accepts({ id: sender.tab.id, url: sender.url })) return;
+    if (!sender.tab || !binding.accepts({ id: sender.tab.id, url: sender.url })) {
+      if (sender.tab?.id === binding.tabId) journeyPanel.invalidate("Journey paused: return the bound tab to its Firebase Firestore project.");
+      return;
+    }
     const generation = binding.generation;
     void binding.tab().then((tab) => {
       if (generation !== binding.generation || sender.tab?.id !== tab.id || sender.url !== tab.url) return;
@@ -475,7 +488,8 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       break;
     case "tab_changed":
       if (binding.tabId !== undefined) {
-        journeyPanel.invalidate("The tab changed. Return to the bound Firestore tab and re-read this Step.");
+        if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
+        else journeyPanel.invalidate("The tab changed. Return to the bound Firestore tab and re-read this Step.");
         card.hidden = true; issues.hidden = true;
       } else if (mode === "teach") void followTab(msg.tabId);
       // A reload of the coached tab drops the content script's generation counter, so the old snapshot cannot authorize a target.
@@ -485,7 +499,10 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       }
       break;
     case "page_event":
-      if (binding.tabId !== undefined) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.");
+      if (binding.tabId !== undefined) {
+        if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control. Choose I did this · Next step, or re-read this Step.");
+        else journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
+      }
       if (bound && sender.tab?.id === bound.tabId && msg.generation !== undefined && msg.generation !== bound.generation) {
         boundStale = true;
         void clearBoundHighlight();
