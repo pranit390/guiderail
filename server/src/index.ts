@@ -4,10 +4,10 @@ import { extname, join, normalize } from "node:path";
 import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
 import { CompileError, parseCompileRequest } from "../../shared/journey.ts";
-import { journeyCompiler, CompileBusyError, CompileDisabledError } from "./journeys/compile.ts";
+import { journeyCompiler, CompileAllowanceError, CompileBusyError, CompileDisabledError } from "./journeys/compile.ts";
 import { draftPlaybook, DraftError, parsePlaybook } from "./playbooks/draft.ts";
 import { isAllowedOrigin } from "./origin.ts";
-import { LiveAdmission, SessionTickets } from "./admission.ts";
+import { ALLOWANCE_USED, LiveAdmission, MODEL_CALL_MS, SessionTickets } from "./admission.ts";
 import { DAILY_LIVE_MS, IDLE_MS, SESSION_MS } from "./live-limits.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { playbookStore, ruleStore } from "./storage.ts";
@@ -136,10 +136,10 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       if (!(err instanceof CompileError)) throw err;
       return json(res, 400, { error: err.message });
     }
-    try { return json(res, 200, await journeyCompiler.compile({ cachedOnly: process.env.DISABLE_DRAFT === "true" || !!(process.env.DEMO_END_AT && Date.now() >= Date.parse(process.env.DEMO_END_AT)) })); }
+    try { return json(res, 200, await journeyCompiler.compile({ cachedOnly: process.env.DISABLE_DRAFT === "true" || !!(process.env.DEMO_END_AT && Date.now() >= Date.parse(process.env.DEMO_END_AT)), charge: () => admission.charge(MODEL_CALL_MS) })); }
     catch (err) {
       if (err instanceof CompileDisabledError) return json(res, 503, { error: err.message });
-      if (err instanceof CompileBusyError) return json(res, 429, { error: err.message });
+      if (err instanceof CompileBusyError || err instanceof CompileAllowanceError) return json(res, 429, { error: err.message });
       if (err instanceof CompileError) return json(res, 502, { error: err.message });
       throw err;
     }
@@ -154,6 +154,8 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if (!body?.goal || !Array.isArray(body.events) || body.events.length === 0) {
       return json(res, 400, { error: "Send a goal and at least one event." });
     }
+    // A draft is a Gemini call: it uses the same daily allowance as voice.
+    if (!admission.charge(MODEL_CALL_MS)) return json(res, 429, { error: ALLOWANCE_USED });
     try {
       return json(res, 200, await draftPlaybook(body));
     } catch (err) {

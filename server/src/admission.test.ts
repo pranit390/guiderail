@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DAILY_LIVE_MS, LiveAdmission, SessionTickets } from "./admission.ts";
+import { DAILY_LIVE_MS, LiveAdmission, MODEL_CALL_MS, SessionTickets } from "./admission.ts";
 
 beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date("2026-10-18T12:00:00Z")); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
@@ -74,6 +74,27 @@ describe("configured admission limits", () => {
     vi.advanceTimersByTime(1);
     expect(expired).toHaveBeenCalledOnce();
     expect(limits.admit(vi.fn()).allowed).toBe(true);
+  });
+});
+
+describe("model calls share the daily allowance", () => {
+  it("charges each draft or compile and refuses once the allowance is used, until the next UTC day", () => {
+    const limits = new LiveAdmission();
+    const calls = DAILY_LIVE_MS / MODEL_CALL_MS;
+    for (let i = 0; i < calls; i++) expect(limits.charge(MODEL_CALL_MS)).toBe(true);
+    expect(limits.charge(MODEL_CALL_MS)).toBe(false);
+    expect(limits.admit(vi.fn())).toMatchObject({ allowed: false, message: expect.stringContaining("tomorrow") });
+    vi.setSystemTime(new Date("2026-10-19T00:00:00Z"));
+    expect(limits.charge(MODEL_CALL_MS)).toBe(true);
+  });
+
+  it("voice time used today leaves less room for drafts", () => {
+    const limits = new LiveAdmission();
+    const voice = limits.admit(vi.fn());
+    vi.advanceTimersByTime(DAILY_LIVE_MS - MODEL_CALL_MS);
+    if (voice.allowed) voice.release();
+    expect(limits.charge(MODEL_CALL_MS)).toBe(true);
+    expect(limits.charge(MODEL_CALL_MS)).toBe(false);
   });
 });
 
