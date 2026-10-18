@@ -128,6 +128,7 @@ let obstacles: Rect[] = [];
 let placementDirty = true;
 let pageMutated = false;
 let scannedAt = 0;
+let layoutMovedAt = -Infinity;
 let lastTargetLayout = "";
 
 function placeStep() {
@@ -135,13 +136,18 @@ function placeStep() {
   const { rect, radius } = highlightRegion(highlighted);
   const bounds = padded(rect, 4);
   Object.assign(ring.style, { left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px`, borderRadius: `${radius + 4}px` });
+  const now = performance.now();
   const layout = JSON.stringify([rect, window.innerWidth, window.innerHeight]);
-  if (layout !== lastTargetLayout) { placementDirty = true; lastTargetLayout = layout; }
-  if (pageMutated && performance.now() - scannedAt >= 200) placementDirty = true;
-  if (!placementDirty) return;
+  if (layout !== lastTargetLayout) {
+    if (lastTargetLayout) { layoutMovedAt = now; stepChip.hidden = true; }
+    placementDirty = true;
+    lastTargetLayout = layout;
+  }
+  if (pageMutated && now - scannedAt >= 200) placementDirty = true;
+  if (!placementDirty || now - layoutMovedAt < 200) return;
   placementDirty = false;
   pageMutated = false;
-  scannedAt = performance.now();
+  scannedAt = now;
   stepChip.hidden = !!offscreen(highlighted);
   if (stepChip.hidden) return;
   stepChip.style.maxWidth = `${Math.min(260, window.innerWidth - 16)}px`;
@@ -255,7 +261,8 @@ function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   applyTheme(cue, el);
   ring.hidden = false;
   stepChip.replaceChildren(stateGlyph("go"), document.createTextNode(`Here · ${nameOf(el)}`));
-  placementDirty = true;
+  lastTargetLayout = "";
+  layoutMovedAt = -Infinity;
   placeStep();
   // Three soft breaths, then a static halo.
   ring.classList.remove("pulse");
@@ -297,7 +304,7 @@ function follow() {
   if (highlighted || badBoxes.length || calm.active) requestAnimationFrame(follow);
   else followRunning = false;
 }
-function onViewportChange() { placementDirty = true; if (highlighted || badBoxes.length || calm.active) startFollow(); }
+function onViewportChange() { pageMutated = true; if (highlighted || badBoxes.length || calm.active) startFollow(); }
 const layoutObserver = new ResizeObserver(onViewportChange);
 document.fonts?.addEventListener("loadingdone", onViewportChange);
 window.addEventListener("resize", onViewportChange);
