@@ -236,14 +236,37 @@ describe("explicit email proposal confirmation", () => {
     expect(chrome.tabs.create).not.toHaveBeenCalled();
   });
 
-  it("invalidates a pending proposal on disconnect", async () => {
+  it("keeps the proposal after a disconnect and opens it once on local confirmation", async () => {
     const socket = await connected();
     socket.receive({ type: "tool_call", id: "draft", name: "draft_message", args });
     await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(false));
     socket.onclose?.();
+    expect($("#compose-confirmation").hidden).toBe(false);
+    expect($("#compose-to").textContent).toBe(args.to);
+    expect($("#compose-subject").textContent).toBe(args.subject);
+    expect($("#compose-body").textContent).toBe(args.body);
+    expect(chrome.tabs.create).not.toHaveBeenCalled();
+    $("#compose-confirm").click();
+    $("#compose-confirm").click();
+    await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(true));
+    expect(chrome.tabs.create).toHaveBeenCalledOnce();
+    expect(new URL(vi.mocked(chrome.tabs.create).mock.calls[0][0].url!).searchParams.get("body")).toBe(args.body);
+    expect(sockets).toHaveLength(1);
+    expect(sessionRequests()).toBe(1);
+    expect(sent(socket)).toEqual([]);
+  });
+
+  it("dismisses a proposal kept after a disconnect without opening anything or reconnecting", async () => {
+    const socket = await connected();
+    socket.receive({ type: "tool_call", id: "draft", name: "draft_message", args });
+    await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(false));
+    socket.onclose?.();
+    $("#compose-cancel").click();
     expect($("#compose-confirmation").hidden).toBe(true);
     $("#compose-confirm").click();
     expect(chrome.tabs.create).not.toHaveBeenCalled();
+    expect(sockets).toHaveLength(1);
+    expect(sessionRequests()).toBe(1);
   });
 });
 

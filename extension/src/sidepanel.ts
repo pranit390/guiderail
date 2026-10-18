@@ -441,9 +441,10 @@ async function readSnapshot(tab: chrome.tabs.Tab): Promise<PageSnapshot> {
   });
   return { ...snap, rank };
 }
+const composing = () => !$("#compose-confirmation").hidden;
 
 async function confirmCompose(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-  if (cancelCompose) return { opened: false, note: "Another proposed email is awaiting your decision." };
+  if (composing()) return { opened: false, note: "Another proposed email is awaiting your decision." };
   if (typeof args.to !== "string" || typeof args.subject !== "string" || typeof args.body !== "string") {
     return { opened: false, error: "The email proposal needs a recipient, subject and body." };
   }
@@ -452,7 +453,7 @@ async function confirmCompose(args: Record<string, unknown>): Promise<Record<str
   const tab = await activeTab();
   if (!ready || attempt !== connectionAttempt) return { opened: false, note: "The connection ended before confirmation." };
   // Another tool call may have reached this boundary while activeTab was pending.
-  if (cancelCompose) return { opened: false, note: "Another proposed email is awaiting your decision." };
+  if (composing()) return { opened: false, note: "Another proposed email is awaiting your decision." };
   const card = $("#compose-confirmation");
   const confirm = $<HTMLButtonElement>("#compose-confirm");
   const cancel = $<HTMLButtonElement>("#compose-cancel");
@@ -464,20 +465,24 @@ async function confirmCompose(args: Record<string, unknown>): Promise<Record<str
   confirm.focus();
   return new Promise((resolve) => {
     let opening = false;
-    let settled = false;
-    const finish = (result: Record<string, unknown>) => {
-      if (settled) return;
-      settled = true;
-      card.hidden = true;
-      confirm.onclick = null;
-      cancel.onclick = null;
+    let answered = false;
+    const answer = (result: Record<string, unknown>) => {
+      if (answered) return;
+      answered = true;
       cancelCompose = undefined;
       resolve(result);
     };
-    cancelCompose = () => finish({ opened: false, note: "The connection ended; the proposal was not opened." });
+    const finish = (result: Record<string, unknown>) => {
+      card.hidden = true;
+      confirm.onclick = null;
+      cancel.onclick = null;
+      answer(result);
+    };
+    // The card outlives its connection: after a disconnect the user can still open or dismiss it locally.
+    cancelCompose = () => answer({ opened: false, note: "The connection ended before the user decided." });
     cancel.onclick = () => { if (!opening) finish({ opened: false, note: "The user declined the proposed email." }); };
     confirm.onclick = () => {
-      if (opening || settled) return;
+      if (opening) return;
       opening = true;
       confirm.disabled = true;
       const base = tab.url?.startsWith(`${HTTP}/sandbox/`) ? `${HTTP}/sandbox/gmail-compose.html?` : "https://mail.google.com/mail/?view=cm&";
