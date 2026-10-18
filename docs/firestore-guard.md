@@ -62,8 +62,10 @@ Assist preview, approval, fill, readback and Stop runtime acceptance belong to
 the separate Assist implementation. This change specifies the contract and
 keeps existing public Assist claims unchanged.
 
-Local validation result: **437 tests passed** (125 server, 312 extension), both
-workspace typechecks passed, and the extension build passed. The direct isolated
+Local validation result, recorded at commit `a6acb59` before the review fixes
+for label casing and wizard-only guidance: **437 tests passed** (125 server, 312
+extension), both workspace typechecks passed, and the extension build passed.
+The direct isolated
 Chrome for Testing capture passed: Test mode produced one Stop marker and the
 panel's block reason; Production produced zero markers and hid the Violation.
 The 360px panel had no horizontal overflow in the 1300×900 paired harness.
