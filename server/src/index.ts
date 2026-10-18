@@ -8,6 +8,7 @@ import { journeyCompiler, CompileBusyError, CompileDisabledError } from "./journ
 import { draftPlaybook, DraftError, isRule } from "./playbooks/draft.ts";
 import { isAllowedOrigin } from "./origin.ts";
 import { LiveAdmission, SessionTickets } from "./admission.ts";
+import { DAILY_LIVE_MS, IDLE_MS, SESSION_MS } from "./live-limits.ts";
 import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { approvals, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
@@ -37,7 +38,7 @@ code{background:#f1f3f6;padding:1px 5px;border-radius:4px}li{margin:6px 0}
 <li>Allow the microphone on the welcome page that opens, or just type instead.</li>
 <li>Open the <a href="/sandbox/index.html">practice Cloud Run console</a>, press <code>Cmd/Ctrl+Shift+K</code>, and say or type your goal, e.g. &ldquo;Deploy a Cloud Run service for a customer in Germany&rdquo;.</li>
 </ol>
-<p>This limited demo shares five connected Live minutes per UTC day per server instance. The panel connects when you first type or press Talk and disconnects after one minute without activity. At most three sessions can connect; each session ends within ten minutes. Instance replacement can reset the daily allowance. Voice, typed questions and supported page context are sent to Gemini on Vertex AI. No Firebase sign-in or durable receipts are provided by this relay.</p>
+<p>This limited demo shares ${DAILY_LIVE_MS / 60_000} connected Live minutes per UTC day per server instance. The panel connects when you first type or press Talk and disconnects after ${IDLE_MS / 1000} seconds without activity. At most three sessions can connect; each session ends within ${SESSION_MS / 60_000} minutes. Instance replacement can reset the daily allowance. Voice, typed questions and supported page context are sent to Gemini on Vertex AI. No Firebase sign-in or durable receipts are provided by this relay.</p>
 </main></body></html>`;
 
 const json = (res: ServerResponse, status: number, body: unknown) =>

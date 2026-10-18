@@ -62,36 +62,51 @@ instead of a link; `http://localhost` links are produced only off Cloud Run with
 memory, capped at 100 open requests and 500 characters per field.
 
 The extension obtains a one-use, 60-second credential from `POST /session`.
-The server binds it to a fresh anonymous UUID and the issuing Origin, then consumes
+The server binds it to a fresh session UUID, the signed-in Firebase UID and the issuing Origin, then consumes
 it before opening Vertex Live. Missing, expired, replayed or wrong-origin
 credentials fail closed. Outstanding credentials are bounded to 128 per instance.
-These are anonymous capabilities, **not Firebase authentication**. There are no
-user accounts, durable identity claims or durable receipts in this deployment.
-The parent issue's Firebase identity integration remains a separate prerequisite.
+These capabilities supplement Firebase authentication: the hosted coach requires
+sign-in with a verified email in `ALLOWED_EMAILS`, and a ticket can only be used
+by the same signed-in user. Cloud Run fails closed when the allowlist is absent.
 
 At most three Live sessions run per instance. The fourth receives an explicit
-**coach is busy** message. The shared allowance is five aggregate connected Live
-minutes per UTC day per instance: three simultaneous clients exhaust it in one
-minute 40 seconds. Only connected time is charged, and the relay disconnects a
-session after 60 seconds without activity: typed text, end of speech, page
+**coach is busy** message. The default shared allowance is 18 aggregate connected Live
+minutes per UTC day per instance: three simultaneous clients exhaust it in six
+minutes. Only connected time is charged, and the relay disconnects a
+session after 120 seconds without activity: typed text, end of speech, page
 events, Teach context, app events, transcribed speech or model output. Raw
 microphone frames do not count, so an open mic sending silence still times out;
 session summaries, tool results and resumption updates do not count either.
 The exception is a proposed email: while its confirmation card awaits the user,
-the idle minute is paused (the ten-minute upper limit still applies), and the
+the idle timeout is paused (the 20-minute upper limit still applies), and the
 `draft_message` result counts as activity. If the session ends anyway, the card
 stays open and the user can still open or dismiss the draft locally.
 Disconnected clients stop consuming time. Every limit closes the Vertex Live
 session immediately and frees the concurrency slot then, before the client's
 WebSocket close handshake. Each session also has
-a ten-minute upper limit, eight completed replies, a 512-output-token limit per response,
+a default 20-minute upper limit, no turn or reply-count cap, a 512-output-token limit per response,
 24,000 aggregate input text characters (including tool-result JSON, ID and name),
 a 4,000-character limit per text/tool-result message (longer text is answered
 with an `error` and not delivered; the panel refuses to send it), a 64 KiB WebSocket frame limit, and PCM input paced
 to real time with a two-second burst. Context compression targets 4,096 tokens
 after an 8,192-token trigger. The shared daily allowance will normally close a
-session before the ten-minute upper limit. Reconnect consumes another credential
+session before the 20-minute upper limit. Reconnect consumes another credential
 and the remaining daily allowance; it does not restore minutes in that instance.
+
+The limits are read once at server startup. To override the defaults on the
+service at a separately coordinated redeploy, set these exact environment variables:
+
+| Environment variable | Default | Maximum | Meaning |
+|---|---:|---:|---|
+| `LIVE_DAILY_MINUTES` | 18 | 60 | Aggregate connected Live minutes per UTC day per instance |
+| `LIVE_SESSION_MINUTES` | 20 | 30 | Minutes per session, shared by admission and relay |
+| `LIVE_IDLE_SECONDS` | 120 | 300 | Seconds without qualifying activity before disconnect |
+
+Positive finite numbers (including fractions) are accepted. Non-positive,
+empty or non-numeric values fall back to the default with a startup warning;
+values above the maximum are clamped with a warning. Raising the daily allowance
+above 18 requires revisiting the $20 cost model below. No service changes or
+deployment are part of this source change.
 
 Client tool results are accepted only once for an outstanding model-issued ID
 and matching tool name. Forged, mismatched and replayed results are not sent to
@@ -108,25 +123,28 @@ and Vertex; this is heuristic secret masking, not a claim to detect every secret
 
 ## Expected cost commitment through 6 November 2026
 
-This is an **expected spend of USD 5.69 under single-instance assumptions**, as clarified by firstmate;
+This is an **expected spend of USD 19.09 against a $20 commitment under single-instance assumptions**;
 it is not a mathematical guarantee. Use a conservative 21 UTC-date allowance
-covering deployment on 17 October UTC through 6 November: 21 × 5 = 105 aggregate
+covering 17 October UTC through 6 November: 21 × 18 = 378 aggregate
 connected Live minutes. Do not assume Cloud Run's shared billing-account free tier remains
 available.
 
 | Component | Planning assumption | Expected USD |
 |---|---|---:|
-| Live audio | 25 tokens/second in each direction, continuous audio: 1,500 × $3/M + 1,500 × $12/M = $0.0225/min; 105 × $0.0225 | 2.3625 |
-| Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; short eight-reply sessions | 2.3625 |
-| Cloud Run active compute | 6,300 s at $0.000024/vCPU-s + 0.5 × $0.0000025/GiB-s = $0.00002525/s; no free-tier discount | 0.159075 |
-| Startup, HTTP, network and logs | Small judge traffic, short requests, bounded payloads; reserve | 0.30 |
-| Four source builds and retained task images | Initial failed startup, corrected serving build, post-validation redeploy and security-fix redeploy; task image sets held through judging; reserve | 0.50 |
-| **Planning total** | 5.684075, rounded upward | **5.69** |
-| **Margin to $6** | Approximately | **0.31** |
+| Live audio | 25 tokens/second in each direction, continuous audio: 1,500 × $3/M + 1,500 × $12/M = $0.0225/min; 378 × $0.0225 | 8.505 |
+| Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; 378 × $0.0225 | 8.505 |
+| Cloud Run active compute | 378 × 60 = 22,680 s at $0.000024/vCPU-s + 0.5 × $0.0000025/GiB-s = $0.00002525/s; no free-tier discount | 0.57267 |
+| Startup, HTTP, network and logs | Small judge traffic, short requests, bounded payloads; reserve | 0.50 |
+| Builds and retained task images | Existing builds plus two more redeploys, with images held through judging; reserve | 1.00 |
+| **Planning total** | 378 × $0.045 + 22,680 × $0.00002525 + $1.50 = $19.08267, rounded upward | **19.09** |
+| **Margin to $20** | $20 − $19.09, after rounding the total upward | **0.91** |
 
-Five minutes is the largest whole-minute daily allowance under this model: six
-minutes gives 126 minutes, 126 × $0.045 + 7,560 s × $0.00002525 + $0.80 =
-$6.66089, which exceeds the commitment.
+Eighteen minutes is the largest whole-minute daily allowance under this model
+with the $1.50 reserve: floor(($20 − $1.50) / (21 × ($0.045 +
+60 × $0.00002525))) = 18. Nineteen minutes gives 399 minutes,
+399 × $0.045 + 23,940 s × $0.00002525 + $1.50 = $20.059485,
+which exceeds the commitment. Compute adds $0.001515 per Live minute
+(about $0.0015), for $0.046515 per minute including the $0.045 model allowance.
 
 The 25-token/sec conversion is a planning assumption, not a verified native-audio
 upper bound. Vertex bills tokens, including accumulated session context again on
@@ -144,7 +162,7 @@ created. Source deployment may create the explicitly authorized
 artifacts. Do not delete pre-existing artifacts or create a second service. No
 Firebase Hosting changes are part of this deployment.
 
-Sources checked 18 October 2026:
+Pricing references retained from the existing model (not revalidated for this cap change):
 
 - [Cloud Run pricing](https://cloud.google.com/run/pricing): request-based active
   CPU/memory, shared free tier, idle min-instance pricing. Keeping 1 vCPU/512 MiB

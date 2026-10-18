@@ -82,9 +82,30 @@ describe("extension download", () => {
     expect(page).toContain('href="/download/guiderail-extension.zip" download');
     expect(page).toContain("Load unpacked");
     expect(page).toContain('href="/sandbox/index.html"');
+    expect(page).toContain("shares 18 connected Live minutes per UTC day");
+    expect(page).toContain("disconnects after 120 seconds without activity");
+    expect(page).toContain("each session ends within 20 minutes");
     expect(page).toContain("Instance replacement can reset the daily allowance.");
     expect(page).toContain("No Firebase sign-in or durable receipts");
     expect((await fetch(base + "/sandbox/index.html")).status).toBe(200);
+  });
+
+  it("states the configured Live limits on the coach page", async () => {
+    vi.resetModules();
+    vi.stubEnv("LIVE_DAILY_MINUTES", "7.5");
+    vi.stubEnv("LIVE_SESSION_MINUTES", "12");
+    vi.stubEnv("LIVE_IDLE_SECONDS", "45");
+    const { server } = await import("./index.ts");
+    try {
+      if (!server.listening) await new Promise((resolve) => server.once("listening", resolve));
+      const page = await (await fetch(`http://127.0.0.1:${(server.address() as AddressInfo).port}/`)).text();
+      expect(page).toContain("shares 7.5 connected Live minutes per UTC day");
+      expect(page).toContain("disconnects after 45 seconds without activity");
+      expect(page).toContain("each session ends within 12 minutes");
+    } finally {
+      server.close();
+      for (const name of ["LIVE_DAILY_MINUTES", "LIVE_SESSION_MINUTES", "LIVE_IDLE_SECONDS"]) vi.stubEnv(name, undefined);
+    }
   });
 });
 
