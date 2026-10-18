@@ -5,7 +5,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
   container.innerHTML = `<h2>Firestore Goal</h2><p>Create a Firestore database</p>
     <button type="button" data-compile>Read the Firestore docs</button>
     <button type="button" data-brief>Brief me from this page</button>
-    <p data-status role="status" aria-live="polite">Start with public docs. No Google login, project or microphone needed.</p>
+    <p data-status>Start with public docs. No Google login, project or microphone needed.</p>
     <p data-links></p><div data-result></div>`;
   const compile = container.querySelector<HTMLButtonElement>("[data-compile]")!;
   const brief = container.querySelector<HTMLButtonElement>("[data-brief]")!;
@@ -53,10 +53,11 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
   });
   return { setEnabled(on: boolean) { enabled = on; compile.disabled = !on; brief.disabled = !on; } };
 }
-function appendCitation(parent: HTMLElement, item: Citation) {
+function appendCitation(parent: HTMLElement, item: Citation, context: string) {
   const p = document.createElement("p"); p.textContent = item.explanation;
   const a = document.createElement("a"); a.href = item.sourceUrl.replace(/\.md\.txt$/, "");
   a.textContent = item.citationHeading; a.target = "_blank"; a.rel = "noopener noreferrer";
+  a.setAttribute("aria-label", `Source for ${context}: ${item.citationHeading}`);
   parent.append(p, a);
 }
 export function renderJourney(parent: HTMLElement, { journey }: CompileResult) {
@@ -67,13 +68,13 @@ export function renderJourney(parent: HTMLElement, { journey }: CompileResult) {
   const details = document.createElement("details");
   const summary = document.createElement("summary"); summary.textContent = "Prerequisite, Database ID and warnings";
   details.append(summary); details.open = true;
-  for (const item of [journey.prerequisite, journey.databaseIdGuidance, journey.limitations, journey.testModeWarning, journey.locationWarning]) appendCitation(details, item);
+  for (const [context, item] of Object.entries({ Prerequisite: journey.prerequisite, "Database ID": journey.databaseIdGuidance, Limits: journey.limitations, "Test mode warning": journey.testModeWarning, "Location warning": journey.locationWarning })) appendCitation(details, item, context);
   parent.append(details);
   const list = document.createElement("ol");
-  for (const step of journey.steps) {
+  for (const [index, step] of journey.steps.entries()) {
     const li = document.createElement("li");
     const title = document.createElement("strong"); title.textContent = step.control === "Create" ? "You click Create" : step.control;
-    li.append(title); appendCitation(li, step); list.append(li);
+    li.append(title); appendCitation(li, step, `Step ${index + 1}, ${step.control}`); list.append(li);
   }
   parent.append(list);
 }

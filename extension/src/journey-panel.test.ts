@@ -25,6 +25,9 @@ describe("Journey panel", () => {
     expect(container.textContent).toContain("You click Create");
     expect(container.textContent).toContain("from cache");
     expect(container.querySelector("li a")?.getAttribute("href")).toBe(FIRESTORE_GOAL.sourceUrls[0]);
+    const names = [...container.querySelectorAll("li a")].map((a) => a.getAttribute("aria-label"));
+    expect(names).toEqual(fixtureDraft.steps.map((step, i) => `Source for Step ${i + 1}, ${step.control}: ${step.citationHeading}`));
+    expect(new Set(names).size).toBe(10);
     expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ goalId: FIRESTORE_GOAL.id });
   });
   it("keeps a retry and official-docs fallback after a readable server failure", async () => {
