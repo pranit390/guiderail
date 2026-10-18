@@ -50,7 +50,6 @@ form { flex:none; display:grid; grid-template-columns:auto minmax(0,1fr) auto; g
 form > label { grid-column:1 / -1; font-size:12px; color:var(--muted); }
 input { font:inherit; min-width: 0; padding: 8px 10px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--bg); color: var(--ink); }
 input::placeholder { color:var(--muted); opacity:1; }
-#newcards { flex:none; align-self:center; margin:6px 12px; padding:2px 12px; border-color:var(--focus); border-radius:999px; background:var(--accent-soft); font-size:12px; font-weight:600; }
 
 button { padding: 6px 12px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; }
 button:disabled { opacity: .5; cursor: default; }
@@ -84,8 +83,7 @@ button:disabled { opacity: .5; cursor: default; }
 [hidden] { display: none !important; }
 
 /* The current Journey Step stays outside the conversation live region, in the shared content scroller. */
-header { gap: 6px; white-space: nowrap; }
-#status { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+header { flex-wrap: wrap; gap: 6px; }
 #form { flex-wrap: wrap; }
 #form label { flex: 1 0 100%; font-size: 12px; color: var(--muted); }
 #form input { width:100%; }
