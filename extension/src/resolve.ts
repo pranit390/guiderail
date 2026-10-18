@@ -147,8 +147,9 @@ function pageElementsOf(controls: ReturnType<typeof collectControls>): PageEleme
 }
 
 // Every highlight is pinned to the bound snapshot. An unpinned request is refused, never re-read.
-// A control that was hidden, changed role, or gained a competitor since that read is stale:
-// the old index is not reused and the request is not authorized again.
+// A control that was hidden, changed role, or no longer resolves uniquely to the pinned element
+// (a new competitor, a relabelled section) is stale: the old index is not reused and the
+// request is not authorized again.
 export function liveHighlight(
   msg: { text: string; role?: string; section?: string; generation?: number; index?: number; name?: string },
   liveGeneration: number,
