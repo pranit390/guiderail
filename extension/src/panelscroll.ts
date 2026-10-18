@@ -2,9 +2,9 @@
 const shown = (el: HTMLElement) => (el.hidden ? "" : el.textContent ?? "");
 
 export class PanelScroll {
-  // Cards changed while the person was typing or reading history, oldest first.
+  // Cards changed while the person was typing, reading history or focused in the content, oldest first.
   private pending = new Map<HTMLElement, () => string>();
-  // The card a reveal is keeping in view, until the reader scrolls, or the card is hidden or settled in view as the log grows.
+  // The card a smooth reveal is moving to, until that scroll ends or the card is hidden or settled in view.
   private revealing: HTMLElement | null = null;
 
   constructor(
@@ -18,18 +18,15 @@ export class PanelScroll {
       if (card) this.reveal(card);
     });
     scroll.addEventListener("scrollend", () => {
-      if (this.revealing && !this.settled(this.revealing)) this.scrollTo(this.revealing);
+      this.revealing = null;
       for (const card of this.pending.keys()) if (this.settled(card)) this.pending.delete(card);
       this.showChip();
     });
-    // The header, status and chip can resize the viewport after a reveal starts; keep the card in view.
-    new ResizeObserver(() => {
-      if (this.revealing && !this.settled(this.revealing)) this.scrollTo(this.revealing);
-    }).observe(scroll);
     const cancelReveal = () => (this.revealing = null);
     scroll.addEventListener("wheel", cancelReveal, { passive: true });
     scroll.addEventListener("touchmove", cancelReveal, { passive: true });
     scroll.addEventListener("pointerdown", cancelReveal);
+    scroll.addEventListener("focusin", (event) => event.target !== scroll && cancelReveal());
     scroll.addEventListener("keydown", (event) => {
       if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancelReveal();
     });
@@ -44,34 +41,47 @@ export class PanelScroll {
     const following = before <= this.scroll.getBoundingClientRect().bottom + 1;
     write();
     const grew = this.log.getBoundingClientRect().bottom - before;
-    if (this.revealing) this.scrollTo(this.revealing);
+    if (this.revealing) this.revealing.scrollIntoView({ block: "nearest", behavior: "smooth" });
     else if (following && grew > 0) this.scroll.scrollTop += grew;
   }
 
   // Re-renders a card and, when it is newly shown or its content changed, brings it into view.
-  // While the person is typing or reading history, offers a chip instead of moving the page under them.
   update(card: HTMLElement, label: () => string, render: () => void) {
     const before = shown(card);
-    const readingHistory = this.log.getBoundingClientRect().bottom > this.scroll.getBoundingClientRect().bottom + 1;
+    const away = this.readerAway();
     render();
     const now = shown(card);
     if (!now) this.pending.delete(card);
-    else if (now !== before) {
-      if (readingHistory || (document.activeElement === this.input && this.input.value.trim() !== "")) this.pending.set(card, label);
-      else this.reveal(card);
-    }
+    else if (now !== before) this.offer(card, label, away);
     this.showChip();
   }
 
-  reveal(el: HTMLElement) {
-    this.revealing = el;
-    this.scrollTo(el);
+  // Brings a card that was just shown into view, on the same terms as update.
+  show(card: HTMLElement, label: () => string) {
+    this.offer(card, label, this.readerAway());
+    this.showChip();
+  }
+
+  // A reader away from the end of the log, typing, or with focus in the content is never moved: they get a chip,
+  // unless the card is already in view.
+  private offer(card: HTMLElement, label: () => string, away: boolean) {
+    if (!away) this.reveal(card);
+    else if (this.settled(card)) this.pending.delete(card);
+    else this.pending.set(card, label);
+  }
+
+  private readerAway() {
+    const focus = document.activeElement;
+    return this.log.getBoundingClientRect().bottom > this.scroll.getBoundingClientRect().bottom + 1
+      || (focus === this.input && this.input.value.trim() !== "")
+      || this.scroll.contains(focus);
+  }
+
+  private reveal(el: HTMLElement) {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
     this.pending.delete(el);
     this.showChip();
-  }
-
-  private scrollTo(el: HTMLElement) {
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    this.revealing = still ? null : el;
     el.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   }
 

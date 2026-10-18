@@ -147,6 +147,7 @@ async function loadRules() {
 function setStatus(text: string, state: "on" | "off" | "busy") {
   status.replaceChildren(stateGlyph(state === "on" ? "go" : "check"), document.createTextNode(text));
   status.dataset.state = state;
+  status.title = text;
 }
 
 // ---------- Conversation log ----------
@@ -586,7 +587,7 @@ async function setTeach(on: boolean) {
   }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teachbar").hidden = !on;
-  if (on) panel.reveal($("#teachbar"));
+  if (on) panel.show($("#teachbar"), () => "New: Teach controls");
   connect();
 }
 
@@ -646,20 +647,20 @@ async function stopAndDraft() {
   } catch {
     say("system", "Couldn't reach the GuideRail server on localhost:8787. Press \"Stop and draft Playbook\" to try again.");
     $("#teachbar").hidden = false;
-    panel.reveal($("#teachbar"));
+    panel.show($("#teachbar"), () => "New: Teach controls");
     return;
   }
   if (!res.ok) {
     say("system", `Couldn't draft the Playbook: ${await errorText(res)}. Press "Stop and draft Playbook" to try again.`);
     $("#teachbar").hidden = false;
-    panel.reveal($("#teachbar"));
+    panel.show($("#teachbar"), () => "New: Teach controls");
     return;
   }
   let body: any;
   try { body = await res.json(); } catch {
     say("system", `Couldn't draft the Playbook: ${res.statusText || "bad response"}. Press "Stop and draft Playbook" to try again.`);
     $("#teachbar").hidden = false;
-    panel.reveal($("#teachbar"));
+    panel.show($("#teachbar"), () => "New: Teach controls");
     return;
   }
   teach = null;
@@ -675,7 +676,7 @@ async function stopAndDraft() {
   }));
   $("#draft").hidden = false;
   say("system", "Draft ready below. Review it, untick any Rules you don't want, then click Publish.");
-  panel.reveal($("#draft"));
+  panel.show($("#draft"), () => "New: Playbook draft");
   appEvent(`Playbook draft ready: "${draft.title}". It is shown below the chat for the user to review; they still need to click Publish. Draft:\n${String(draft.markdown).slice(0, 1200)}`);
 }
 

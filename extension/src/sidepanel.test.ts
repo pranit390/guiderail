@@ -57,18 +57,26 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Teach controls in a long conversation", () => {
-  it("reveals recording controls when Teach starts from history", async () => {
+  it("keeps a reader in history where they are and offers the recording controls through the chip", async () => {
     const log = document.querySelector<HTMLElement>("#log")!;
     const scroll = document.querySelector<HTMLElement>("#scroll")!;
     const bar = document.querySelector<HTMLElement>("#teachbar")!;
+    const chip = document.querySelector<HTMLButtonElement>("#newcards")!;
     log.textContent = "A long conversation. ".repeat(1000);
+    log.getBoundingClientRect = () => ({ top: -scroll.scrollTop, bottom: 9000 - scroll.scrollTop }) as DOMRect;
+    scroll.getBoundingClientRect = () => ({ top: 0, bottom: 400 }) as DOMRect;
+    bar.getBoundingClientRect = () => ({ top: 9000 - scroll.scrollTop, bottom: 9100 - scroll.scrollTop }) as DOMRect;
     scroll.scrollTop = 0;
     bar.scrollIntoView = vi.fn(() => { scroll.scrollTop = 9000; });
-    vi.stubGlobal("matchMedia", () => ({ matches: false }));
     document.querySelector<HTMLButtonElement>("#teach")!.click();
     await vi.waitFor(() => expect(bar.hidden).toBe(false));
+    expect(bar.scrollIntoView).not.toHaveBeenCalled();
+    expect(scroll.scrollTop).toBe(0);
+    expect(chip.hidden).toBe(false);
+    expect(chip.textContent).toBe("New: Teach controls");
+    chip.click();
     expect(bar.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
-    expect(scroll.scrollTop).toBe(9000);
+    expect(chip.hidden).toBe(true);
     expect(document.querySelector("#teachstop")?.textContent).toContain("Stop and draft Playbook");
   });
 
