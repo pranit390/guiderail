@@ -1,16 +1,18 @@
 import { EventEmitter } from "node:events";
+import type { LiveConnectParameters } from "@google/genai";
 import type { WebSocket } from "ws";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { untrustedToolResult } from "./untrusted.ts";
 
 const live = vi.hoisted(() => ({
+  connect: vi.fn<(options: Pick<LiveConnectParameters, "config">) => void>(),
   callbacks: undefined as undefined | { onmessage: (msg: object) => void },
   session: { close: vi.fn(), sendRealtimeInput: vi.fn(), sendClientContent: vi.fn(), sendToolResponse: vi.fn() },
 }));
 vi.mock("@google/genai", async (original) => ({
   ...(await original<typeof import("@google/genai")>()),
   GoogleGenAI: class {
-    live = { connect: async (options: { callbacks: typeof live.callbacks }) => { live.callbacks = options.callbacks; return live.session; } };
+    live = { connect: async (options: Pick<LiveConnectParameters, "config"> & { callbacks: typeof live.callbacks }) => { live.connect(options); live.callbacks = options.callbacks; return live.session; } };
   },
 }));
 vi.mock("./playbooks/load.ts", () => ({ loadPlaybooks: async () => [], loadRuleLines: async () => [] }));
@@ -39,8 +41,24 @@ async function start(connect = relay) {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   Object.values(live.session).forEach((fn) => fn.mockClear());
+  live.connect.mockClear();
 });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+describe("Live voice setup", () => {
+  it.each([
+    { override: undefined, expected: "Aoede" },
+    { override: "Kore", expected: "Kore" },
+  ])("uses $expected with LIVE_VOICE=$override", async ({ override, expected }) => {
+    vi.stubEnv("LIVE_VOICE", override);
+    const { end } = await start();
+    const options = live.connect.mock.calls[0]?.[0];
+    expect(options?.config?.speechConfig).toEqual({
+      voiceConfig: { prebuiltVoiceConfig: { voiceName: expected } },
+    });
+    end("test complete", "test complete");
+  });
+});
 
 describe("Live idle timeout", () => {
   it("closes the Live session after two minutes without user input or model output", async () => {

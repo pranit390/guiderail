@@ -16,6 +16,7 @@ const session = await ai.live.connect({
   model,
   config: {
     responseModalities: [Modality.AUDIO],
+    speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.LIVE_VOICE ?? "Aoede" } } },
     outputAudioTranscription: {},
     systemInstruction: "You guide users through web UIs. Always call read_page before answering where something is.",
     tools: [{ functionDeclarations: [{ name: "read_page", description: "List the interactive elements on the current page." }] }],

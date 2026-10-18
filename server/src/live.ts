@@ -91,6 +91,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         model,
         config: {
           responseModalities: [Modality.AUDIO],
+          speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.LIVE_VOICE ?? "Aoede" } } },
           maxOutputTokens: 512,
           systemInstruction: `${await buildInstruction(mode, goal, goalId)}\n\n${UNTRUSTED_DATA_INSTRUCTION}`,
           tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
