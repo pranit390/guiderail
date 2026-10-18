@@ -29,6 +29,7 @@ function readPage(): PageSnapshot {
   indexed = new Map();
   snapshotRoles = new Map();
   const elements: PageElement[] = [];
+  const rank: number[] = [];
   for (const control of collectControls(MAX_ELEMENTS)) {
     indexed.set(control.i, control.el);
     snapshotRoles.set(control.i, control.role);
@@ -36,9 +37,11 @@ function readPage(): PageSnapshot {
     if (control.value) item.value = control.value;
     if (control.section) item.section = control.section;
     elements.push(item);
+    rank.push(control.rank);
   }
-  return { url: effectiveUrl(), title: document.title, elements, generation };
+  return { url: effectiveUrl(), title: document.title, elements, generation, rank };
 }
+
 
 // ---------- Pointing at a pinned element ----------
 

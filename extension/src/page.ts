@@ -99,18 +99,31 @@ export type CollectedControl = {
   name: string;
   value?: string;
   section?: string;
+  rank: number;
 };
+
+// Form controls first (on screen before off screen), page chrome such as headers, nav and menus last.
+function rankOf(el: Element): number {
+  if (el.closest("header,nav,[role=banner],[role=navigation],[role=menu],[role=menubar]")) return 4;
+  if (!el.matches("input,select,textarea,[contenteditable=true]") && !el.closest("main,form,fieldset,dialog,[role=main],[role=form],[role=dialog]")) return 3;
+  const r = el.getBoundingClientRect();
+  return r.bottom > 0 && r.top < window.innerHeight ? 0 : 1;
+}
 
 // The same named controls read_page returns, in snapshot order. Callers keep the element
 // so a later highlight can point at that index only while the snapshot is still current.
+// Past the limit, the lowest-ranked controls are kept, still in page order.
 export function collectControls(limit = 150): CollectedControl[] {
-  const out: CollectedControl[] = [];
+  const found: { el: Element; name: string; rank: number }[] = [];
   for (const el of allElements()) {
-    if (out.length >= limit) break;
     if (isSecret(el) || !isVisible(el)) continue;
     const name = maskValue(nameOf(el));
-    if (!name) continue;
-    const item: CollectedControl = { el, i: out.length + 1, role: roleOf(el), name };
+    if (name) found.push({ el, name, rank: rankOf(el) });
+  }
+  const kept = new Set(found.length > limit ? [...found].sort((a, b) => a.rank - b.rank).slice(0, limit) : found);
+  const out: CollectedControl[] = [];
+  for (const { el, name, rank } of found.filter((c) => kept.has(c))) {
+    const item: CollectedControl = { el, i: out.length + 1, role: roleOf(el), name, rank };
     const value = safeValueOf(el);
     if (value) item.value = value.slice(0, 60);
     const section = sectionOf(el);
