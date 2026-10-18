@@ -16,6 +16,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   let busy = false;
   let enabled = true;
   let revision = 0;
+  let observed = -1;
   let acted = -1;
   const statuses = rows.map(() => "Not checked on this screen.");
   const controls = document.createElement("div");
@@ -29,14 +30,15 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     rows.forEach((row, i) => { row.toggleAttribute("data-current", i === current); if (i === current) row.setAttribute("aria-current", "step"); else row.removeAttribute("aria-current"); labels[i].textContent = statuses[i]; });
     status.textContent = current < rows.length ? `Step ${current + 1}: ${journey.steps[current].control}. ${statuses[current]}` : "All Steps reviewed. GuideRail has not verified database creation.";
     reread.disabled = !enabled || busy || current >= rows.length; skip.disabled = reread.disabled;
-    if (current >= rows.length) next.disabled = true;
+    next.disabled = reread.disabled || journey.steps[current].control === "Create" || (observed !== current && acted !== current);
   }
   async function refresh() {
     if (!enabled || busy || current >= rows.length) return;
     const reading = revision;
-    busy = true; next.disabled = true; render();
+    busy = true; observed = -1; render();
+    let snapshot: PageSnapshot | undefined;
     try {
-      const snapshot = await read();
+      snapshot = await read();
       if (reading !== revision) return;
       const observation = observeStep(journey.steps[current].control, snapshot);
       statuses[current] = observation.text;
@@ -44,10 +46,10 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
         const result = await point(observation.target, observation.role);
         if (reading !== revision) return;
         if (!result || typeof result !== "object" || !("found" in result) || result.found !== true) throw new Error("The control changed or could not be highlighted. Re-read before continuing.");
-        next.disabled = journey.steps[current].control === "Create";
+        observed = current;
       }
       changed(`${observation.text} Source: ${journey.steps[current].citationHeading}.`);
-    } catch (error) { if (reading !== revision) return; statuses[current] = error instanceof Error ? error.message : "The page could not be read."; }
+    } catch (error) { if (reading !== revision) return; if (!snapshot) acted = -1; statuses[current] = error instanceof Error ? error.message : "The page could not be read."; }
     finally { busy = false; reread.textContent = "Re-read this Step"; render(); }
   }
   function advance(skipped: boolean) {
@@ -55,15 +57,15 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     if (!skipped && next.disabled) return;
     statuses[current] = skipped ? "Explicitly skipped by you; not verified." : "You reported this Step done; not independently verified.";
     changed(`${journey.steps[current].control}: ${statuses[current]}`);
-    current++; next.disabled = true; render();
+    current++; render();
   }
   reread.addEventListener("click", () => void refresh());
   next.addEventListener("click", () => advance(false));
   skip.addEventListener("click", () => advance(true));
   render();
   return {
-    setEnabled(value: boolean) { enabled = value; revision++; next.disabled = true; render(); },
-    acted(message: string) { revision++; if (current >= rows.length) return; if (!next.disabled) acted = current; statuses[current] = message; render(); },
-    invalidate(message: string, sameTab = false) { revision++; if (current < rows.length) statuses[current] = message; if (!sameTab || acted !== current) next.disabled = true; render(); },
+    setEnabled(value: boolean) { enabled = value; revision++; observed = -1; acted = -1; render(); },
+    acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current) acted = current; statuses[current] = message; render(); },
+    invalidate(message: string, sameTab = false) { revision++; observed = -1; if (!sameTab) acted = -1; if (current < rows.length) statuses[current] = message; render(); },
   };
 }

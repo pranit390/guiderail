@@ -241,7 +241,16 @@ describe("bound Journey tool and event routing", () => {
     listener({ kind: "page_event", text: "Page changed.", generation: 3 }, sender, vi.fn());
     listener({ kind: "tab_changed", tabId: 7, url: boundUrl }, {}, vi.fn()); await settle();
     expect(next.disabled).toBe(false);
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
+      ? { url: boundUrl, title: "Firestore", generation: 3, elements: [{ i: 1, role: "radio", name: "Standard edition" }] } : { ok: true });
+    sendMessage.mockClear();
+    reread.click(); await vi.waitFor(() => expect(document.querySelector("#journey [aria-current=step] p:last-child")!.textContent).toContain("I can't see it on this screen"));
+    expect(sendMessage.mock.calls.some(([, message]) => message.kind === "highlight")).toBe(false);
+    expect(next.disabled).toBe(false);
     listener({ kind: "tab_changed", tabId: 8 }, {}, vi.fn()); expect(next.disabled).toBe(true);
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
+      ? { url: boundUrl, title: "Firestore", generation: 2, elements: [{ i: 1, role: "button", name: "Databases & Storage" }] }
+      : message.kind === "highlight" ? { found: true, i: message.index, name: message.name, confidence: 1 } : { ok: true });
     await point();
     listener({ kind: "page_event", text: 'User clicked "Databases & Storage".' }, sender, vi.fn()); await settle();
     listener({ kind: "page_event", text: "Page changed.", generation: 4 }, { tab: { id: 7 }, url: "https://accounts.google.com/signin" } as chrome.runtime.MessageSender, vi.fn());

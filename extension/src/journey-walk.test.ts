@@ -46,6 +46,27 @@ describe("cited Guide walk", () => {
     expect(next.disabled).toBe(false); expect(parent.textContent).toContain("The page changed.");
     walk.invalidate("The tab changed."); expect(next.disabled).toBe(true);
   });
+  it("keeps the recorded click through a re-read that no longer sees the control, then waits for explicit Next", async () => {
+    const { read, point, reread, next, walk, parent, changed } = mount(); read.mockResolvedValue(page(["Databases & Storage"])); reread.click();
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.acted("You clicked the highlighted control."); walk.invalidate("The page changed.", true);
+    read.mockResolvedValue(page(["Firestore"])); point.mockClear(); reread.click();
+    await vi.waitFor(() => expect(reread.disabled).toBe(false));
+    expect(parent.textContent).toContain("The doc says Databases & Storage. I can't see it on this screen.");
+    expect(point).not.toHaveBeenCalled(); expect(next.disabled).toBe(false);
+    expect(parent.querySelector('[aria-current="step"] strong')?.textContent).toBe("Databases & Storage");
+    next.click(); expect(changed).toHaveBeenLastCalledWith("Databases & Storage: You reported this Step done; not independently verified.");
+    expect(parent.querySelector('[aria-current="step"] strong')?.textContent).toBe("Firestore"); expect(next.disabled).toBe(true);
+  });
+  it("revokes a recorded click when the re-read is paused or the tab changes", async () => {
+    const { read, reread, next, walk } = mount(); read.mockResolvedValue(page(["Databases & Storage"])); reread.click();
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.acted("clicked"); read.mockRejectedValue(new Error("Journey paused: return to the bound Firestore tab and re-read.")); reread.click();
+    await vi.waitFor(() => expect(reread.disabled).toBe(false)); expect(next.disabled).toBe(true);
+    read.mockResolvedValue(page(["Databases & Storage"])); reread.click(); await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.acted("clicked"); walk.invalidate("The tab changed.");
+    read.mockResolvedValue(page([])); reread.click(); await vi.waitFor(() => expect(reread.disabled).toBe(false)); expect(next.disabled).toBe(true);
+  });
   it("never enables Next from a click alone or carries it to the following Step", async () => {
     const { read, reread, next, skip, walk } = mount();
     walk.acted("You clicked the highlighted control."); walk.invalidate("The page changed.", true); expect(next.disabled).toBe(true);
