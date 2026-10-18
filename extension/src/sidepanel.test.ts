@@ -135,7 +135,9 @@ describe("lazy Live connection", () => {
     $("#assist-level").dispatchEvent(new Event("change"));
     $<HTMLButtonElement>("#teach").click();
     await vi.waitFor(() => expect(socket.close).toHaveBeenCalled());
+    fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     $<HTMLButtonElement>("#teach").click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/playbooks/draft"))).toBe(true));
     expect(sent(socket).some((m) => m.type === "app" && /Assist stop/.test(m.text))).toBe(false);
     expect($("[data-assist-status]").textContent).not.toMatch(/stopped|Already filled/);
   });
