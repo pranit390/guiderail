@@ -29,7 +29,7 @@ a.btn{display:inline-block;background:#e0a100;color:#1b1300;font-weight:600;padd
 code{background:#f1f3f6;padding:1px 5px;border-radius:4px}li{margin:6px 0}
 @media(prefers-color-scheme:dark){body{background:#0f141c;color:#e6ebf2}code{background:#1d2633}a{color:#9ec5ff}a.btn{color:#1b1300}}
 </style></head><body><main>
-<h1>GuideRail coach</h1><p>The relay is online. Install the packaged extension, open a supported Google page, and type a question or press Talk.</p>
+<h1>GuideRail coach</h1><p>The relay is online. Install the packaged extension, open a supported Google page, and type a question or tap the mic.</p>
 <p><a class="btn" href="/download/guiderail-extension.zip" download>Download the Chrome extension</a></p>
 <h2>Install the extension</h2><ol>
 <li>Unzip <code>guiderail-extension.zip</code>.</li>
@@ -38,7 +38,7 @@ code{background:#f1f3f6;padding:1px 5px;border-radius:4px}li{margin:6px 0}
 <li>Allow the microphone on the welcome page that opens, or just type instead.</li>
 <li>Open the <a href="/sandbox/index.html">practice Cloud Run console</a>, press <code>Cmd/Ctrl+Shift+K</code>, and say or type your goal, e.g. &ldquo;Deploy a Cloud Run service for a customer in Germany&rdquo;.</li>
 </ol>
-<p>This limited demo shares ${DAILY_LIVE_MS / 60_000} connected Live minutes per UTC day per server instance. The panel connects when you first type or press Talk and disconnects after ${IDLE_MS / 1000} seconds without activity. At most three sessions can connect; each session ends within ${SESSION_MS / 60_000} minutes. Instance replacement can reset the daily allowance. Voice, typed questions and supported page context are sent to Gemini on Vertex AI. No Firebase sign-in or durable receipts are provided by this relay.</p>
+<p>This limited demo shares ${DAILY_LIVE_MS / 60_000} connected Live minutes per UTC day per server instance. The panel connects when you first type or tap the mic and disconnects after ${IDLE_MS / 1000} seconds without activity. At most three sessions can connect; each session ends within ${SESSION_MS / 60_000} minutes. Instance replacement can reset the daily allowance. Voice, typed questions and supported page context are sent to Gemini on Vertex AI. No Firebase sign-in or durable receipts are provided by this relay.</p>
 </main></body></html>`;
 
 const json = (res: ServerResponse, status: number, body: unknown) =>

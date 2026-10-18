@@ -76,7 +76,7 @@ independently modified or claimed integrated.
 Four independently reproduced defects were repaired after the initial probe:
 
 - Step transitions, rereads and End clear the previous pointer without clearing policy markers or losing a recorded human click's explicit-Next eligibility.
-- The shared overlay reconnects to the document when a modal/popover closes, hides or is removed. Guard, Show field and Calmer/Restore remain usable.
+- The shared overlay reconnects to the document when a modal/popover closes, hides or is removed. Guard, Show field and the calmer page view remain usable.
 - The current Step, citation and progression controls sit in a compact region outside the conversation log. The full template is a disclosure. Panel scroll ownership is now specified in `extension/DESIGN.md`.
 - Bound Journeys use the shared unique fuzzy resolver and retain tab/project, freshness and pinned content re-resolution checks.
 

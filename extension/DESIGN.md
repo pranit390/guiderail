@@ -25,6 +25,16 @@ follow the latest. The current Step stays outside the log. Header
 and composer stay pinned outside #scroll. Journey rows wrap within the card.
 
 ## 5. Components
+Header Learn mode is a native button with switch semantics, a stable name,
+an explicit On/Off label and a 28x16px track with a 10px thumb. Its 36px
+minimum target uses the existing 6px radius and 6/8px padding. On uses the
+amber Check tint and ink because GuideRail is recording an expert task.
+Composer icon buttons share a 36px minimum target, 6px padding and 20px
+inline SVGs. Mic/stop, paper plane and speaker/muted speaker keep accessible
+names and native title tooltips. Enabled audio uses Go ink and tint; icon
+shape also conveys state. The input, mic, send and speaker share one row
+with 6px gaps. Listening status uses the existing 12px status typography.
+All new states change in place without animation and retain focus-visible.
 Reuse card, button, details and ordered Step rows. Citation chips are ordinary
 source links with an accessible heading, ink text, line border and 6px radius.
 Step controls: Read and point, Re-read, Skip explicitly, and Next step.
@@ -42,7 +52,7 @@ interpreted. Streaming reparses the current reply so split emphasis works.
 One amber, 12px working line sits outside the chat live region. It names the
 pending tool; aria-busy covers chat while it runs and clears on every exit.
 Page telemetry remains model/session context, without repeated chat rows.
-Page changes, Teach entry and draft review clear stale suggestion/Rule cards
+Page changes, Learn mode entry and draft review clear stale suggestion/Rule cards
 and discard form reads begun before them;
 in Guide, page changes then re-check Rules against the current form.
 Journey citations and mismatch messages retain their separate owner.
@@ -54,7 +64,7 @@ native keyboard-operable elements with the existing focus-visible treatment.
 No new animation. Pending operations disable duplicate starts. Missing controls
 retain their citations and offer re-read or explicit skip. Re-read never clicks
 or fills the console. Creating a resource is always the person's action.
-Retain the existing three 2400ms opacity breaths on the Here halo; Calmer and
+Retain the existing three 2400ms opacity breaths on the Here halo; the calmer page view and
 prefers-reduced-motion keep it static. Next hover/press changes brightness
 in place, with no positional motion. The beui animated-badge reference's
 reduced-motion rule (state lands at rest) is the interaction reference.

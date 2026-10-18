@@ -9,7 +9,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     <button type="button" data-reset hidden>End Journey binding</button>
     <button type="button" data-compile>Read the Firestore docs</button>
     <button type="button" data-brief>Brief me from this page</button>
-    <p data-status role="status">Start with public docs. No Google login, project or microphone needed.</p>
+    <p data-status role="status">Start with public docs. No project or microphone needed.</p>
     <p data-links></p><div data-result></div>`;
   let walk: ReturnType<typeof mountJourneyWalk> | undefined;
   let enabled = true;
@@ -74,7 +74,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
   }
   compile.addEventListener("click", () => void ensureLoaded());
   async function openJourney() {
-    if (!enabled) throw new Error("Leave Teach mode before starting a Journey.");
+    if (!enabled) throw new Error("Turn off Learn mode before starting a Journey.");
     start.disabled = true;
     try {
       if (!options.open) throw new Error("Console Journeys are unavailable here.");

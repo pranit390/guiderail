@@ -58,6 +58,7 @@ _Avoid_: Admin (when the role matters)
 
 **Teach mode**:
 The mode in which an expert performs a task while GuideRail records what they do and asks why, to produce a Playbook.
+The side panel labels this toggle "Learn mode"; Teach mode stays the domain term.
 _Avoid_: Record mode, expert mode, training
 
 **Guide mode**:
