@@ -11,7 +11,7 @@ import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
 import { FIRESTORE_CREATE_DIALOG } from "./firestore.ts";
-import { highlightRegion, padded, pageObstacles, placeTag, type Rect } from "./highlight-layout.ts";
+import { highlightRegion, obstaclesUnder, padded, pageObstacles, placeTag, type Rect } from "./highlight-layout.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -244,22 +244,11 @@ function ensureOverlaySurface(target?: Element) {
     if (host.parentElement !== surface) surface.append(host);
   }
 }
-// New or changed page content under a visible Here tag hides it at once; the throttled rescan places it again.
-function hideTagOver(nodes: Iterable<Node | null>) {
-  if (stepChip.hidden) return;
-  const tag = stepChip.getBoundingClientRect();
-  for (const node of nodes) {
-    const el = node instanceof Element ? node : node?.parentElement;
-    if (!el || el === host || (highlighted && el.contains(highlighted))) continue;
-    const r = el.getBoundingClientRect();
-    if (r.left < tag.right && tag.left < r.right && r.top < tag.bottom && tag.top < r.bottom) { stepChip.hidden = true; return; }
-  }
+// Page content now under a visible Here tag hides it at once; the throttled rescan places it again.
+function hideCoveredTag() {
+  if (!stepChip.hidden && obstaclesUnder(padded(stepChip.getBoundingClientRect(), 4)).length) stepChip.hidden = true;
 }
-const surfaceObserver = new MutationObserver((records) => {
-  pageMutated = true;
-  hideTagOver(records.flatMap((r) => r.type === "childList" ? [...r.addedNodes] : [r.target]));
-  ensureOverlaySurface();
-});
+const surfaceObserver = new MutationObserver(() => { pageMutated = true; hideCoveredTag(); ensureOverlaySurface(); });
 surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["open", "hidden", "style", "class"] });
 document.addEventListener("toggle", onSurfaceToggle, true);
 function onSurfaceToggle() { ensureOverlaySurface(); }
@@ -319,12 +308,11 @@ function follow() {
   if (highlighted || badBoxes.length || calm.active) requestAnimationFrame(follow);
   else followRunning = false;
 }
-function onViewportChange() { pageMutated = true; if (highlighted || badBoxes.length || calm.active) startFollow(); }
+function onViewportChange() { pageMutated = true; hideCoveredTag(); if (highlighted || badBoxes.length || calm.active) startFollow(); }
 const layoutObserver = new ResizeObserver(onViewportChange);
 document.fonts?.addEventListener("loadingdone", onViewportChange);
 window.addEventListener("resize", onViewportChange);
-function onScroll(e: Event) { hideTagOver([e.target instanceof Document ? e.target.documentElement : e.target as Node]); onViewportChange(); }
-document.addEventListener("scroll", onScroll, true);
+document.addEventListener("scroll", onViewportChange, true);
 
 function toast(text: string) {
   const t = document.createElement("div");
@@ -530,7 +518,7 @@ function shutdown() {
   document.removeEventListener("input", onInput, true);
   document.removeEventListener("click", onClick, true);
   window.removeEventListener("resize", onViewportChange);
-  document.removeEventListener("scroll", onScroll, true);
+  document.removeEventListener("scroll", onViewportChange, true);
   clearInterval(urlTimer);
   clearTimeout(formTimer);
   setRecording(false);
