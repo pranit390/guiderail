@@ -41,7 +41,9 @@ Open the pinned Firebase manage-databases or Google Cloud IAM grant-access page,
 then press **Brief me from this page** with Guide connected. Microphone access,
 Google sign-in and a cloud project are unnecessary. The extension reads up to
 12,000 characters of rendered article text and its visible headings, excluding
-hidden content and forms. It highlights only an exact unique rendered heading
+hidden content and forms. The brief and any `read_page` document result are cut
+to fit one 4,000-character relay message and say what was left out, so a long
+page is briefed from its opening text and leading headings. It highlights only an exact unique rendered heading
 on that document; absent or ambiguous sections produce an honest failure.
 Typed follow-ups use the existing Live connection. Live receives page text and
 validated cached Journey instructions, never search or URL-context tools.

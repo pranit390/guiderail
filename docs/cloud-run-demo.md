@@ -76,7 +76,8 @@ session immediately and frees the concurrency slot then, before the client's
 WebSocket close handshake. Each session also has
 a ten-minute upper limit, eight completed replies, a 512-output-token limit per response,
 24,000 aggregate input text characters (including tool-result JSON, ID and name),
-a 4,000-character limit per text/tool-result message, a 64 KiB WebSocket frame limit, and PCM input paced
+a 4,000-character limit per text/tool-result message (longer text is answered
+with an `error` and not delivered; the panel refuses to send it), a 64 KiB WebSocket frame limit, and PCM input paced
 to real time with a two-second burst. Context compression targets 4,096 tokens
 after an 8,192-token trigger. The shared daily allowance will normally close a
 session before the ten-minute upper limit. Reconnect consumes another credential
