@@ -3,7 +3,7 @@ import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
 import { evaluate, guidance, type Rule, type Violation } from "./policy.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
-import { SessionLog } from "./sessionlog.ts";
+import { SessionLog, type Entry } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
@@ -21,7 +21,8 @@ let connectionAttempt = 0;
 // The Live connection opens on the first typed message or Talk press; input sent meanwhile waits here.
 let connecting = false;
 let ready = false;
-let pending: string[] = [];
+// Each queued message carries the memory entry to record once it is delivered (or dropped).
+let pending: { raw: string; remember?: [Entry["kind"], string] }[] = [];
 let pendingAudio = 0;
 // Base64 characters of speech kept while connecting: under the relay's two-second audio burst.
 const PENDING_AUDIO_LIMIT = 64_000;
@@ -105,7 +106,6 @@ async function connect() {
   ws = undefined;
   ready = false;
   connecting = true;
-  const summary = memory.size ? memory.summary() : "";
   setStatus("Connecting…", "busy");
   const params = new URLSearchParams({ mode });
   if (mode === "guide" && resumeHandle) params.set("resume", resumeHandle);
@@ -129,23 +129,27 @@ async function connect() {
   sock.onmessage = (e) => {
     if (ws !== sock) return;
     const msg = JSON.parse(e.data);
-    if (msg.type === "ready") onReady(summary);
+    if (msg.type === "ready") onReady();
     void onServer(msg);
   };
   sock.onclose = () => { if (ws === sock) disconnect("Disconnected. Type or press Talk to reconnect"); };
   sock.onerror = () => { if (ws === sock) setStatus(`Can't reach ${SERVER_HOST}`, "off"); };
 }
 
-function onReady(summary: string) {
+function onReady() {
   ready = true;
   connecting = false;
   setStatus(`Connected to ${SERVER_HOST}`, "on");
+  const summary = memory.summary();
   if (summary) sendServer({ type: "session", text: summary });
   const queued = pending;
   pending = [];
   pendingAudio = 0;
   pendingWarning = undefined;
-  for (const raw of queued) ws?.send(raw);
+  for (const { raw, remember } of queued) {
+    ws?.send(raw);
+    if (remember) memory.add(...remember);
+  }
 }
 
 // Closes the Live connection without opening another; the next typed message or Talk press reconnects.
@@ -155,6 +159,7 @@ function disconnect(text: string, state: "off" | "idle" = "off") {
   ws = undefined;
   ready = false;
   connecting = false;
+  for (const { remember } of pending) if (remember) memory.add(...remember);
   pending = [];
   pendingAudio = 0;
   sock?.close();
@@ -171,13 +176,16 @@ function sendServer(msg: object) {
 }
 
 // User input: delivered now, or kept and delivered once the connection it opens is ready.
-function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }) {
-  if (sendServer(msg)) return;
+function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }, remember?: [Entry["kind"], string]) {
+  if (sendServer(msg)) {
+    if (remember) memory.add(...remember);
+    return;
+  }
   if (msg.type === "audio") {
     if (pendingAudio + msg.data.length > PENDING_AUDIO_LIMIT) return;
     pendingAudio += msg.data.length;
   }
-  pending.push(JSON.stringify(msg));
+  pending.push({ raw: JSON.stringify(msg), remember });
   if (!connecting) void connect();
 }
 
@@ -362,11 +370,12 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
           : `User clicked "${msg.label}" and all policy checks pass.`;
         say("system", text);
         // A blocking warning is worth a connection: the coach should say it out loud.
-        if (!sendServer({ type: "event", text }) && blocking.length) {
+        const event = { type: "event" as const, text };
+        if (sendServer(event) || !blocking.length) memory.add("page", text);
+        else {
           pendingWarning = text;
-          sendInput({ type: "event", text });
+          sendInput(event, ["page", text]);
         }
-        memory.add("page", text);
       });
       break;
     case "teach_event":
@@ -538,8 +547,7 @@ $("#form").addEventListener("submit", (e) => {
   say("user", text);
   open = null;
   lastSent = { text, at: Date.now() };
-  sendInput({ type: "text", text });
-  memory.add("user", text);
+  sendInput({ type: "text", text }, ["user", text]);
   input.value = "";
 });
 
