@@ -372,6 +372,123 @@ describe("calmer content messages", () => {
     expect(chip.hidden).toBe(true);
   });
 
+  it("measures the Here tag independently of its previous spot near the viewport edge", () => {
+    const width = (el: HTMLElement) => Math.min(120, window.innerWidth - (parseFloat(el.style.left) || 0));
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) { return width(this); });
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) { return width(this) < 120 ? 40 : 20; });
+    highlightPinned("Create", "button");
+    const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
+    expect(tag.hidden).toBe(false);
+    const top = tag.style.top;
+    tag.style.left = `${window.innerWidth - 60}px`;
+    highlightPinned("Create", "button");
+    expect(tag.hidden).toBe(false);
+    expect(tag.style.top).toBe(top);
+  });
+
+  it("hides the Here tag at once when page text appears under it, then places it clear of that text after the throttled rescan", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    const at = (el: HTMLElement) => new DOMRect(parseFloat(el.style.left), parseFloat(el.style.top), 120, 20);
+    let described = new DOMRect(0, 0, 0, 0);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.classList.contains("step-chip")) return at(this as HTMLElement);
+      if (this.classList.contains("description")) return described;
+      return new DOMRect(40, 100, 200, 60);
+    });
+    vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function (this: Range) {
+      return (this.startContainer.parentElement?.classList.contains("description") ? [described] : []) as unknown as DOMRectList;
+    });
+    highlightPinned("Create", "button");
+    const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
+    expect(tag.hidden).toBe(false);
+    const first = at(tag);
+    described = new DOMRect(first.left - 4, first.top, 200, 20);
+    const description = document.createElement("p");
+    description.className = "description";
+    description.textContent = "Your data will be private by default.";
+    document.body.append(description);
+    await Promise.resolve();
+    expect(tag.hidden).toBe(true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(tag.hidden).toBe(false);
+    const next = at(tag);
+    expect(next.left < described.right && described.left < next.right && next.top < described.bottom && described.top < next.bottom).toBe(false);
+  });
+
+  it("keeps the Here tag hidden while the page keeps changing, then restores it from a fresh scan once quiet", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.classList.contains("step-chip")) return new DOMRect(parseFloat((this as HTMLElement).style.left), parseFloat((this as HTMLElement).style.top), 120, 20);
+      return new DOMRect(40, 100, 200, 60);
+    });
+    highlightPinned("Create", "button");
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    const tag = shadow.querySelector<HTMLElement>(".step-chip")!;
+    expect(tag.hidden).toBe(false);
+    const spot = [tag.style.left, tag.style.top];
+    for (let i = 0; i < 20; i++) {
+      document.body.classList.toggle("busy");
+      await vi.advanceTimersByTimeAsync(50);
+      expect(tag.hidden).toBe(true);
+      expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(false);
+    }
+    await vi.advanceTimersByTimeAsync(250);
+    expect(tag.hidden).toBe(false);
+    expect([tag.style.left, tag.style.top]).toEqual(spot);
+  });
+
+  it.each([
+    ["an ancestor class reveals a description", (spot: DOMRect) => {
+      document.head.insertAdjacentHTML("beforeend", "<style>.reveal { display: none; } .expanded .reveal { display: block; }</style>");
+      document.body.insertAdjacentHTML("beforeend", '<p class="reveal under-tag">Your data will be private by default.</p>');
+      return [new DOMRect(spot.left - 4, spot.top, 200, 20), () => document.body.classList.add("expanded")] as const;
+    }],
+    ["a bare text node in an ancestor changes to sit under it", (spot: DOMRect) => {
+      const text = document.createTextNode("Elsewhere");
+      document.body.append(text);
+      return [new DOMRect(spot.left - 4, spot.top, 200, 20), () => { text.data = "Your data will be private by default."; }] as const;
+    }],
+    ["a pointer-events:none disabled button appears under it", (spot: DOMRect) =>
+      [new DOMRect(spot.left + 10, spot.top, 80, 20), () => document.body.insertAdjacentHTML("beforeend", '<button class="under-tag" disabled style="pointer-events: none">Save</button>')] as const],
+    ["a narrow required marker appears under it", (spot: DOMRect) =>
+      [new DOMRect(spot.left + 62, spot.top + 4, 5, 12), () => document.body.insertAdjacentHTML("beforeend", '<span class="under-tag">*</span>')] as const],
+  ])("hides the Here tag at once when %s, then re-places it clear of that content", async (_name, arrange) => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    const at = (el: HTMLElement) => new DOMRect(parseFloat(el.style.left), parseFloat(el.style.top), 120, 20);
+    let under = new DOMRect(0, 0, 0, 0);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.classList.contains("step-chip")) return at(this as HTMLElement);
+      if (this.classList.contains("under-tag")) return under;
+      return new DOMRect(40, 100, 200, 60);
+    });
+    vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function (this: Range) {
+      const node = this.startContainer;
+      const owner = node.parentElement;
+      const shown = owner?.classList.contains("under-tag") ? !!owner.checkVisibility() : node.textContent === "Your data will be private by default.";
+      return (shown ? [under] : []) as unknown as DOMRectList;
+    });
+    highlightPinned("Create", "button");
+    const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
+    const target = document.querySelector("button")!.getBoundingClientRect();
+    const spot = at(tag);
+    const [obstacle, change] = arrange(spot);
+    under = obstacle;
+    await vi.advanceTimersByTimeAsync(250);
+    expect(tag.hidden).toBe(false);
+    expect(at(tag)).toEqual(spot);
+    change();
+    await Promise.resolve();
+    expect(tag.hidden).toBe(true);
+    expect(document.querySelector("button")!.getBoundingClientRect()).toEqual(target);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(tag.hidden).toBe(false);
+    const next = at(tag);
+    expect(next.left < under.right && under.left < next.right && next.top < under.bottom && under.top < next.bottom).toBe(false);
+  });
+
   it("narrows a Rule chip to the room beside its field so it can sit there", () => {
     vi.stubGlobal("innerWidth", 520);
     vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 280, 60));

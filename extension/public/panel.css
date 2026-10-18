@@ -29,6 +29,12 @@ header strong { font-size: 16px; } header strong span { color: var(--accent); }
 .msg { flex:none; margin: 0; padding: 8px 10px; border-radius: 8px; max-width: 92%; white-space: pre-wrap; }
 .msg.user { align-self: flex-end; background: var(--surface-2); }
 .msg.model { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); }
+.msg.model, #draftmd { white-space:normal; }
+.msg.model p, #draftmd p { margin:0 0 8px; white-space:pre-wrap; }
+.msg.model > :last-child, #draftmd > :last-child { margin-bottom:0; }
+.msg.model ul, .msg.model ol, #draftmd ul, #draftmd ol { margin:4px 0 8px; padding-left:20px; }
+.msg.model code, #draftmd code { font:12px/1.5 ui-monospace,Menlo,monospace; background:var(--surface-2); padding:2px 4px; border-radius:4px; }
+#working { margin:0; padding:8px 12px; color:var(--warn); font-size:12px; }
 .msg.system { align-self: center; color: var(--muted); font-size: 12px; text-align: center; }
 .msg.alert { align-self: stretch; max-width: none; color: var(--bad); border: 2px solid var(--bad); font-weight: 600; }
 .card { flex-shrink: 0; margin: 0 12px 10px; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
@@ -71,7 +77,7 @@ button:disabled { opacity: .5; cursor: default; }
 #guidance { border-style:dashed; }
 .msg.step { align-self:flex-start; color:var(--gr-go); background:var(--gr-go-tint); font-size:12px; padding:2px 10px; animation:gr-done 320ms cubic-bezier(.2,.8,.2,1); }
 @keyframes gr-done { from { opacity:0; transform:translateY(4px); } }
-#draftmd { white-space: pre-wrap; overflow-wrap:anywhere; font: 12px/1.5 ui-monospace, Menlo, monospace; background: var(--bg); padding: 8px; border-radius: 6px; }
+#draftmd { overflow-wrap:anywhere; font:14px/1.5 system-ui,sans-serif; background:var(--bg); padding:8px; border-radius:6px; }
 #compose-confirmation dd { margin-inline-start: 0; }
 #compose-confirmation pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 4px 0 12px; }
 #draftrules label { display: block; font-size: 13px; padding: 2px 0; }
@@ -97,9 +103,16 @@ header { flex-wrap: wrap; gap: 6px; }
 #form input { width:100%; }
 #current-step { padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .journey-current { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 12px; }
-.journey-current p, .journey-current a, .journey-current button:first-of-type { grid-column: 1 / -1; }
+.journey-current h2, .journey-current p, .journey-current a, .journey-current button:first-of-type { grid-column: 1 / -1; }
+.journey-current h2 { font-size:14px; line-height:1.5; margin:0; color:var(--ink); }
 .journey-current p { margin: 0; }
 .journey-current button { font-size: 12px; padding: 5px 8px; }
+.journey-current .journey-next { grid-column:1 / -1; min-height:36px; font-size:14px; font-weight:600; }
+.journey-next:not(:disabled) { background:var(--gr-go); color:var(--gr-on-go); border-color:var(--gr-go); }
+.journey-next:not(:disabled):hover { filter:brightness(.92); }
+.journey-next:not(:disabled):active { filter:brightness(.85); }
+.journey-next:disabled { background:var(--surface-2); color:var(--muted); }
+.journey-current button:last-child { grid-column:1 / -1; justify-self:start; }
 .citation { color: var(--ink); overflow-wrap: anywhere; }
 #assist { margin-top:10px; }
 #assist select { width:100%; min-width:0; padding:8px; font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--control-line); border-radius:6px; }

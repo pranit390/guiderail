@@ -33,6 +33,7 @@
     <section id="current-step" aria-label="Current Journey Step" hidden></section>
     <section id="assist" class="card" aria-label="Firestore assistance"></section>
     <p id="reply-status" class="sr-only" role="status" aria-atomic="true"></p>
+    <p id="working" role="status" aria-live="polite" hidden></p>
     <div id="log">
       <section id="journey" class="card"></section>
       <p class="msg system">Open a Google page, press Talk (or type), and say what you want to do.</p>
@@ -54,7 +55,7 @@
     </section>
     <section id="draft" class="card" hidden>
       <h2>Playbook draft</h2>
-      <pre id="draftmd"></pre>
+      <div id="draftmd"></div>
       <div id="draftrules"></div>
       <button id="publish" type="button">Publish</button>
     </section>
