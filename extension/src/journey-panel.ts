@@ -3,7 +3,7 @@ import { mountJourneyWalk } from "./journey-walk.ts";
 import type { PageSnapshot } from "./messages.ts";
 import { PUBLIC_DOCS } from "./document.ts";
 
-export function mountJourneyPanel(container: HTMLElement, options: { http: string; compiled: () => void; brief: () => Promise<void>; open?: () => Promise<unknown>; read?: () => Promise<PageSnapshot>; point?: (text: string, role: string | undefined) => Promise<unknown>; changed?: (text: string) => void; reset?: () => void }) {
+export function mountJourneyPanel(container: HTMLElement, options: { http: string; compiled: () => void; brief: () => Promise<void>; open?: () => Promise<unknown>; read?: () => Promise<PageSnapshot>; point?: (text: string, role: string | undefined) => Promise<unknown>; changed?: (text: string) => void; clear?: () => Promise<unknown>; currentRegion?: HTMLElement; reset?: () => void }) {
   container.innerHTML = `<h2>Firestore Goal</h2><p>Create a Firestore database</p>
     <button type="button" data-open>Start Firestore Journey</button>
     <button type="button" data-reset hidden>End Journey binding</button>
@@ -32,6 +32,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     const loading = revision;
     walk?.setEnabled(false);
     walk = undefined;
+    if (options.currentRegion) { options.currentRegion.replaceChildren(); options.currentRegion.hidden = true; }
     compile.disabled = true;
     result.replaceChildren();
     status.textContent = "Reading the Firestore docs… This can take up to 90 seconds.";
@@ -50,7 +51,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
       compile.textContent = "Reload cited Steps";
       options.compiled();
       if (!reset.hidden && options.read && options.point) {
-        walk = mountJourneyWalk(result, compiled.journey, options.read, options.point, options.changed ?? (() => {}));
+        walk = mountJourneyWalk(result, compiled.journey, options.read, options.point, options.changed ?? (() => {}), options.clear, options.currentRegion);
         walk.setEnabled(enabled);
       }
     } catch (error) {
@@ -85,7 +86,8 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
   }
   start.addEventListener("click", () => void openJourney().catch(() => {}));
   function endJourney() {
-    revision++; pending = undefined; options.reset?.(); walk?.setEnabled(false); walk = undefined;
+    revision++; pending = undefined; walk?.setEnabled(false); options.reset?.(); walk = undefined;
+    if (options.currentRegion) { options.currentRegion.replaceChildren(); options.currentRegion.hidden = true; }
     compile.disabled = !enabled; container.removeAttribute("aria-busy");
     result.replaceChildren(); reset.hidden = true;
     status.textContent = "Journey ended. Start again to bind a new tab.";
@@ -123,5 +125,7 @@ export function renderJourney(parent: HTMLElement, { journey }: CompileResult) {
     const title = document.createElement("strong"); title.textContent = step.control === "Create" ? "You click Create" : step.control;
     li.append(title); appendCitation(li, step, `Step ${index + 1}, ${step.control}`); list.append(li);
   }
-  parent.append(list);
+  const template = document.createElement("details");
+  const templateSummary = document.createElement("summary"); templateSummary.textContent = "All cited Steps and progress";
+  template.append(templateSummary, list); parent.append(template);
 }

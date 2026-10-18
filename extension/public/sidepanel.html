@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>GuideRail</title>
   <link rel="stylesheet" href="panel.css">
 </head>
@@ -11,10 +12,12 @@
     <button id="teach" type="button" aria-pressed="false" title="Show GuideRail how your team does a task">Teach</button>
     <button id="status" type="button" data-state="busy">Connecting…</button>
   </header>
-  <main id="log" aria-live="polite">
+  <section id="current-step" aria-label="Current Journey Step" hidden></section>
+  <main id="scroll" aria-label="Guidance and conversation" tabindex="0">
     <section id="journey" class="card"></section>
+    <div id="log" aria-live="polite">
     <p class="msg system">Open a Google page, press Talk (or type), and say what you want to do.</p>
-  </main>
+    </div>
   <section id="guidance" class="card" hidden></section>
   <section id="issues" class="card" hidden aria-label="Policy issues">
     <h2 id="issues-summary" role="status" aria-live="polite"></h2>
@@ -30,15 +33,18 @@
     <div id="draftrules"></div>
     <button id="publish" type="button">Publish</button>
   </section>
+  </main>
   <div class="page-look" role="group" aria-label="Page appearance">
     <span>Page appearance</span>
     <button id="calmer" type="button">Calmer</button>
     <button id="restore" type="button">Restore</button>
   </div>
   <p id="voice-status" class="voice-status" role="status" aria-live="polite"></p>
+  <button id="newcards" type="button" hidden></button>
   <form id="form">
-    <button id="talk" type="button">Talk</button>
-    <input id="text" type="text" placeholder="Ask, or type a task and press Teach" autocomplete="off">
+    <label for="text">Ask GuideRail</label>
+    <button id="talk" type="button" aria-pressed="false">Talk</button>
+    <input id="text" type="text" placeholder="Ask or type a goal" autocomplete="off">
     <button type="submit">Send</button>
     <button id="voice" type="button" aria-pressed="true" title="Spoken replies on (Alt+Shift+V)">Voice on</button>
   </form>

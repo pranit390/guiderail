@@ -45,6 +45,7 @@ function readPage(): PageSnapshot {
 function clearHighlight() {
   highlighted = null;
   ring.hidden = true;
+  stepChip.hidden = true;
   cue.hidden = true;
 }
 
@@ -57,6 +58,7 @@ function highlightRequest(msg: Extract<ToPage, { kind: "highlight" }>): Highligh
 
 // ---------- Overlay (Shadow DOM so the page's styles can't reach it) ----------
 
+let overlayStopped = false;
 const host = document.createElement("guiderail-overlay");
 const shadow = host.attachShadow({ mode: "open" });
 shadow.innerHTML = `<style>
@@ -177,11 +179,36 @@ function placeCue(el: Element) {
   cue.textContent = side === "above" ? "↑ Step is above" : "↓ Step is below";
 }
 
+function surfaceVisible(surface: Element): boolean {
+  if (!surface.isConnected) return false;
+  for (let ancestor: Element | null = surface; ancestor; ancestor = ancestor.parentElement) {
+    const style = getComputedStyle(ancestor);
+    if (ancestor.hasAttribute("hidden") || style.display === "none" || style.visibility === "hidden") return false;
+    if (ancestor.matches("dialog:not([open])")) return false;
+    if (ancestor.hasAttribute("popover") && !ancestor.matches(":popover-open")) return false;
+  }
+  return true;
+}
+
+// All overlay users share this owner. Transient top-layer surfaces must never
+// strand the Guard or calm view when the application hides/removes a wizard.
+function ensureOverlaySurface(target?: Element) {
+  if (overlayStopped) return;
+  const replacement = document.querySelector("guiderail-overlay");
+  if (replacement && replacement !== host) { surfaceObserver.disconnect(); return; }
+  const candidate = target?.closest("[popover],dialog[open]");
+  const surface = candidate && surfaceVisible(candidate) ? candidate : document.documentElement;
+  if (target || !host.parentElement || !surfaceVisible(host.parentElement)) {
+    if (host.parentElement !== surface) surface.append(host);
+  }
+}
+const surfaceObserver = new MutationObserver(() => ensureOverlaySurface());
+surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "hidden", "style"] });
+document.addEventListener("toggle", onSurfaceToggle, true);
+function onSurfaceToggle() { ensureOverlaySurface(); }
+
 function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
-  // Firebase's wizard uses the browser top layer; z-index outside it cannot
-  // draw over the form. Keep our pointer in the target's own overlay surface.
-  const surface = el.closest("[popover],dialog[open]") ?? document.documentElement;
-  if (host.parentElement !== surface) surface.append(host);
+  ensureOverlaySurface(el);
   highlighted = el;
   applyTheme(ring, el);
   applyTheme(cue, el);
@@ -213,9 +240,10 @@ function startFollow() {
 
 function follow() {
   if (!alive()) return shutdown();
+  ensureOverlaySurface();
   calm.follow(highlighted, badBoxes.map(({ el }) => el));
   if (highlighted) {
-    if (highlighted.isConnected && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); placeChip(stepChip, highlighted); }
+    if (highlighted.isConnected && surfaceVisible(highlighted) && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); placeChip(stepChip, highlighted); }
     else { ring.hidden = true; highlighted = null; }
   } else ring.hidden = true;
   if (!highlighted) { cue.hidden = true; stepChip.hidden = true; }
@@ -283,6 +311,7 @@ function readForm(): FormState {
 
 /** Marks each Violation's exact field and returns the fields it could mark on this page. */
 function showViolations(violations: ViolationDetail[]): string[] {
+  ensureOverlaySurface();
   violationSummary = summarizeViolations(violations);
   for (const { box, chip } of badBoxes) { box.remove(); chip.remove(); }
   badBoxes = [];
@@ -373,6 +402,7 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     reply({ error: "The page changed before the command. Re-read the bound Journey tab." });
     return;
   }
+  ensureOverlaySurface();
   switch (msg.kind) {
     case "customize":
       try { reply(calm.set(parseCalmPreset(msg.preset))); startFollow(); }
@@ -403,6 +433,9 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
 });
 
 function shutdown() {
+  overlayStopped = true;
+  surfaceObserver.disconnect();
+  document.removeEventListener("toggle", onSurfaceToggle, true);
   calm.restore();
   document.removeEventListener("input", onInput, true);
   document.removeEventListener("click", onClick, true);

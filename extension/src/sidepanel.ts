@@ -1,4 +1,5 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
+import { PanelScroll } from "./panelscroll.ts";
 import { JourneyBinding } from "./journey-binding.ts";
 import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
@@ -9,7 +10,7 @@ import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, HighlightResult, PageSnapshot, ToPage } from "./messages.ts";
 import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
 import { violationFieldLabel } from "./page.ts";
-import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, resolutionResult, type BoundSnapshot } from "./resolve.ts";
+import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, type BoundSnapshot } from "./resolve.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
 import { SessionLog } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
@@ -24,6 +25,7 @@ const card = $("#guidance");
 const issues = $("#issues");
 const input = $<HTMLInputElement>("#text");
 const talk = $<HTMLButtonElement>("#talk");
+const panel = new PanelScroll($("#scroll"), log, input, $<HTMLButtonElement>("#newcards"));
 
 let ws: WebSocket | undefined;
 // Latest read of the tab this session is coaching. Highlight and Assist fill may use only these names.
@@ -42,6 +44,8 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   read: async () => readSnapshot(await binding.tab()),
   point: (text, role) => runHighlight({ text, role }),
   changed: appEvent,
+  clear: clearJourneyPointer,
+  currentRegion: $("#current-step"),
   reset() { binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
   compiled() {
     compiledGoal = true;
@@ -150,16 +154,17 @@ function setStatus(text: string, state: "on" | "off" | "busy") {
 let open: { role: string; el: HTMLElement } | null = null;
 
 function say(role: "user" | "model" | "system" | "step", text: string) {
-  if (open && open.role === role && role !== "system" && role !== "step") {
-    open.el.textContent += text;
-  } else {
-    const el = document.createElement("p");
-    el.className = `msg ${role}`;
-    el.textContent = text;
-    log.append(el);
-    open = role === "system" || role === "step" ? null : { role, el };
-  }
-  log.scrollTop = log.scrollHeight;
+  panel.append(() => {
+    if (open && open.role === role && role !== "system" && role !== "step") {
+      open.el.textContent += text;
+    } else {
+      const el = document.createElement("p");
+      el.className = `msg ${role}`;
+      el.textContent = text;
+      log.append(el);
+      open = role === "system" || role === "step" ? null : { role, el };
+    }
+  });
 }
 
 // ---------- Connection to the relay ----------
@@ -343,7 +348,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
 
 async function readSnapshot(tab: chrome.tabs.Tab): Promise<PageSnapshot> {
   const snap = await toPage<PageSnapshot>({ kind: "read_page" }, tab.id);
-  bound = { tabId: tab.id!, url: snap.url, generation: snap.generation, elements: snap.elements };
+  bound = { tabId: tab.id!, url: tab.url ?? snap.url, generation: snap.generation, elements: snap.elements };
   boundStale = false;
   return snap;
 }
@@ -360,11 +365,7 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     tabId = null;
   }
   const snap = bound;
-  let decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
-  // A bound Journey points only at an exact accessible name, never a fuzzy match.
-  if (binding.tabId !== undefined && actionAuthorized(decision) && decision.confidence < 1) {
-    decision = { authorized: false, ...(resolutionResult(text, { status: "missing", alternatives: [decision.name] }, citation) as Extract<HighlightResult, { found: false }>) };
-  }
+  const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
   if (!actionAuthorized(decision)) {
     say("system", highlightOutcome(decision));
     await clearBoundHighlight();
@@ -388,6 +389,12 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
 }
 
+function clearJourneyPointer(): Promise<unknown> {
+  const snapshot = bound;
+  if (!snapshot || snapshot.tabId !== binding.tabId) return Promise.resolve();
+  return chrome.tabs.sendMessage(snapshot.tabId, { kind: "clear_highlight", expectedUrl: snapshot.url } satisfies ToPage).catch(() => {});
+}
+
 async function clearBoundHighlight() {
   if (!bound) return;
   await toPage({ kind: "clear_highlight" }, bound.tabId).catch(() => {});
@@ -396,6 +403,10 @@ async function clearBoundHighlight() {
 // ---------- Guide: suggested values before the user types ----------
 
 function renderGuidance(items: ReturnType<typeof guidance>) {
+  panel.update(card, () => "New: suggested labels", () => fillGuidance(items));
+}
+
+function fillGuidance(items: ReturnType<typeof guidance>) {
   card.hidden = items.length === 0;
   card.replaceChildren();
   const h = document.createElement("h2");
@@ -424,35 +435,37 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 async function updateViolations(form: FormState) {
   violations = evaluate(rules, form);
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations }).catch(() => undefined))?.shown ?? [];
-  issues.hidden = violations.length === 0;
-  const heading = $("#issues-summary");
-  // The heading is the live region: only a change in the counts is announced, not every rebuild while typing.
-  const text = violations.length ? violationCountText(summarizeViolations(violations)) : "";
-  if (heading.textContent !== text) heading.textContent = text;
-  const list = $("#issues-list");
-  list.replaceChildren(
-    ...violations.map((v) => {
-      const li = document.createElement("li");
-      li.dataset.severity = v.severity;
-      const state = violationState(v.severity);
-      const field = document.createElement("span");
-      field.className = "field";
-      field.append(stateGlyph(state), document.createTextNode(`${STATES[state].label} · ${violationFieldLabel(v.field)}`));
-      const msg = document.createElement("span");
-      msg.className = "rule-msg";
-      msg.textContent = v.message;
-      msg.id = `issue-${v.ruleId}`;
-      li.setAttribute("aria-describedby", msg.id);
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = "Show field";
-      btn.setAttribute("aria-label", `Show ${violationFieldLabel(v.field)} field: ${v.message}`);
-      btn.addEventListener("click", () => { void toPage({ kind: "show_field", field: v.field }).catch(() => {}); });
-      if (shown.includes(v.field)) li.append(field, btn, msg);
-      else li.append(field, msg);
-      return li;
-    }),
-  );
+  panel.update(issues, () => `New: ${violationCountText(summarizeViolations(violations))}`, () => {
+    issues.hidden = violations.length === 0;
+    const heading = $("#issues-summary");
+    // The heading is the live region: only a change in the counts is announced, not every rebuild while typing.
+    const text = violations.length ? violationCountText(summarizeViolations(violations)) : "";
+    if (heading.textContent !== text) heading.textContent = text;
+    const list = $("#issues-list");
+    list.replaceChildren(
+      ...violations.map((v) => {
+        const li = document.createElement("li");
+        li.dataset.severity = v.severity;
+        const state = violationState(v.severity);
+        const field = document.createElement("span");
+        field.className = "field";
+        field.append(stateGlyph(state), document.createTextNode(`${STATES[state].label} · ${violationFieldLabel(v.field)}`));
+        const msg = document.createElement("span");
+        msg.className = "rule-msg";
+        msg.textContent = v.message;
+        msg.id = `issue-${v.ruleId}`;
+        li.setAttribute("aria-describedby", msg.id);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Show field";
+        btn.setAttribute("aria-label", `Show ${violationFieldLabel(v.field)} field: ${v.message}`);
+        btn.addEventListener("click", () => { void toPage({ kind: "show_field", field: v.field }).catch(() => {}); });
+        if (shown.includes(v.field)) li.append(field, btn, msg);
+        else li.append(field, msg);
+        return li;
+      }),
+    );
+  });
 }
 
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
@@ -571,6 +584,7 @@ async function setTeach(on: boolean) {
   }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teachbar").hidden = !on;
+  if (on) panel.reveal($("#teachbar"));
   connect();
 }
 
@@ -655,8 +669,8 @@ async function stopAndDraft() {
     return label;
   }));
   $("#draft").hidden = false;
-  $("#draft").scrollIntoView({ block: "nearest" });
   say("system", "Draft ready below. Review it, untick any Rules you don't want, then click Publish.");
+  panel.reveal($("#draft"));
   appEvent(`Playbook draft ready: "${draft.title}". It is shown below the chat for the user to review; they still need to click Publish. Draft:\n${String(draft.markdown).slice(0, 1200)}`);
 }
 
@@ -710,6 +724,7 @@ async function startTalking() {
   try {
     await mic.start((data) => sendServer({ type: "audio", data }));
     talking = true;
+    talk.setAttribute("aria-pressed", "true");
     talk.textContent = "Stop";
     talk.dataset.on = "true";
   } catch {
@@ -721,6 +736,7 @@ async function startTalking() {
 function stopTalking() {
   mic.stop();
   talking = false;
+  talk.setAttribute("aria-pressed", "false");
   talk.textContent = "Talk";
   delete talk.dataset.on;
   sendServer({ type: "audio_end" });

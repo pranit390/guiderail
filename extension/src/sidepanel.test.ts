@@ -54,9 +54,10 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("calmer panel paths", () => {
-  it("announces Journey changes through one conversation live region", () => {
+  it("keeps the current Step separate from the conversation live region", () => {
     const status = document.querySelector("[data-status]")!;
-    expect(status.closest('[aria-live="polite"]')?.id).toBe("log");
+    expect(status.closest('[aria-live="polite"]')).toBeNull();
+    expect(document.querySelector("#current-step")!.closest("#scroll")).toBeNull();
     expect(document.querySelector("#journey [aria-live], #journey [role=status]")).toBeNull();
   });
   it("applies and restores from the buttons without a microphone or model", async () => {
@@ -201,10 +202,34 @@ describe("bound Journey tool and event routing", () => {
     await tool("highlight", { text: "Standard edition", role: "radio" });
     expect(sendMessage).toHaveBeenLastCalledWith(7, { kind: "highlight", text: "Standard edition", role: "radio", generation: 2, index: 1, name: "Standard edition", expectedUrl: boundUrl });
     sendMessage.mockClear();
-    expect(await tool("highlight", { text: "Standard", role: "radio" })).toMatchObject({ found: false, reason: "missing" });
-    expect(sendMessage.mock.calls.filter(([, message]) => message.kind === "highlight")).toHaveLength(0);
+    expect(await tool("highlight", { text: "Standard", role: "radio" })).toMatchObject({ found: true, name: "Standard edition", confidence: 0.9 });
+    expect(sendMessage.mock.calls.filter(([, message]) => message.kind === "highlight")).toHaveLength(1);
     sendMessage.mockClear(); queryTabs.mockResolvedValue([{ id: 8, url: boundUrl }]);
     expect(await tool("read_page")).toHaveProperty("error"); expect(sendMessage).not.toHaveBeenCalled();
+  });
+  it("accepts unique fuzzy targets but refuses weak candidates and ties in the bound panel", async () => {
+    await start();
+    let names = ["Add database"];
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
+      ? { url: boundUrl, title: "Firestore", generation: 2, elements: names.map((name, i) => ({ i, name, role: "button" })) }
+      : message.kind === "highlight" ? { found: true, i: message.index, name: message.name, confidence: 1 } : { ok: true });
+    await tool("read_page");
+    expect(await tool("highlight", { text: "Add database button", role: "button" })).toMatchObject({ found: true, name: "Add database", confidence: 0.9 });
+    expect(sendMessage).toHaveBeenLastCalledWith(7, expect.objectContaining({ kind: "highlight", index: 0, name: "Add database", generation: 2, expectedUrl: boundUrl }));
+    for (const [candidates, reason] of [[["Database settings"], "missing"], [["Add database one", "Add database two"], "ambiguous"]] as const) {
+      names = [...candidates]; await tool("read_page"); sendMessage.mockClear();
+      expect(await tool("highlight", { text: "Add database", role: "button" })).toMatchObject({ found: false, reason });
+      expect(sendMessage.mock.calls.some(([, message]) => message.kind === "highlight")).toBe(false);
+    }
+  });
+  it("dispatches End cleanup to the old bound tab before a new Journey can be opened", async () => {
+    await start();
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
+      ? { url: boundUrl.replace("https://", ""), title: "Firestore", generation: 2, elements: [] } : { ok: true });
+    await tool("read_page"); sendMessage.mockClear();
+    document.querySelector<HTMLButtonElement>("[data-reset]")!.click();
+    expect(sendMessage).toHaveBeenCalledExactlyOnceWith(7, { kind: "clear_highlight", expectedUrl: boundUrl });
+    expect(document.querySelector<HTMLElement>("#current-step")!.hidden).toBe(true);
   });
   it("accepts the bound reader's host/path form URL and rejects an unrelated one", async () => {
     await start(); const listener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0];
@@ -232,7 +257,7 @@ describe("bound Journey tool and event routing", () => {
     sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
       ? { url: boundUrl, title: "Firestore", generation: 2, elements: [{ i: 1, role: "button", name: "Databases & Storage" }] }
       : message.kind === "highlight" ? { found: true, i: message.index, name: message.name, confidence: 1 } : { ok: true });
-    const [reread, next] = document.querySelectorAll<HTMLButtonElement>("#journey [data-result] > div button");
+    const [reread, next] = document.querySelectorAll<HTMLButtonElement>("#current-step button");
     const point = async () => { reread.click(); await vi.waitFor(() => expect(next.disabled).toBe(false)); };
     const sender = { tab: { id: 7 }, url: boundUrl } as chrome.runtime.MessageSender;
     const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -261,7 +286,7 @@ describe("bound Journey tool and event routing", () => {
     sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
       ? { url: boundUrl, title: "Firestore", generation: 2, elements: [{ i: 1, role: "button", name: "Databases & Storage" }] }
       : message.kind === "highlight" ? { found: true, i: message.index, name: message.name, confidence: 1 } : { ok: true });
-    const [reread, next] = document.querySelectorAll<HTMLButtonElement>("#journey [data-result] > div button");
+    const [reread, next] = document.querySelectorAll<HTMLButtonElement>("#current-step button");
     reread.click(); await vi.waitFor(() => expect(next.disabled).toBe(false));
     const socket = sockets.at(-1)!; socket.send.mockClear();
     const stale = { tab: { id: 7 }, url: FIRESTORE_GOAL.consoleUrl } as chrome.runtime.MessageSender;

@@ -1,5 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mountJourneyPanel } from "./journey-panel.ts";
+import { fixtureDraft } from "../../server/src/journeys/fixture.ts";
+import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import seed from "../../seed/rules/org-labeling-rules.json";
 import type { FormState, PageSnapshot, ToPage } from "./messages.ts";
 import { evaluate, type Rule } from "./policy.ts";
@@ -52,8 +55,8 @@ afterEach(() => {
 
 describe("calmer content messages", () => {
   it("places the pointer inside a wizard top layer and returns it to the page", () => {
-    const surface = document.createElement("div");
-    surface.setAttribute("popover", "manual");
+    const surface = document.createElement("dialog");
+    surface.setAttribute("open", "");
     surface.innerHTML = '<button>Standard edition</button>';
     document.body.append(surface);
     expect(highlightPinned("Standard edition", "button")).toMatchObject({ found: true });
@@ -63,6 +66,53 @@ describe("calmer content messages", () => {
     const snap = request({ kind: "read_page" }) as PageSnapshot;
     expect(request({ kind: "highlight", text: "Gone", generation: snap.generation, index: snap.elements.length + 1, name: "Gone" })).toMatchObject({ found: false });
     expect(document.querySelector("guiderail-overlay")?.shadowRoot?.querySelector<HTMLElement>(".ring")?.hidden).toBe(true);
+  });
+  it.each(["remove", "hide", "close"])("restores Guard, Show field and Calmer after dialog %s", async (teardown) => {
+    const surface = document.createElement("dialog"); surface.open = true;
+    surface.innerHTML = "<button>Standard edition</button>"; document.body.append(surface);
+    highlightPinned("Standard edition", "button");
+    const host = surface.querySelector("guiderail-overlay")!;
+    if (teardown === "remove") surface.remove();
+    else if (teardown === "hide") surface.hidden = true;
+    else surface.open = false;
+    await vi.advanceTimersByTimeAsync(20);
+    expect(host.parentElement).toBe(document.documentElement);
+    const violations = evaluate(rules, form());
+    expect(request({ kind: "show_violations", violations })).toMatchObject({ shown: ["label:environment"] });
+    expect(host.shadowRoot!.querySelectorAll(".bad")).toHaveLength(1);
+    request({ kind: "show_field", field: "label:environment" });
+    request({ kind: "customize", preset: "calm" });
+    await vi.advanceTimersByTimeAsync(20);
+    expect(host.isConnected).toBe(true);
+    expect(host.shadowRoot!.querySelector<HTMLElement>(".ring")!.hidden).toBe(false);
+    expect(host.shadowRoot!.querySelector<HTMLElement>(".gr-shade")!.hidden).toBe(false);
+    request({ kind: "customize", preset: null });
+    expect(host.shadowRoot!.querySelector<HTMLElement>(".gr-shade")!.hidden).toBe(true);
+    expect(host.shadowRoot!.querySelectorAll(".bad")).toHaveLength(1);
+  });
+  it("clears the real pointer on Next, a missing re-read and End without clearing Guard", async () => {
+    document.body.insertAdjacentHTML("beforeend", "<button>Databases &amp; Storage</button>");
+    const parent = document.createElement("section");
+    const current = document.createElement("section");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 1, compiledAt: "2026-10-18T00:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } }))));
+    const panel = mountJourneyPanel(parent, { http: "http://localhost:8829", compiled() {}, brief: async () => {}, open: async () => {}, currentRegion: current,
+      read: async () => request({ kind: "read_page" }) as PageSnapshot,
+      point: async (text, role) => highlightPinned(text, role!), clear: async () => request({ kind: "clear_highlight" }) });
+    await panel.openJourney();
+    const [read, next] = current.querySelectorAll("button");
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    read.click(); await vi.advanceTimersByTimeAsync(20);
+    expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(false);
+    next.click(); expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(true);
+    expect(shadow.querySelector<HTMLElement>(".step-chip")!.hidden).toBe(true);
+    read.click(); await vi.advanceTimersByTimeAsync(20);
+    expect(current.textContent).toContain("I can't see it on this screen");
+    expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(true);
+    highlightPinned("Create", "button"); panel.endJourney();
+    expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(true);
+    expect(shadow.querySelector<HTMLElement>(".step-chip")!.hidden).toBe(true);
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(1);
   });
   it("refuses a renamed or duplicated pinned Journey target", () => {
     document.body.innerHTML = '<button>Create</button>';

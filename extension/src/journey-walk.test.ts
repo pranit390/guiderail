@@ -76,6 +76,18 @@ describe("cited Guide walk", () => {
     walk.invalidate("The page changed.", true); expect(next.disabled).toBe(true);
     skip.click(); walk.acted("clicked"); walk.invalidate("The page changed.", true); expect(next.disabled).toBe(true);
   });
+  it("uses the shared unique fuzzy match and canonical name, refusing weak matches and ties", async () => {
+    const { read, point, reread, next } = mount();
+    read.mockResolvedValue(page(["Databases & Storage menu"])); reread.click();
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    expect(point).toHaveBeenLastCalledWith("Databases & Storage menu", "button");
+    point.mockClear(); read.mockResolvedValue(page(["Storage settings"])); reread.click();
+    await vi.waitFor(() => expect(reread.disabled).toBe(false));
+    expect(next.disabled).toBe(true); expect(point).not.toHaveBeenCalled();
+    read.mockResolvedValue(page(["Databases & Storage menu", "Databases & Storage tab"])); reread.click();
+    await vi.waitFor(() => expect(reread.disabled).toBe(false));
+    expect(next.disabled).toBe(true); expect(point).not.toHaveBeenCalled();
+  });
   it("requires manual progress and stops at the human Create boundary", async () => {
     const { read, point, reread, next, skip, parent } = mount();
     for (const step of result.journey.steps) {

@@ -1,16 +1,17 @@
 import type { CompiledJourney } from "../../shared/journey.ts";
 import type { PageSnapshot } from "./messages.ts";
-import { norm } from "./page.ts";
+import { resolveName } from "./resolve.ts";
 
 export type StepObservation = { state: "visible" | "missing" | "ambiguous"; text: string; target?: string; role?: string };
 export function observeStep(control: string, page: PageSnapshot): StepObservation {
-  const matches = page.elements.filter((e) => norm(e.name) === norm(control));
-  if (matches.length > 1) return { state: "ambiguous", text: `More than one ${control} is visible. Choose the control yourself, then re-read.` };
-  if (!matches.length) return { state: "missing", text: `The doc says ${control}. I can't see it on this screen.` };
-  return { state: "visible", text: `${control} is visible. You operate this control.`, target: matches[0].name, role: matches[0].role };
+  const match = resolveName(control, page.elements);
+  if (match.status === "ambiguous") return { state: "ambiguous", text: `More than one ${control} is visible. Choose the control yourself, then re-read.` };
+  if (match.status === "missing") return { state: "missing", text: `The doc says ${control}. I can't see it on this screen.` };
+  const element = page.elements.find((e) => e.i === match.i)!;
+  return { state: "visible", text: `${match.name} is visible. You operate this control.`, target: match.name, role: element.role };
 }
 
-export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, read: () => Promise<PageSnapshot>, point: (text: string, role: string | undefined) => Promise<unknown>, changed: (text: string) => void) {
+export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, read: () => Promise<PageSnapshot>, point: (text: string, role: string | undefined) => Promise<unknown>, changed: (text: string) => void, clear: () => Promise<unknown> = async () => {}, currentRegion: HTMLElement = parent) {
   const rows = [...parent.querySelectorAll<HTMLLIElement>("li")];
   let current = 0;
   let busy = false;
@@ -25,10 +26,21 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   const next = document.createElement("button"); next.type = "button"; next.textContent = "I did this · Next step"; next.disabled = true;
   const skip = document.createElement("button"); skip.type = "button"; skip.textContent = "Skip this Step explicitly";
   const labels = rows.map((row) => { const label = document.createElement("p"); row.append(label); return label; });
-  controls.append(status, reread, next, skip); parent.prepend(controls);
+  const citation = document.createElement("a"); citation.className = "citation";
+  citation.target = "_blank"; citation.rel = "noopener noreferrer";
+  controls.className = "journey-current";
+  controls.append(status, citation, reread, next, skip); currentRegion.prepend(controls);
+  currentRegion.hidden = false;
   function render() {
     rows.forEach((row, i) => { row.toggleAttribute("data-current", i === current); if (i === current) row.setAttribute("aria-current", "step"); else row.removeAttribute("aria-current"); labels[i].textContent = statuses[i]; });
     status.textContent = current < rows.length ? `Step ${current + 1}: ${journey.steps[current].control}. ${statuses[current]}` : "All Steps reviewed. GuideRail has not verified database creation.";
+    const step = journey.steps[current];
+    citation.hidden = !step;
+    if (step) {
+      citation.href = step.sourceUrl.replace(/\.md\.txt$/, "");
+      citation.textContent = step.citationHeading;
+      citation.setAttribute("aria-label", `Source for current Step ${current + 1}, ${step.control}: ${step.citationHeading}`);
+    }
     reread.disabled = !enabled || busy || current >= rows.length; skip.disabled = reread.disabled;
     next.disabled = reread.disabled || journey.steps[current].control === "Create" || (observed !== current && acted !== current);
   }
@@ -38,6 +50,8 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     busy = true; observed = -1; render();
     let snapshot: PageSnapshot | undefined;
     try {
+      await clear();
+      if (reading !== revision) return;
       snapshot = await read();
       if (reading !== revision) return;
       const observation = observeStep(journey.steps[current].control, snapshot);
@@ -57,15 +71,17 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     if (!skipped && next.disabled) return;
     statuses[current] = skipped ? "Explicitly skipped by you; not verified." : "You reported this Step done; not independently verified.";
     changed(`${journey.steps[current].control}: ${statuses[current]}`);
+    void clear();
     current++; render();
+    currentRegion.scrollTop = 0;
   }
   reread.addEventListener("click", () => void refresh());
   next.addEventListener("click", () => advance(false));
   skip.addEventListener("click", () => advance(true));
   render();
   return {
-    setEnabled(value: boolean) { enabled = value; revision++; observed = -1; acted = -1; render(); },
+    setEnabled(value: boolean) { if (!value) void clear(); enabled = value; revision++; observed = -1; acted = -1; render(); },
     acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current) acted = current; statuses[current] = message; render(); },
-    invalidate(message: string, sameTab = false) { revision++; observed = -1; if (!sameTab) acted = -1; if (current < rows.length) statuses[current] = message; render(); },
+    invalidate(message: string, sameTab = false) { void clear(); revision++; observed = -1; if (!sameTab) acted = -1; if (current < rows.length) statuses[current] = message; render(); },
   };
 }

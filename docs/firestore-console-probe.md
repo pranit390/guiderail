@@ -30,8 +30,7 @@ Two actual reader/pointer defects were fixed during the probe: Material uses
 transparent native radio inputs with visible painted labels, and its wizard is
 inside a browser top-layer popover. The reader now recognizes the associated
 visible radio label; the existing pointer mounts inside the target's overlay
-surface. Hidden wizard choices remain excluded. Exact missing/duplicate targets
-clear the old pointer and refuse substitution.
+surface. Hidden wizard choices remain excluded. Subsequent review repairs clear old pointers on Step transitions and End, recover overlays after transient surfaces close, and restore the shared resolver: exact normalized names first, then a unique match at confidence 0.6 or higher; ties and weaker matches are refused. These later changes were checked with synthetic browser fixtures, not repeated on the signed-in console.
 
 ## Provenance and test limits
 
@@ -70,3 +69,19 @@ https://github.com/pranit390/guiderail/pull/45 at commit
 Existing generic reader, policy, permission and highlighting components were
 reused; the open sibling https://github.com/pranit390/guiderail/pull/22 was not
 independently modified or claimed integrated.
+
+
+## Follow-up regression validation — 2026-10-18
+
+Four independently reproduced defects were repaired after the initial probe:
+
+- Step transitions, rereads and End clear the previous pointer without clearing policy markers or losing a recorded human click's explicit-Next eligibility.
+- The shared overlay reconnects to the document when a modal/popover closes, hides or is removed. Guard, Show field and Calmer/Restore remain usable.
+- The current Step, citation and progression controls sit outside the shared scrolling conversation/cards. The full template is a disclosure. The scroll/reveal controller and tests from https://github.com/pranit390/guiderail/pull/47 were integrated while preserving develop's voice, state tokens, resolver and policy behavior; that sibling remote was not modified.
+- Bound Journeys use the shared unique fuzzy resolver and retain tab/project, freshness and pinned content re-resolution checks.
+
+Local validation: 300 tests (66 server, 234 extension), both workspace typechecks, extension build and diff whitespace checks passed. Synthetic built-extension checks passed for present → Next → missing, modal pointer → End, dialog close/hide/remove, popover hide/remove, Guard and calm recovery, and actual bound-panel fuzzy success (0.9), weak-match refusal and tie refusal.
+
+Layout passed at native 360×770 and measured 320×568 CSS pixels (device scale 2, mobile emulation on an extension tab). Streamed replies preserved manual reading position and composer focus with long simultaneous fixture cards; current controls, citation, header and composer remained visible, with no horizontal overflow. The compact screenshot is 640×1136 physical pixels. Early overrides were discarded because the helper disconnected before measuring; the successful override, measurement and capture used one DevTools session. This is compact layout proof, not a claim that Chrome's native side panel was resized to 320×568. Long cards were synthetic layout stress content.
+
+Artifacts under the same task evidence directory: `retest/walker-proof.json`, `surfaces-proof.json`, `resolver-proof.json`, `layout-native.json`, `layout-320-verified.json`, `panel-native.png`, `panel-320-verified.png`; local logs are `followup-final-{tests,typecheck,build}.txt`. The fixture used its own Chrome profile and ports 19329/18829/18830, a local HTTPS console fixture, the retained compiler cache and a simulated Live relay. No real provider or account was exercised. The original signed-in browser was untouched. The earlier real-console evidence and its acceptance limits remain unchanged.
