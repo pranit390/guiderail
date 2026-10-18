@@ -24,7 +24,8 @@ Run it again to confirm `cacheHit:true` and the elapsed time. The script exits
 nonzero on failure, so deployment/rehearsal can stop before exposing a cold
 cache. Warmup is explicit, rather than consuming model quota on every server
 restart. The default file store is `data/journeys`; change `JOURNEY_CACHE_DIR`
-when testing outside the checkout. The key incorporates the catalog Goal,
+when testing outside the checkout. With `STORE=firestore` the cache lives in
+Firestore instead (see [Cloud Run demo](cloud-run-demo.md#durable-playbooks-rules-and-journey-cache)). The key incorporates the catalog Goal,
 method, canonical sources and contract version. Increment the version when
 changing the source contract. No public cache-bypass or arbitrary-fetch
 endpoint exists. Durable/shared storage belongs to the later persistence slice.

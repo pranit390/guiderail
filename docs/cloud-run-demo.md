@@ -102,9 +102,9 @@ one eligible database per project, 1 GiB stored, 50,000 reads/day,
 20,000 writes/day, 20,000 deletes/day, and 10 GiB outbound/month. Verify that
 this project's database is eligible and has quota remaining. Do not enable TTL,
 PITR or backups for this demo. The existing $20 plan assumes $0 Firestore spend.
-Each publish normally uses two transaction reads and two writes (retries can add
-reads); a cached compile uses one read, and a new compile adds one write.
-Each list reads the published collection, so watch the Usage tab before and
+Each publish uses two writes and no reads; a cached compile uses one read, and
+a new compile adds one write. The Playbook and Rule collections are read once
+after each instance start or publish, so watch the Usage tab before and
 during judging, including other project traffic. There are no listeners, polling
 jobs or per-session Journey writes. Free quota is a usage allowance, not an
 application-enforced spending cap; if usage approaches it, stop demo traffic
