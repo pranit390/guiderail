@@ -26,6 +26,18 @@ const change = (id: string, value: string) => {
 };
 
 describe("recorder", () => {
+  it.each(["Recovery code", "Seed phrase", "recovery phrase", "mnemonic", "Session cookie", "Security answer", "backup code", "authentication code", "wallet phrase"])("masks a short %s secret identified by a secondary label", (label) => {
+    const associated = document.createElement("label");
+    associated.htmlFor = "private";
+    associated.textContent = label;
+    const field = document.createElement("input");
+    field.id = "private";
+    field.setAttribute("aria-label", "Display name");
+    document.body.append(associated, field);
+    change("private", "AB12-CD34");
+    expect(events).toEqual([expect.objectContaining({ t: "field", value: "«masked»" })]);
+  });
+
   it("masks OTP, credential and token-named values through the shared page boundary", () => {
     document.body.insertAdjacentHTML("beforeend", '<input id="otp" aria-label="One-time code"><textarea id="cred" name="credential"></textarea>');
     change("otp", "123456");

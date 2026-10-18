@@ -84,7 +84,8 @@ let connectionAttempt = 0;
 let connecting = false;
 let ready = false;
 // Each queued message carries the memory entry to record once it is delivered (or dropped).
-let pending: { raw: string; remember?: [Entry["kind"], string] }[] = [];
+let pending: { raw: string; remember?: [Entry["kind"], string]; composerText?: string }[] = [];
+let cancelCompose: (() => void) | undefined;
 let pendingAudio = 0;
 // Base64 characters of speech kept while connecting: under the relay's two-second audio burst.
 const PENDING_AUDIO_LIMIT = 64_000;
@@ -237,10 +238,12 @@ function onReady() {
   pending = [];
   pendingAudio = 0;
   pendingWarning = undefined;
-  for (const { raw, remember } of queued) {
+  for (const { raw, remember, composerText } of queued) {
     ws?.send(raw);
     if (remember) memory.add(...remember);
+    if (composerText !== undefined && input.value === composerText) input.value = "";
   }
+  input.readOnly = false;
 }
 
 // Closes the Live connection without opening another; the next typed message or Talk press reconnects.
@@ -251,9 +254,12 @@ function disconnect(text: string, state: "off" | "idle" = "off") {
   liveReady = false;
   ready = false;
   connecting = false;
-  for (const { remember } of pending) if (remember) memory.add(...remember);
+  // Undelivered composer text stays verbatim in the input, never in a reconnect summary.
+  for (const { remember, composerText } of pending) if (remember && composerText === undefined) memory.add(...remember);
   pending = [];
+  input.readOnly = false;
   pendingAudio = 0;
+  cancelCompose?.();
   sock?.close();
   speaker.interrupt();
   speaker.turnEnded();
@@ -271,16 +277,18 @@ function sendServer(msg: object) {
 }
 
 // User input: delivered now, or kept and delivered once the connection it opens is ready.
-function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }, remember?: [Entry["kind"], string]) {
+function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }, remember?: [Entry["kind"], string], composerText?: string) {
   if (sendServer(msg)) {
     if (remember) memory.add(...remember);
+    if (composerText !== undefined && input.value === composerText) input.value = "";
     return;
   }
   if (msg.type === "audio") {
     if (pendingAudio + msg.data.length > PENDING_AUDIO_LIMIT) return;
     pendingAudio += msg.data.length;
   }
-  pending.push({ raw: JSON.stringify(msg), remember });
+  pending.push({ raw: JSON.stringify(msg), remember, composerText });
+  if (composerText !== undefined) input.readOnly = true;
   if (!connecting) void connect();
 }
 
@@ -410,14 +418,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       return { violations };
     }
     case "draft_message": {
-      // Opens a pre-filled compose window; the user reviews it and clicks Send (ADR 0001).
-      const tab = await activeTab();
-      const sandbox = tab.url?.startsWith(`${HTTP}/sandbox/`);
-      const base = sandbox ? `${HTTP}/sandbox/gmail-compose.html?` : "https://mail.google.com/mail/?view=cm&";
-      const q = new URLSearchParams({ to: String(args.to ?? ""), su: String(args.subject ?? ""), body: String(args.body ?? "") });
-      await chrome.tabs.create({ url: base + q.toString() });
-      say("system", "Drafted the request. Review it and click Send yourself.");
-      return { opened: true, note: "The user must review and click Send." };
+      return confirmCompose(args);
     }
     case "complete_step":
       if (binding.tabId !== undefined) return { error: "Use the Journey's explicit Next or Skip control. A model cannot verify a Step or database creation." };
@@ -439,6 +440,54 @@ async function readSnapshot(tab: chrome.tabs.Tab): Promise<PageSnapshot> {
     return step ? Math.min(own, 2) : own;
   });
   return { ...snap, rank };
+}
+
+async function confirmCompose(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (cancelCompose) return { opened: false, note: "Another proposed email is awaiting your decision." };
+  if (typeof args.to !== "string" || typeof args.subject !== "string" || typeof args.body !== "string") {
+    return { opened: false, error: "The email proposal needs a recipient, subject and body." };
+  }
+  const { to, subject, body } = args;
+  const attempt = connectionAttempt;
+  const tab = await activeTab();
+  if (!ready || attempt !== connectionAttempt) return { opened: false, note: "The connection ended before confirmation." };
+  // Another tool call may have reached this boundary while activeTab was pending.
+  if (cancelCompose) return { opened: false, note: "Another proposed email is awaiting your decision." };
+  const card = $("#compose-confirmation");
+  const confirm = $<HTMLButtonElement>("#compose-confirm");
+  const cancel = $<HTMLButtonElement>("#compose-cancel");
+  $("#compose-to").textContent = to;
+  $("#compose-subject").textContent = subject;
+  $("#compose-body").textContent = body;
+  card.hidden = false;
+  confirm.disabled = false;
+  confirm.focus();
+  return new Promise((resolve) => {
+    let opening = false;
+    let settled = false;
+    const finish = (result: Record<string, unknown>) => {
+      if (settled) return;
+      settled = true;
+      card.hidden = true;
+      confirm.onclick = null;
+      cancel.onclick = null;
+      cancelCompose = undefined;
+      resolve(result);
+    };
+    cancelCompose = () => finish({ opened: false, note: "The connection ended; the proposal was not opened." });
+    cancel.onclick = () => { if (!opening) finish({ opened: false, note: "The user declined the proposed email." }); };
+    confirm.onclick = () => {
+      if (opening || settled) return;
+      opening = true;
+      confirm.disabled = true;
+      const base = tab.url?.startsWith(`${HTTP}/sandbox/`) ? `${HTTP}/sandbox/gmail-compose.html?` : "https://mail.google.com/mail/?view=cm&";
+      const q = new URLSearchParams({ to, su: subject, body });
+      void chrome.tabs.create({ url: base + q.toString() }).then(() => {
+        say("system", "Opened the email you confirmed. Review it and click Send yourself.");
+        finish({ opened: true, note: "The user confirmed opening this draft and must review and click Send." });
+      }).catch(() => finish({ opened: false, error: "The compose window could not be opened." }));
+    };
+  });
 }
 
 async function runHighlight(args: Record<string, unknown>): Promise<HighlightResult> {
@@ -803,13 +852,12 @@ for (const [id, preset] of [["#calmer", "calm"], ["#restore", null]] as const) {
 
 $("#form").addEventListener("submit", (e) => {
   e.preventDefault();
-  const text = input.value.trim();
-  if (!text) return;
+  const text = input.value;
+  if (!text.trim() || input.readOnly) return;
   say("user", text);
   open = null;
   lastSent = { text, at: Date.now() };
-  sendInput({ type: "text", text }, ["user", text]);
-  input.value = "";
+  sendInput({ type: "text", text }, ["user", text], text);
 });
 
 async function startTalking() {
