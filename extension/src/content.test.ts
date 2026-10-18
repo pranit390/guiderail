@@ -44,10 +44,6 @@ beforeEach(async () => {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(40, 100, 200, 60));
   vi.spyOn(Element.prototype, "getClientRects").mockReturnValue([new DOMRect(40, 100, 200, 60)] as unknown as DOMRectList);
   vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
-  Object.assign(document, { elementsFromPoint: (x: number, y: number) => [...document.querySelectorAll("*")].filter((el) => {
-    const r = el.getBoundingClientRect();
-    return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
-  }).reverse() });
   await import("./content.ts");
 });
 
@@ -420,23 +416,26 @@ describe("calmer content messages", () => {
     expect(next.left < described.right && described.left < next.right && next.top < described.bottom && described.top < next.bottom).toBe(false);
   });
 
-  it("keeps the Here tag in its free spot while an ancestor of the target keeps changing class", async () => {
+  it("keeps the Here tag hidden while the page keeps changing, then restores it from a fresh scan once quiet", async () => {
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
     vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
       if (this.classList.contains("step-chip")) return new DOMRect(parseFloat((this as HTMLElement).style.left), parseFloat((this as HTMLElement).style.top), 120, 20);
-      if (this === document.body || this === document.documentElement) return new DOMRect(0, 0, window.innerWidth, window.innerHeight);
       return new DOMRect(40, 100, 200, 60);
     });
     highlightPinned("Create", "button");
-    const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    const tag = shadow.querySelector<HTMLElement>(".step-chip")!;
     expect(tag.hidden).toBe(false);
     const spot = [tag.style.left, tag.style.top];
     for (let i = 0; i < 20; i++) {
       document.body.classList.toggle("busy");
       await vi.advanceTimersByTimeAsync(50);
-      expect(tag.hidden).toBe(false);
+      expect(tag.hidden).toBe(true);
+      expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(false);
     }
+    await vi.advanceTimersByTimeAsync(250);
+    expect(tag.hidden).toBe(false);
     expect([tag.style.left, tag.style.top]).toEqual(spot);
   });
 
@@ -444,14 +443,18 @@ describe("calmer content messages", () => {
     ["an ancestor class reveals a description", (spot: DOMRect) => {
       document.head.insertAdjacentHTML("beforeend", "<style>.reveal { display: none; } .expanded .reveal { display: block; }</style>");
       document.body.insertAdjacentHTML("beforeend", '<p class="reveal under-tag">Your data will be private by default.</p>');
-      return [spot, () => document.body.classList.add("expanded")] as const;
+      return [new DOMRect(spot.left - 4, spot.top, 200, 20), () => document.body.classList.add("expanded")] as const;
     }],
     ["a bare text node in an ancestor changes to sit under it", (spot: DOMRect) => {
       const text = document.createTextNode("Elsewhere");
       document.body.append(text);
-      return [spot, () => { text.data = "Your data will be private by default."; }] as const;
+      return [new DOMRect(spot.left - 4, spot.top, 200, 20), () => { text.data = "Your data will be private by default."; }] as const;
     }],
-  ])("hides the Here tag at once when %s, with the target bounds unchanged", async (_name, arrange) => {
+    ["a pointer-events:none disabled button appears under it", (spot: DOMRect) =>
+      [new DOMRect(spot.left + 10, spot.top, 80, 20), () => document.body.insertAdjacentHTML("beforeend", '<button class="under-tag" disabled style="pointer-events: none">Save</button>')] as const],
+    ["a narrow required marker appears under it", (spot: DOMRect) =>
+      [new DOMRect(spot.left + 62, spot.top + 4, 5, 12), () => document.body.insertAdjacentHTML("beforeend", '<span class="under-tag">*</span>')] as const],
+  ])("hides the Here tag at once when %s, then re-places it clear of that content", async (_name, arrange) => {
     vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
     const at = (el: HTMLElement) => new DOMRect(parseFloat(el.style.left), parseFloat(el.style.top), 120, 20);
@@ -459,7 +462,6 @@ describe("calmer content messages", () => {
     vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
       if (this.classList.contains("step-chip")) return at(this as HTMLElement);
       if (this.classList.contains("under-tag")) return under;
-      if (this === document.body || this === document.documentElement) return new DOMRect(0, 0, window.innerWidth, window.innerHeight);
       return new DOMRect(40, 100, 200, 60);
     });
     vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function (this: Range) {
@@ -471,8 +473,9 @@ describe("calmer content messages", () => {
     highlightPinned("Create", "button");
     const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
     const target = document.querySelector("button")!.getBoundingClientRect();
-    const [spot, change] = arrange(at(tag));
-    under = new DOMRect(spot.left - 4, spot.top, 200, 20);
+    const spot = at(tag);
+    const [obstacle, change] = arrange(spot);
+    under = obstacle;
     await vi.advanceTimersByTimeAsync(250);
     expect(tag.hidden).toBe(false);
     expect(at(tag)).toEqual(spot);

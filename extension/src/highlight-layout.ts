@@ -59,34 +59,14 @@ export function pageObstacles(root: Document | ShadowRoot = document): Rect[] {
   });
   while (walker.nextNode()) {
     const node = walker.currentNode;
-    nodeObstacle(node, rects);
-    if (node instanceof Element && node.shadowRoot) rects.push(...pageObstacles(node.shadowRoot));
-  }
-  return rects.filter((r) => r.width > 0 && r.height > 0);
-}
-
-function nodeObstacle(node: Node, rects: Rect[]) {
-  if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
-    const range = document.createRange();
-    range.selectNodeContents(node);
-    rects.push(...range.getClientRects());
-  } else if (node instanceof Element && node.matches('input,select,textarea,button,iframe,[role="button"],[role="radio"],[role="checkbox"],[contenteditable="true"]')) rects.push(node.getBoundingClientRect());
-}
-
-const samples = (from: number, to: number) => Array.from({ length: Math.max(1, Math.ceil((to - from - 2) / 8) + 1) }, (_, i) => Math.min(from + 1 + i * 8, to - 1));
-
-/** The same occupied space as pageObstacles, but only what is rendered under one area: each element hit there and its own text. */
-export function obstaclesUnder(area: Rect, root: Document | ShadowRoot = document, seen = new Set<Element>()): Rect[] {
-  const rects: Rect[] = [];
-  for (const y of samples(area.top, bottom(area))) for (const x of samples(area.left, right(area))) {
-    for (const el of root.elementsFromPoint(x, y)) {
-      if (seen.has(el) || el.localName === "guiderail-overlay") continue;
-      seen.add(el);
-      if (!el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
-      nodeObstacle(el, rects);
-      for (const child of el.childNodes) if (child.nodeType === Node.TEXT_NODE) nodeObstacle(child, rects);
-      if (el.shadowRoot) rects.push(...obstaclesUnder(area, el.shadowRoot, seen));
+    if (node.nodeType === Node.TEXT_NODE && node.textContent?.trim()) {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      rects.push(...range.getClientRects());
+    } else if (node instanceof Element) {
+      if (node.matches('input,select,textarea,button,iframe,[role="button"],[role="radio"],[role="checkbox"],[contenteditable="true"]')) rects.push(node.getBoundingClientRect());
+      if (node.shadowRoot) rects.push(...pageObstacles(node.shadowRoot));
     }
   }
-  return rects.filter((r) => r.width > 0 && r.height > 0 && overlaps(r, area));
+  return rects.filter((r) => r.width > 0 && r.height > 0);
 }

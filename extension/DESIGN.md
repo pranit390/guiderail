@@ -71,8 +71,12 @@ The existing dark Here tag retains its 11px type, 4px/7px padding and 260px
 maximum width. Placement measures text line boxes and interactive surfaces,
 including open shadow roots: right, left, above, below; 12px target gap, 4px
 content clearance, 8px viewport margin. Hide when no empty candidate fits.
-The ring tracks every frame; the tag hides while the target moves and is
-re-placed 200ms after it settles. Full page scans run at most every 200ms.
+The ring and calm cutout track the target every frame. The tag is shown only
+where a fresh collision scan verified free space: any page mutation, scroll,
+resize, font load or target move hides it at once, and it is re-placed from a
+new full scan after 200ms without further changes. During continuous page
+churn it stays hidden rather than blinking. Full page scans run at most once
+per 200ms quiet period.
 
 ## 8. Accessibility constraints and scope
 Journey status uses its own status region; completed replies use a separate status region so transcript fragments stay quiet. Current Step uses aria-current=step. Keep source

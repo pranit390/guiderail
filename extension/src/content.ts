@@ -11,7 +11,7 @@ import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
 import { FIRESTORE_CREATE_DIALOG } from "./firestore.ts";
-import { highlightRegion, obstaclesUnder, padded, pageObstacles, placeTag, type Rect } from "./highlight-layout.ts";
+import { highlightRegion, padded, pageObstacles, placeTag, type Rect } from "./highlight-layout.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -126,28 +126,29 @@ const calm = new CalmView(host, layer, (text) => send({ kind: "customize_event",
 let followRunning = false;
 let obstacles: Rect[] = [];
 let placementDirty = true;
-let pageMutated = false;
-let scannedAt = 0;
-let layoutMovedAt = -Infinity;
+let invalidatedAt = -Infinity;
 let lastTargetLayout = "";
+
+// Any page or viewport change leaves the tag's free space unverified: hide it until a fresh scan after 200ms of quiet.
+function invalidateTag() {
+  stepChip.hidden = true;
+  placementDirty = true;
+  invalidatedAt = performance.now();
+}
 
 function placeStep() {
   if (!highlighted) return;
   const { rect, radius } = highlightRegion(highlighted);
   const bounds = padded(rect, 4);
   Object.assign(ring.style, { left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px`, borderRadius: `${radius + 4}px` });
-  const now = performance.now();
   const layout = JSON.stringify([rect, window.innerWidth, window.innerHeight]);
   if (layout !== lastTargetLayout) {
-    if (lastTargetLayout) { layoutMovedAt = now; stepChip.hidden = true; }
+    if (lastTargetLayout) invalidateTag();
     placementDirty = true;
     lastTargetLayout = layout;
   }
-  if (pageMutated && now - scannedAt >= 200) placementDirty = true;
-  if (!placementDirty || now - layoutMovedAt < 200) return;
+  if (!placementDirty || performance.now() - invalidatedAt < 200) return;
   placementDirty = false;
-  pageMutated = false;
-  scannedAt = now;
   stepChip.hidden = !!offscreen(highlighted);
   if (stepChip.hidden) return;
   Object.assign(stepChip.style, { left: "0px", top: "0px", maxWidth: `${Math.min(260, window.innerWidth - 16)}px` });
@@ -244,11 +245,7 @@ function ensureOverlaySurface(target?: Element) {
     if (host.parentElement !== surface) surface.append(host);
   }
 }
-// Page content now under a visible Here tag hides it at once; the throttled rescan places it again.
-function hideCoveredTag() {
-  if (!stepChip.hidden && obstaclesUnder(padded(stepChip.getBoundingClientRect(), 4)).length) stepChip.hidden = true;
-}
-const surfaceObserver = new MutationObserver(() => { pageMutated = true; hideCoveredTag(); ensureOverlaySurface(); });
+const surfaceObserver = new MutationObserver(() => { invalidateTag(); ensureOverlaySurface(); });
 surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["open", "hidden", "style", "class"] });
 document.addEventListener("toggle", onSurfaceToggle, true);
 function onSurfaceToggle() { ensureOverlaySurface(); }
@@ -266,7 +263,7 @@ function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   ring.hidden = false;
   stepChip.replaceChildren(stateGlyph("go"), document.createTextNode(`Here · ${nameOf(el)}`));
   lastTargetLayout = "";
-  layoutMovedAt = -Infinity;
+  invalidatedAt = -Infinity;
   placeStep();
   // Three soft breaths, then a static halo.
   ring.classList.remove("pulse");
@@ -308,7 +305,7 @@ function follow() {
   if (highlighted || badBoxes.length || calm.active) requestAnimationFrame(follow);
   else followRunning = false;
 }
-function onViewportChange() { pageMutated = true; hideCoveredTag(); if (highlighted || badBoxes.length || calm.active) startFollow(); }
+function onViewportChange() { invalidateTag(); if (highlighted || badBoxes.length || calm.active) startFollow(); }
 const layoutObserver = new ResizeObserver(onViewportChange);
 document.fonts?.addEventListener("loadingdone", onViewportChange);
 window.addEventListener("resize", onViewportChange);
