@@ -88,6 +88,20 @@ describe("cited Guide walk", () => {
     read.mockResolvedValue(page(["Databases & Storage"])); reread.click(); await vi.advanceTimersByTimeAsync(0);
     expect(point).toHaveBeenCalledOnce(); expect(reread.disabled).toBe(false);
   });
+  it("does not repeat the same Step announcement or retry prompt across same-tab invalidations", async () => {
+    vi.useFakeTimers();
+    const { read, point, prompt, walk } = mount(); read.mockResolvedValue(page(["Databases & Storage"]));
+    await vi.advanceTimersByTimeAsync(600);
+    walk.invalidate("wizard changed", true); await vi.advanceTimersByTimeAsync(600);
+    walk.invalidate("wizard changed", true); await vi.advanceTimersByTimeAsync(600);
+    expect(point).toHaveBeenCalledTimes(3);
+    expect(prompt).toHaveBeenCalledExactlyOnceWith("Step 1: Databases & Storage. You operate this control.");
+    read.mockResolvedValue(page([]));
+    walk.invalidate("wizard changed", true); await vi.advanceTimersByTimeAsync(1_200);
+    walk.invalidate("wizard changed", true); await vi.advanceTimersByTimeAsync(1_200);
+    expect(read).toHaveBeenCalledTimes(7); expect(prompt).toHaveBeenCalledTimes(2);
+    expect(prompt).toHaveBeenLastCalledWith("I can't see Databases & Storage on this screen yet. Re-read this Step to retry.");
+  });
   it("re-points after a same-tab page change but cancels work on another tab or after ending", async () => {
     vi.useFakeTimers();
     const { read, point, walk } = mount(); read.mockResolvedValue(page(["Databases & Storage"]));

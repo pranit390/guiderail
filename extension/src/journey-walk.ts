@@ -25,11 +25,12 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pendingAuto = false;
   let attempts = 0;
-  let announced = false;
+  let announced = "";
+  function say(text: string) { if (announced === text) return; announced = text; prompt(text); }
   function cancelAuto() { clearTimeout(timer); timer = undefined; pendingAuto = false; }
   function schedule(reset = false) {
     cancelAuto();
-    if (reset) { attempts = 0; announced = false; }
+    if (reset) attempts = 0;
     if (!enabled || current >= rows.length || attempts >= 2) return;
     timer = setTimeout(() => {
       timer = undefined;
@@ -67,7 +68,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   }
   async function refresh(automatic = false) {
     if (!enabled || busy || current >= rows.length) return;
-    if (!automatic) { cancelAuto(); announced = false; }
+    if (!automatic) { cancelAuto(); announced = ""; }
     const reading = revision;
     busy = true; observed = -1; pointed = -1; render();
     let snapshot: PageSnapshot | undefined;
@@ -83,7 +84,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
         if (reading !== revision) return;
         if (!result || typeof result !== "object" || !("found" in result) || result.found !== true) throw new Error("The control changed or could not be highlighted. Re-read before continuing.");
         observed = current; pointed = current;
-        if (!announced) { prompt(`Step ${current + 1}: ${journey.steps[current].control}. You operate this control.`); announced = true; }
+        say(`Step ${current + 1}: ${journey.steps[current].control}. You operate this control.`);
       }
       changed(`${observation.text} Source: ${journey.steps[current].citationHeading}.`);
     } catch (error) { if (reading !== revision) return; if (!snapshot) acted = -1; statuses[current] = error instanceof Error ? error.message : "The page could not be read."; }
@@ -93,7 +94,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
       else if (pendingAuto) schedule();
       else if (automatic && reading === revision && observed !== current) {
         if (attempts < 2) schedule();
-        else if (!announced && snapshot) { prompt(`I can't see ${journey.steps[current].control} on this screen yet. Re-read this Step to retry.`); announced = true; }
+        else if (snapshot) say(`I can't see ${journey.steps[current].control} on this screen yet. Re-read this Step to retry.`);
       }
     }
   }
@@ -103,7 +104,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     statuses[current] = skipped ? "Explicitly skipped by you; not verified." : "You reported this Step done; not independently verified.";
     changed(`${journey.steps[current].control}: ${statuses[current]}`);
     void clear();
-    current++; observed = -1; pointed = -1; acted = -1; revision++; render();
+    current++; observed = -1; pointed = -1; acted = -1; announced = ""; revision++; render();
     schedule(true);
     currentRegion.scrollTop = 0;
   }
@@ -124,12 +125,12 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
       });
       if (matches.length !== 1) return;
       cancelAuto();
-      if (current !== matches[0]) { revision++; current = matches[0]; acted = -1; }
+      if (current !== matches[0]) { revision++; current = matches[0]; acted = -1; announced = ""; }
       observed = current; pointed = current;
       statuses[current] = `${name} is visible. You operate this control.`;
       render();
     },
-    setEnabled(value: boolean) { cancelAuto(); if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); if (value) schedule(true); },
+    setEnabled(value: boolean) { cancelAuto(); if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); if (value) { announced = ""; schedule(true); } },
     acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current || pointed === current) acted = current; statuses[current] = message; render(); if (acted === current && journey.steps[current].control !== "Create") advance(false); },
     invalidate(message: string, sameTab = false) { cancelAuto(); void clear(); revision++; observed = -1; if (!sameTab) { pointed = -1; acted = -1; } if (current < rows.length) statuses[current] = message; render(); if (sameTab) schedule(true); },
   };
