@@ -75,9 +75,11 @@ export type NameResolution =
   | { status: "ambiguous"; alternatives: string[] }
   | { status: "missing"; alternatives: string[] };
 
+type Match = Exclude<NameResolution, { status: "ambiguous" }> | { status: "ambiguous"; tied: PageElement[] };
+
 // Exact normalized names first, then an exact "Section: Name" label. Fuzzy candidates are only
 // considered when neither exists. A section keeps only the controls inside that labelled region.
-export function resolveName(text: string, elements: PageElement[], role?: string, section?: string): NameResolution {
+function match(text: string, elements: PageElement[], role?: string, section?: string): Match {
   const query = norm(text);
   if (!query) return { status: "missing", alternatives: [] };
   const area = norm(section ?? "");
@@ -86,7 +88,7 @@ export function resolveName(text: string, elements: PageElement[], role?: string
   const exact = named.length ? named : elements.filter((e) => e.section !== undefined && norm(labelOf(e)) === query);
   if (exact.length) {
     const winners = tied(rank(exact, text, role, true));
-    if (winners.length > 1) return { status: "ambiguous", alternatives: winners.map((r) => labelOf(r.e)) };
+    if (winners.length > 1) return { status: "ambiguous", tied: winners.map((r) => r.e) };
     return { status: "found", i: winners[0].e.i, name: winners[0].e.name, confidence: 1 };
   }
   const ranked = rank(elements, text, role, false);
@@ -95,8 +97,19 @@ export function resolveName(text: string, elements: PageElement[], role?: string
     return { status: "missing", alternatives: ranked.filter((r) => r.s > 0).slice(0, 5).map((r) => labelOf(r.e)) };
   }
   const winners = tied(ranked.filter((r) => r.s >= MIN_CONFIDENCE));
-  if (winners.length > 1) return { status: "ambiguous", alternatives: winners.map((r) => labelOf(r.e)) };
+  if (winners.length > 1) return { status: "ambiguous", tied: winners.map((r) => r.e) };
   return { status: "found", i: best.e.i, name: best.e.name, confidence: best.s };
+}
+
+// A tie names its choices only when each label, asked back as text, selects exactly that control.
+export function resolveName(text: string, elements: PageElement[], role?: string, section?: string): NameResolution {
+  const resolved = match(text, elements, role, section);
+  if (resolved.status !== "ambiguous") return resolved;
+  const answerable = resolved.tied.every((e) => {
+    const answer = match(labelOf(e), elements, role);
+    return answer.status === "found" && answer.i === e.i;
+  });
+  return { status: "ambiguous", alternatives: answerable ? resolved.tied.map(labelOf) : [] };
 }
 
 export function authorizeTarget(input: {
@@ -120,9 +133,7 @@ export function authorizeTarget(input: {
 export function resolutionResult(text: string, resolved: NameResolution, citation?: string): HighlightResult {
   if (resolved.status === "found") return { found: true, i: resolved.i, name: resolved.name, confidence: resolved.confidence };
   if (resolved.status === "ambiguous") {
-    const distinct = new Set(resolved.alternatives.map(norm)).size === resolved.alternatives.length;
-    const alternatives = distinct ? resolved.alternatives : [];
-    return { found: false, reason: "ambiguous", alternatives, ask: ambiguousAsk(text, alternatives) };
+    return { found: false, reason: "ambiguous", alternatives: resolved.alternatives, ask: ambiguousAsk(text, resolved.alternatives) };
   }
   const cite = citation?.trim() || undefined;
   return { found: false, reason: "missing", alternatives: resolved.alternatives, citation: cite, mismatch: mismatchLine(text, cite) };

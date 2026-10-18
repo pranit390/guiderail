@@ -88,6 +88,34 @@ describe("indistinguishable ties", () => {
   });
 });
 
+describe("answerable choices", () => {
+  it("does not offer a sectioned and an unsectioned Save, since the bare Save cannot be selected", () => {
+    const elements: PageElement[] = [
+      { i: 1, role: "button", name: "Save", section: "Billing" },
+      { i: 2, role: "button", name: "Save" },
+    ];
+    const decision = authorizeTarget({ text: "Save", role: "button", snapshot: snapshot(elements), stale: false, tabId: 7 });
+    if (decision.authorized) throw new Error("expected an ambiguous Save");
+    expect(decision).toMatchObject({ reason: "ambiguous", alternatives: [] });
+    expect(highlightOutcome(decision)).toBe(`I see more than one "Save" here that I can't tell apart, so I won't point at either. Tell me what's near the one you mean.`);
+  });
+
+  it("offers fuzzy choices without sections, and each option text selects its own control", () => {
+    const elements: PageElement[] = [
+      { i: 1, role: "textbox", name: "Database ID" },
+      { i: 2, role: "textbox", name: "Database location" },
+    ];
+    const decision = authorizeTarget({ text: "Database", snapshot: snapshot(elements), stale: false, tabId: 7 });
+    if (decision.authorized || decision.reason !== "ambiguous") throw new Error("expected an ambiguous Database");
+    expect(decision.alternatives).toEqual(["Database ID", "Database location"]);
+    expect(highlightOutcome(decision)).toBe('Which "Database" should I point at? I see Database ID or Database location.');
+    expect(decision.alternatives.map((text) => resolveName(text, elements))).toEqual([
+      { status: "found", i: 1, name: "Database ID", confidence: 1 },
+      { status: "found", i: 2, name: "Database location", confidence: 1 },
+    ]);
+  });
+});
+
 describe("section qualifier", () => {
   it("resolves the person's answer by section argument or by the Section: Name label the ask lists", () => {
     const elements = elementsOf();
