@@ -462,17 +462,17 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
   if (msg.kind === "tab_changed" || msg.kind === "toggle_voice") { handlePageMessage(msg, sender); return; }
   if (sender.frameId && sender.frameId !== 0) return;
   if (binding.tabId !== undefined) {
-    if (!sender.tab || !binding.accepts({ id: sender.tab.id, url: sender.url })) {
-      if (sender.tab?.id === binding.tabId) journeyPanel.invalidate("Journey paused: return the bound tab to its Firebase Firestore project.");
-      return;
-    }
+    if (sender.tab?.id !== binding.tabId) return;
+    const paused = "Journey paused: return the bound tab to its Firebase Firestore project.";
+    // Chrome keeps sender.url at the document's load URL across in-page route changes, so only its origin is trusted; the project comes from the bound tab's current URL.
+    if (!sender.url || new URL(sender.url).origin !== "https://console.firebase.google.com") { journeyPanel.invalidate(paused); return; }
     const generation = binding.generation;
     void binding.tab().then((tab) => {
-      if (generation !== binding.generation || sender.tab?.id !== tab.id || sender.url !== tab.url) return;
+      if (generation !== binding.generation || sender.tab?.id !== tab.id) return;
       const url = new URL(tab.url!);
       if ((msg.kind === "form_changed" || msg.kind === "submit_intent") && msg.form.url !== url.host + url.pathname) return;
       handlePageMessage(msg, sender);
-    }).catch(() => {});
+    }).catch((error) => { if (generation === binding.generation) journeyPanel.invalidate(error instanceof Error ? error.message : paused); });
     return;
   }
   if (sender.url && new URL(sender.url).hostname === "accounts.google.com") return;

@@ -256,6 +256,27 @@ describe("bound Journey tool and event routing", () => {
     listener({ kind: "page_event", text: "Page changed.", generation: 4 }, { tab: { id: 7 }, url: "https://accounts.google.com/signin" } as chrome.runtime.MessageSender, vi.fn());
     expect(next.disabled).toBe(true);
   });
+  it("accepts the bound tab's click after an in-page route change leaves the sender URL stale", async () => {
+    await start(); const listener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0];
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
+      ? { url: boundUrl, title: "Firestore", generation: 2, elements: [{ i: 1, role: "button", name: "Databases & Storage" }] }
+      : message.kind === "highlight" ? { found: true, i: message.index, name: message.name, confidence: 1 } : { ok: true });
+    const [reread, next] = document.querySelectorAll<HTMLButtonElement>("#journey [data-result] > div button");
+    reread.click(); await vi.waitFor(() => expect(next.disabled).toBe(false));
+    const socket = sockets.at(-1)!; socket.send.mockClear();
+    const stale = { tab: { id: 7 }, url: FIRESTORE_GOAL.consoleUrl } as chrome.runtime.MessageSender;
+    listener({ kind: "page_event", text: 'User clicked "Databases & Storage".' }, stale, vi.fn());
+    await vi.waitFor(() => expect(document.querySelector("#journey [aria-current=step] p:last-child")!.textContent).toContain("You clicked the highlighted control"));
+    expect(next.disabled).toBe(false);
+    expect(socket.send.mock.calls.some(([payload]) => JSON.parse(payload).type === "event")).toBe(true);
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_page"
+      ? { url: boundUrl, title: "Firestore", generation: 3, elements: [{ i: 1, role: "radio", name: "Standard edition" }] } : { ok: true });
+    reread.click(); await vi.waitFor(() => expect(document.querySelector("#journey [aria-current=step] p:last-child")!.textContent).toContain("I can't see it on this screen"));
+    expect(next.disabled).toBe(false);
+    getTab.mockResolvedValue({ id: 7, url: "https://console.firebase.google.com/project/other-proj/firestore/databases" });
+    listener({ kind: "page_event", text: 'User clicked "Databases & Storage".' }, stale, vi.fn());
+    await vi.waitFor(() => expect(next.disabled).toBe(true));
+  });
   it("drops foreign-tab and sign-in events and refuses model completion", async () => {
     await start(); const listener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0];
     const socket = sockets.at(-1)!; socket.send.mockClear();
