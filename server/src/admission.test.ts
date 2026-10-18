@@ -32,7 +32,7 @@ describe("demo admission", () => {
     if (first.allowed) { first.release(); first.release(); }
     const expired = vi.fn();
     limits.admit(expired);
-    vi.advanceTimersByTime(120_000);
+    vi.advanceTimersByTime(DAILY_LIVE_MS - 60_000);
     expect(expired).toHaveBeenCalledOnce();
     expect(limits.admit(vi.fn()).allowed).toBe(false);
     vi.setSystemTime(new Date("2026-10-19T00:00:00Z"));

@@ -30,6 +30,7 @@ const project = process.env.GOOGLE_CLOUD_PROJECT ?? "zoop-innovation";
 const location = process.env.GOOGLE_CLOUD_LOCATION ?? "us-central1";
 const model = process.env.LIVE_MODEL ?? "gemini-live-2.5-flash-native-audio";
 const MAX_SESSION_MS = 10 * 60 * 1000;
+export const IDLE_MS = 60 * 1000;
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 
@@ -39,7 +40,8 @@ async function buildInstruction(mode: Mode, goal?: string): Promise<string> {
   return instructionFor("teach", playbooks, { goal, rules: await loadRuleLines(), playbookTitles: playbooks.map(playbookTitle) });
 }
 
-export async function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string) {
+/** Relays one client to Vertex Live. Returns `end`, which closes the billable Live session at once and then the client. */
+export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string) {
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
   let session: Session | undefined;
@@ -47,93 +49,113 @@ export async function relay(client: WebSocket, resumptionHandle?: string, mode: 
   let audioBytes = 0;
   let textChars = 0;
   let turns = 0;
-  const cap = setTimeout(() => client.close(4000, "session limit"), MAX_SESSION_MS);
+  let idle: ReturnType<typeof setTimeout> | undefined;
+  const end = (reason: string, message: string) => {
+    clearTimeout(cap);
+    clearTimeout(idle);
+    send({ type: "error", message });
+    session?.close();
+    client.close(4000, reason);
+  };
+  // Only user input and model output keep a connection open.
+  const active = () => {
+    clearTimeout(idle);
+    if (client.readyState !== client.OPEN) return;
+    idle = setTimeout(() => end("idle", "Disconnected after one minute without activity. Type or press Talk to reconnect."), IDLE_MS);
+  };
+  const cap = setTimeout(() => end("session limit", "This demo session reached its ten-minute limit. Type or press Talk to reconnect if today's allowance remains."), MAX_SESSION_MS);
   client.once("close", () => {
     clearTimeout(cap);
+    clearTimeout(idle);
     session?.close();
   });
-  try {
-    session = await ai.live.connect({
-      model,
-      config: {
-        responseModalities: [Modality.AUDIO],
-        maxOutputTokens: 512,
-        systemInstruction: await buildInstruction(mode, goal),
-        tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
-        inputAudioTranscription: {},
-        outputAudioTranscription: {},
-        sessionResumption: resumptionHandle ? { handle: resumptionHandle } : {},
-        contextWindowCompression: { triggerTokens: "8192", slidingWindow: { targetTokens: "4096" } },
-      },
-      callbacks: {
-        onmessage: (msg) => {
-          forward(msg, send, session);
-          if (msg.serverContent?.turnComplete && ++turns >= 8) {
-            send({ type: "error", message: "This demo session reached its eight-reply allowance. Reconnect if today's allowance remains." });
-            client.close(4000, "reply allowance reached");
-          }
-        },
-        onerror: (e) => send({ type: "error", message: String(e.message ?? e) }),
-        onclose: () => client.close(),
-      },
-    });
-  } catch (err) {
-    clearTimeout(cap);
-    send({ type: "error", message: `Couldn't reach the voice model: ${(err as Error).message}` });
-    client.close();
-    return;
-  }
+  void open();
+  return end;
 
-  if (client.readyState !== client.OPEN) { clearTimeout(cap); session.close(); return; }
-  send({ type: "ready" });
-
-  client.on("message", (raw) => {
-    let msg: ClientMessage;
+  async function open() {
     try {
-      msg = JSON.parse(String(raw));
-    } catch {
+      session = await ai.live.connect({
+        model,
+        config: {
+          responseModalities: [Modality.AUDIO],
+          maxOutputTokens: 512,
+          systemInstruction: await buildInstruction(mode, goal),
+          tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
+          sessionResumption: resumptionHandle ? { handle: resumptionHandle } : {},
+          contextWindowCompression: { triggerTokens: "8192", slidingWindow: { targetTokens: "4096" } },
+        },
+        callbacks: {
+          onmessage: (msg) => {
+            forward(msg, send, session);
+            if (msg.serverContent || msg.toolCall) active();
+            if (msg.serverContent?.turnComplete && ++turns >= 8) {
+              end("reply allowance reached", "This demo session reached its eight-reply allowance. Reconnect if today's allowance remains.");
+            }
+          },
+          onerror: (e) => send({ type: "error", message: String(e.message ?? e) }),
+          onclose: () => client.close(),
+        },
+      });
+    } catch (err) {
+      clearTimeout(cap);
+      send({ type: "error", message: `Couldn't reach the voice model: ${(err as Error).message}` });
+      client.close();
       return;
     }
-    if (!session || !msg || typeof msg !== "object") return;
-    if ("text" in msg && (typeof msg.text !== "string" || msg.text.length > 4000)) return;
-    if (msg.type === "audio" && (typeof msg.data !== "string" || msg.data.length > 48_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(msg.data))) return;
-    if (msg.type === "tool_result" && (typeof msg.id !== "string" || typeof msg.name !== "string" || !msg.response || typeof msg.response !== "object")) return;
-    if ("text" in msg) textChars += msg.text.length;
-    if (msg.type === "audio") audioBytes += Buffer.byteLength(msg.data, "base64");
-    if (textChars > 24_000 || audioBytes > (Date.now() - started) * 32 + 64_000) {
-      send({ type: "error", message: "This demo session reached its input allowance." });
-      client.close(4000, "input allowance reached");
-      return;
-    }
-    switch (msg.type) {
-      case "audio":
-        session.sendRealtimeInput({ audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" } });
-        break;
-      case "audio_end":
-        session.sendRealtimeInput({ audioStreamEnd: true });
-        break;
-      case "text":
-        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: msg.text }] }], turnComplete: true });
-        break;
-      case "event":
-        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: true });
-        break;
-      case "session":
-        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[session so far]\n${msg.text}` }] }], turnComplete: false });
-        break;
-      case "app":
-        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[app event] ${msg.text}` }] }], turnComplete: false });
-        break;
-      case "context":
-        // Context only: the model takes it in without starting a reply.
-        session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: false });
-        break;
-      case "tool_result":
-        session.sendToolResponse({ functionResponses: [{ id: msg.id, name: msg.name, response: msg.response }] });
-        break;
-    }
-  });
 
+    if (client.readyState !== client.OPEN) { clearTimeout(cap); session.close(); return; }
+    send({ type: "ready" });
+    active();
+
+    client.on("message", (raw) => {
+      let msg: ClientMessage;
+      try {
+        msg = JSON.parse(String(raw));
+      } catch {
+        return;
+      }
+      if (!session || !msg || typeof msg !== "object") return;
+      if ("text" in msg && (typeof msg.text !== "string" || msg.text.length > 4000)) return;
+      if (msg.type === "audio" && (typeof msg.data !== "string" || msg.data.length > 48_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(msg.data))) return;
+      if (msg.type === "tool_result" && (typeof msg.id !== "string" || typeof msg.name !== "string" || !msg.response || typeof msg.response !== "object")) return;
+      if ("text" in msg) textChars += msg.text.length;
+      if (msg.type === "audio") audioBytes += Buffer.byteLength(msg.data, "base64");
+      if (textChars > 24_000 || audioBytes > (Date.now() - started) * 32 + 64_000) {
+        end("input allowance reached", "This demo session reached its input allowance.");
+        return;
+      }
+      if (msg.type === "audio" || msg.type === "audio_end" || msg.type === "text") active();
+      switch (msg.type) {
+        case "audio":
+          session.sendRealtimeInput({ audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" } });
+          break;
+        case "audio_end":
+          session.sendRealtimeInput({ audioStreamEnd: true });
+          break;
+        case "text":
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: msg.text }] }], turnComplete: true });
+          break;
+        case "event":
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: true });
+          break;
+        case "session":
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[session so far]\n${msg.text}` }] }], turnComplete: false });
+          break;
+        case "app":
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[app event] ${msg.text}` }] }], turnComplete: false });
+          break;
+        case "context":
+          // Context only: the model takes it in without starting a reply.
+          session.sendClientContent({ turns: [{ role: "user", parts: [{ text: `[page event] ${msg.text}` }] }], turnComplete: false });
+          break;
+        case "tool_result":
+          session.sendToolResponse({ functionResponses: [{ id: msg.id, name: msg.name, response: msg.response }] });
+          break;
+      }
+    });
+  }
 }
 
 function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, session: Session | undefined) {
