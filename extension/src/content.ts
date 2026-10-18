@@ -241,6 +241,11 @@ function onSurfaceToggle() { ensureOverlaySurface(); }
 function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   ensureOverlaySurface(el);
   highlighted = el;
+  layoutObserver.disconnect();
+  layoutObserver.observe(document.documentElement);
+  if (document.body) layoutObserver.observe(document.body);
+  layoutObserver.observe(el);
+  if (el instanceof HTMLInputElement) for (const label of el.labels ?? []) layoutObserver.observe(label);
   applyTheme(ring, el);
   applyTheme(cue, el);
   ring.hidden = false;
@@ -288,6 +293,8 @@ function follow() {
   else followRunning = false;
 }
 function onViewportChange() { placementDirty = true; if (highlighted || badBoxes.length || calm.active) startFollow(); }
+const layoutObserver = new ResizeObserver(onViewportChange);
+document.fonts.addEventListener("loadingdone", onViewportChange);
 window.addEventListener("resize", onViewportChange);
 document.addEventListener("scroll", onViewportChange, true);
 
@@ -488,6 +495,8 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
 function shutdown() {
   overlayStopped = true;
   surfaceObserver.disconnect();
+  layoutObserver.disconnect();
+  document.fonts.removeEventListener("loadingdone", onViewportChange);
   document.removeEventListener("toggle", onSurfaceToggle, true);
   calm.restore();
   document.removeEventListener("input", onInput, true);
