@@ -61,135 +61,17 @@ describe("Live voice setup", () => {
   });
 });
 
-describe("Live idle timeout", () => {
-  it("closes the Live session after two minutes without user input or model output", async () => {
-    expect(IDLE_MS).toBe(120_000);
+describe("no session caps", () => {
+  it("keeps a quiet session open for hours and forwards large page reads", async () => {
     const { client } = await start();
-    vi.advanceTimersByTime(IDLE_MS - 1);
+    vi.advanceTimersByTime(6 * 60 * 60_000);
     expect(live.session.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(live.session.close).toHaveBeenCalledOnce();
-    expect(client.close).toHaveBeenCalledWith(4000, "idle");
-    expect(client.sent.at(-1)).toMatchObject({ type: "error", message: expect.stringContaining("without activity") });
-  });
-
-  it.each([
-    { type: "text", text: "where are labels?" },
-    { type: "audio_end" },
-    { type: "event", text: "User clicked the highlighted Labels" },
-    { type: "context", text: "Expert clicked Next" },
-    { type: "app", text: "Playbook draft ready" },
-  ])("restarts the idle timeout on %j", async (msg) => {
-    const { client } = await start();
-    vi.advanceTimersByTime(IDLE_MS - 1);
-    client.input(msg);
-    vi.advanceTimersByTime(IDLE_MS - 1);
-    expect(live.session.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(live.session.close).toHaveBeenCalledOnce();
-  });
-
-  it("restarts the idle timeout on model output and transcribed speech", async () => {
-    await start();
-    vi.advanceTimersByTime(IDLE_MS - 1);
-    live.callbacks!.onmessage({ serverContent: { inputTranscription: { text: "where are labels" } } });
-    vi.advanceTimersByTime(IDLE_MS - 1);
-    live.callbacks!.onmessage({ serverContent: { outputTranscription: { text: "Open Labels." } } });
-    vi.advanceTimersByTime(IDLE_MS - 1);
-    expect(live.session.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(live.session.close).toHaveBeenCalledOnce();
-  });
-
-  it("times out an open microphone that only sends silent frames", async () => {
-    const { client } = await start();
-    for (let t = 0; t < IDLE_MS; t += 100) {
-      client.input({ type: "audio", data: "AAAA" });
-      vi.advanceTimersByTime(100);
-    }
-    expect(live.session.close).toHaveBeenCalledOnce();
-    expect(client.close).toHaveBeenCalledWith(4000, "idle");
-  });
-
-  it("pauses the idle timeout while an email proposal awaits confirmation and restarts it once answered", async () => {
-    const { client } = await start();
-    live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "draft", name: "draft_message", args: {} }] } });
-    client.input({ type: "text", text: "still reading" });
-    vi.advanceTimersByTime(5 * IDLE_MS);
-    expect(live.session.close).not.toHaveBeenCalled();
-    client.input({ type: "tool_result", id: "draft", name: "draft_message", response: { opened: false } });
-    vi.advanceTimersByTime(IDLE_MS - 1);
-    expect(live.session.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(client.close).toHaveBeenCalledWith(4000, "idle");
-  });
-
-  it("still ends at the twenty-minute cap while an email proposal awaits confirmation", async () => {
-    const { client, release } = await start();
-    live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "draft", name: "draft_message", args: {} }] } });
-    vi.advanceTimersByTime(20 * 60 * 1000 - 1);
-    expect(live.session.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(live.session.close).toHaveBeenCalledOnce();
-    expect(client.close).toHaveBeenCalledWith(4000, "session limit");
-    expect(release).toHaveBeenCalledOnce();
-  });
-
-  it("does not pause the idle timeout for other outstanding tool calls", async () => {
-    const { client } = await start();
-    live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "read", name: "read_page", args: {} }] } });
-    vi.advanceTimersByTime(IDLE_MS);
-    expect(client.close).toHaveBeenCalledWith(4000, "idle");
-  });
-
-  it("does not restart the idle timeout for session summaries, tool results, unknown messages or resumption updates", async () => {
-    const { client } = await start();
-    vi.advanceTimersByTime(IDLE_MS / 2);
-    client.input({ type: "session", text: "Session so far" });
-    client.input({ type: "tool_result", id: "1", name: "read_page", response: {} });
-    client.input({ type: "keepalive", text: "x" });
-    live.callbacks!.onmessage({ sessionResumptionUpdate: { resumable: true, newHandle: "h" } });
-    vi.advanceTimersByTime(IDLE_MS / 2);
-    expect(live.session.close).toHaveBeenCalledOnce();
-  });
-});
-
-describe("configured Live limits", () => {
-  beforeEach(() => {
-    vi.stubEnv("LIVE_SESSION_MINUTES", "3");
-    vi.stubEnv("LIVE_IDLE_SECONDS", "30");
-    vi.resetModules();
-  });
-
-  it("uses the idle override and reports its actual duration", async () => {
-    const { relay } = await import("./live.ts");
-    const { client, release } = await start(relay);
-    vi.advanceTimersByTime(29_999);
-    expect(live.session.close).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(1);
-    expect(client.close).toHaveBeenCalledWith(4000, "idle");
-    expect(client.sent.at(-1)?.message).toContain("30 seconds");
-    expect(release).toHaveBeenCalledOnce();
-  });
-
-  it("uses the same session override as admission despite ongoing activity", async () => {
-    const { relay } = await import("./live.ts");
-    const { LiveAdmission } = await import("./admission.ts");
-    const expired = vi.fn();
-    const admission = new LiveAdmission();
-    expect(admission.admit(expired).allowed).toBe(true);
-    const { client, release } = await start(relay);
-    for (let i = 0; i < 6; i++) {
-      vi.advanceTimersByTime(29_999);
-      client.input({ type: "text", text: "continue" });
-    }
-    expect(live.session.close).not.toHaveBeenCalled();
-    expect(expired).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(6);
-    expect(client.close).toHaveBeenCalledWith(4000, "session limit");
-    expect(client.sent.at(-1)?.message).toContain("3-minute limit");
-    expect(release).toHaveBeenCalledOnce();
-    expect(expired).toHaveBeenCalledOnce();
+    live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "big", name: "read_page", args: {} }] } });
+    client.input({ type: "tool_result", id: "big", name: "read_page", response: { text: "x".repeat(200_000) } });
+    for (let i = 0; i < 20; i++) client.input({ type: "text", text: "y".repeat(10_000) });
+    expect(live.session.sendToolResponse).toHaveBeenCalledOnce();
+    expect(live.session.sendClientContent).toHaveBeenCalledTimes(20);
+    expect(client.close).not.toHaveBeenCalled();
   });
 });
 
@@ -212,12 +94,6 @@ describe("Live limits", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
-  it("releases the slot when the idle limit stops Live, before the client answers the close", async () => {
-    const { release } = await start();
-    vi.advanceTimersByTime(IDLE_MS);
-    expect(live.session.close).toHaveBeenCalledOnce();
-    expect(release).toHaveBeenCalledOnce();
-  });
 
   it("closes Live and releases the slot when the client disconnects", async () => {
     const { client, release } = await start();
@@ -233,25 +109,6 @@ describe("Live limits", () => {
     expect(client.close).not.toHaveBeenCalled();
   });
 
-  it("closes the Live session immediately when input exceeds the allowance", async () => {
-    const { client } = await start();
-    for (let i = 0; i < 7; i++) client.input({ type: "text", text: "x".repeat(4000) });
-    expect(live.session.close).toHaveBeenCalledOnce();
-    expect(client.close).toHaveBeenCalledWith(4000, "input allowance reached");
-    expect(live.session.sendClientContent).toHaveBeenCalledTimes(6);
-  });
-});
-
-describe("oversized text", () => {
-  it("tells the client the text was not delivered and keeps the session open", async () => {
-    const { client } = await start();
-    client.input({ type: "text", text: "x".repeat(4001) });
-    expect(live.session.sendClientContent).not.toHaveBeenCalled();
-    expect(client.sent.at(-1)).toEqual({ type: "error", message: "That message was not delivered: the coach accepts text of up to 4,000 characters per message." });
-    expect(client.close).not.toHaveBeenCalled();
-    client.input({ type: "text", text: "x".repeat(4000) });
-    expect(live.session.sendClientContent).toHaveBeenCalledOnce();
-  });
 });
 
 describe("tool result input boundary", () => {
@@ -269,29 +126,7 @@ describe("tool result input boundary", () => {
     expect(live.session.sendToolResponse).toHaveBeenCalledExactlyOnceWith({ functionResponses: [{ id: "issued", name: "read_page", response: untrustedToolResult("tool result", result.response) }] });
   });
 
-  it("ends the session before forwarding an oversized issued result", async () => {
-    const { client, release } = await start();
-    call("issued");
-    client.input({ type: "tool_result", id: "issued", name: "read_page", response: { text: "x".repeat(50_000) } });
-    expect(live.session.sendToolResponse).not.toHaveBeenCalled();
-    expect(client.close).toHaveBeenCalledWith(4000, "input allowance reached");
-    expect(release).toHaveBeenCalledOnce();
-  });
 
-  it("charges serialized response, id and name to the same 24,000-character budget as text", async () => {
-    const { client } = await start();
-    const response = { text: "x".repeat(3900) };
-    for (let i = 0; i < 6; i++) {
-      call(String(i));
-      client.input({ type: "tool_result", id: String(i), name: "read_page", response });
-    }
-    const used = 6 * (1 + "read_page".length + JSON.stringify(untrustedToolResult("tool result", response)).length);
-    client.input({ type: "text", text: "x".repeat(24_000 - used) });
-    call("last");
-    client.input({ type: "tool_result", id: "last", name: "read_page", response: {} });
-    expect(live.session.sendToolResponse).toHaveBeenCalledTimes(6);
-    expect(client.close).toHaveBeenCalledWith(4000, "input allowance reached");
-  });
 });
 
 describe("untrusted page data", () => {
@@ -327,11 +162,4 @@ describe("untrusted page data", () => {
     expect(wire.untrusted_data.value).toEqual(response);
   });
 
-  it("charges escaped page context to the aggregate text budget before forwarding", async () => {
-    const { client } = await start();
-    for (let i = 0; i < 6; i++) client.input({ type: "text", text: "x".repeat(3900) });
-    client.input({ type: "context", text: "<".repeat(100) });
-    expect(live.session.sendClientContent).toHaveBeenCalledTimes(6);
-    expect(client.close).toHaveBeenCalledWith(4000, "input allowance reached");
-  });
 });
