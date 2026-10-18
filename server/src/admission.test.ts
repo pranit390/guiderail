@@ -64,3 +64,15 @@ describe("anonymous session capabilities", () => {
     expect(tickets.issue("https://coach.example")).toBeDefined();
   });
 });
+
+describe("SessionTickets bound to a signed-in user", () => {
+  const origin = "chrome-extension://abcdefghijklmnop";
+  it("only the user it was issued to can use it", () => {
+    const tickets = new SessionTickets();
+    const ticket = tickets.issue(origin, "judge-uid")!;
+    expect(tickets.consume(ticket.credential, origin)).toBeUndefined();
+    expect(tickets.consume(ticket.credential, origin, "someone-else")).toBeUndefined();
+    expect(tickets.consume(ticket.credential, origin, "judge-uid")).toBe(ticket.anonymousId);
+    expect(tickets.consume(ticket.credential, origin, "judge-uid")).toBeUndefined();
+  });
+});

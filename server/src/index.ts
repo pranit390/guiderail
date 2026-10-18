@@ -11,7 +11,7 @@ import { LiveAdmission, SessionTickets } from "./admission.ts";
 import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { approvals, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
-import { authMode, authorize } from "./auth.ts";
+import { authMode, authorize, tokenFromProtocols, WS_PROTOCOL } from "./auth.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -74,9 +74,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     return json(res, 403, { error: "This origin may not write to GuideRail." });
   }
 
+  let uid: string | undefined;
   if (req.method === "POST" && WRITE_ROUTES.has(url.pathname)) {
     const result = await authorize(req.headers.authorization);
     if (!result.ok) return json(res, result.status, result.body);
+    uid = result.uid;
   }
 
   if (url.pathname === "/session" && req.method === "POST") {
@@ -86,7 +88,7 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
     if (!req.headers.origin) return json(res, 403, { error: "A supported browser origin is required." });
     const body = await readJson(req);
     if (!body) return json(res, 400, { error: "Send a JSON object." });
-    const ticket = tickets.issue(req.headers.origin);
+    const ticket = tickets.issue(req.headers.origin, uid);
     res.setHeader("Cache-Control", "no-store");
     return json(res, ticket ? 201 : 429, ticket ?? { error: "The coach is busy. Please retry shortly." });
   }
@@ -252,8 +254,12 @@ function approverPage(approval?: Approval) {
 </script>`);
 }
 
-const wss = new WebSocketServer({ server, path: "/live", maxPayload: 64 * 1024 });
-wss.on("connection", (client, req) => {
+const wss = new WebSocketServer({
+  server, path: "/live", maxPayload: 64 * 1024,
+  // Answer with the plain protocol name so the browser accepts the handshake; the token stays private.
+  handleProtocols: (offered) => (offered.has(WS_PROTOCOL) ? WS_PROTOCOL : false),
+});
+wss.on("connection", async (client, req) => {
   // ws emits an error (including maxPayload violations) before closing. Even
   // rejected clients need a listener so a malformed frame cannot kill Node.
   client.on("error", () => client.terminate());
@@ -262,7 +268,14 @@ wss.on("connection", (client, req) => {
     client.send(JSON.stringify({ type: "error", message }));
     client.close(4001, "session admission denied");
   };
-  if (!isAllowedOrigin(req.headers.origin) || !tickets.consume(params.get("credential"), req.headers.origin)) {
+  let uid: string | undefined;
+  if (authMode() !== "off") {
+    const token = tokenFromProtocols(req.headers["sec-websocket-protocol"]);
+    const who = token ? await authorize(`Bearer ${token}`) : undefined;
+    if (!who?.ok) { reject("Sign in to GuideRail to continue."); return; }
+    uid = who.uid;
+  }
+  if (!isAllowedOrigin(req.headers.origin) || !tickets.consume(params.get("credential"), req.headers.origin, uid)) {
     reject("Missing, invalid or expired session credential. Reconnect from the extension.");
     return;
   }

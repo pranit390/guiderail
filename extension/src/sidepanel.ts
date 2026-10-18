@@ -17,7 +17,7 @@ import { isSensitiveUrl } from "./privacy.ts";
 import { fitToolResult } from "./toolresult.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
-import { AuthError, authFetch, authRequired, currentUser, onAuthLost, signIn, signOut } from "./auth.ts";
+import { AuthError, authFetch, authRequired, currentUser, onAuthLost, signIn, signOut, wsProtocols } from "./auth.ts";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
@@ -300,7 +300,9 @@ async function connect() {
   }
   if (attempt !== connectionAttempt) return;
   params.set("credential", credential);
-  const sock = new WebSocket(`${SERVER}/live?${params}`);
+  const protocols = await wsProtocols();
+  if (attempt !== connectionAttempt) return;
+  const sock = protocols.length ? new WebSocket(`${SERVER}/live?${params}`, protocols) : new WebSocket(`${SERVER}/live?${params}`);
   ws = sock;
   sock.onmessage = (e) => {
     if (ws !== sock) return;

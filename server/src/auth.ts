@@ -52,7 +52,7 @@ export async function authorize(
   header: string | undefined,
   verify: VerifyToken = verifier,
   env = process.env,
-): Promise<{ ok: true; email?: string } | AuthFailure> {
+): Promise<{ ok: true; uid?: string; email?: string } | AuthFailure> {
   const mode = authMode(env);
   if (mode === "off") return { ok: true };
   if (mode === "closed") return notAllowed;
@@ -69,5 +69,14 @@ export async function authorize(
   }
 
   if (!verified.emailVerified || !verified.email || !allowedEmails(env).has(verified.email.trim().toLowerCase())) return notAllowed;
-  return { ok: true, email: verified.email };
+  return { ok: true, uid: verified.uid, email: verified.email };
+}
+
+// The voice WebSocket can't carry an Authorization header, so the extension offers its ID token
+// as a WebSocket subprotocol ("guiderail.auth.<token>"); it never appears in the URL or request logs.
+export const WS_PROTOCOL = "guiderail";
+export const WS_TOKEN_PREFIX = "guiderail.auth.";
+export function tokenFromProtocols(header: string | string[] | undefined): string | undefined {
+  const offered = (Array.isArray(header) ? header.join(",") : header ?? "").split(",").map((p) => p.trim());
+  return offered.find((p) => p.startsWith(WS_TOKEN_PREFIX))?.slice(WS_TOKEN_PREFIX.length) || undefined;
 }

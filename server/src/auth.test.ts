@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { authMode, authorize, type VerifyToken } from "./auth.ts";
+import { authMode, authorize, tokenFromProtocols, type VerifyToken } from "./auth.ts";
 
 const env = (values: Record<string, string | undefined>) => values as NodeJS.ProcessEnv;
 const allowed = env({ ALLOWED_EMAILS: "person@example.com" });
@@ -38,6 +38,18 @@ describe("authorize", () => {
 
   it("accepts a verified email regardless of allowlist case or whitespace", async () => {
     const result = await authorize("bearer token", async () => ({ uid: "uid", email: " Person@Example.Com ", emailVerified: true }), env({ ALLOWED_EMAILS: "  PERSON@example.com  " }));
-    expect(result).toEqual({ ok: true, email: " Person@Example.Com " });
+    expect(result).toEqual({ ok: true, uid: "uid", email: " Person@Example.Com " });
+  });
+});
+
+describe("tokenFromProtocols", () => {
+  it("reads the token the extension offers as a WebSocket subprotocol", () => {
+    expect(tokenFromProtocols("guiderail, guiderail.auth.abc.def-ghi")).toBe("abc.def-ghi");
+    expect(tokenFromProtocols(["guiderail", "guiderail.auth.tok"])).toBe("tok");
+  });
+  it("finds nothing without the prefixed protocol", () => {
+    expect(tokenFromProtocols(undefined)).toBeUndefined();
+    expect(tokenFromProtocols("guiderail")).toBeUndefined();
+    expect(tokenFromProtocols("guiderail.auth.")).toBeUndefined();
   });
 });

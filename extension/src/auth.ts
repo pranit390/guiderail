@@ -124,6 +124,14 @@ export async function currentUser(): Promise<{ email: string } | null> {
   return session ? { email: session.email } : null;
 }
 
+// The voice WebSocket can't send headers: offer the ID token as a subprotocol the server reads
+// (and never echoes), so it stays out of URLs and logs. Empty when sign-in is off.
+export async function wsProtocols(): Promise<string[]> {
+  if (!authRequired()) return [];
+  const token = await getIdToken();
+  return token ? ["guiderail", `guiderail.auth.${token}`] : [];
+}
+
 export async function authHeaders(): Promise<Record<string, string>> {
   const token = await getIdToken();
   return token ? { Authorization: `Bearer ${token}` } : {};
