@@ -574,8 +574,16 @@ describe("duplicate-Save sandbox end to end", () => {
 
 describe("large real page read", () => {
   beforeEach(async () => {
-    const buttons = Array.from({ length: 160 }, (_, k) => `<button>Control ${k + 1} for the advanced container settings and label review</button>`).join("");
-    document.body.insertAdjacentHTML("beforeend", `<main><section aria-label="Advanced container settings"><h2>Advanced container settings</h2>${buttons}</section></main>`);
+    const links = (count: number, label: string) => Array.from({ length: count }, (_, k) => `<a href="/p${k}">${label} ${k + 1} product page</a>`).join("");
+    document.body.insertAdjacentHTML("beforeend", `<div id="console">
+      <header><a href="/">Google Cloud</a><input aria-label="Search (/) for resources, docs, products, and more"><button>Select a project</button>${links(10, "Header shortcut")}</header>
+      <nav aria-label="Product navigation">${links(60, "Product navigation")}</nav>
+      <div role="menu">${links(90, "Left menu")}</div>
+      <form aria-label="Create service">
+        <fieldset><legend>Container</legend><label>Container image URL<input name="image"></label><label>Container port<input name="port"></label></fieldset>
+        <section aria-label="Labels"><h2>Labels</h2><label>Key 1<input name="k1"></label><label>Value 1<input name="v1"></label><button type="button">Add label</button></section>
+        <button>Create</button>
+      </form></div>`);
     let top = 0;
     for (const el of document.querySelectorAll<HTMLElement>("*")) {
       const rect = new DOMRect(40, (top += 50), 200, 40);
@@ -593,7 +601,7 @@ describe("large real page read", () => {
 
   afterEach(() => { (globalThis as any).chrome.runtime.id = ""; });
 
-  it("sends a 150-control read within the relay's per-result allowance and keeps answering tools", async () => {
+  it("sends a 150-control console read within the relay's per-result allowance, keeping the form, and keeps answering tools", async () => {
     const socket = await connected();
     socket.receive({ type: "tool_call", id: "function-call-read-1", name: "read_page", args: {} });
     let raw = "";
@@ -604,12 +612,15 @@ describe("large real page read", () => {
     const result = JSON.parse(raw);
     expect(result.id.length + result.name.length + JSON.stringify(result.response).length).toBeLessThanOrEqual(4000);
     expect(result.response.truncated).toMatchObject({ total: 150 });
+    expect(result.response.elements.length).toBeGreaterThan(20);
     expect(result.response.elements.length).toBe(result.response.truncated.shown);
-    expect(result.response.elements).toContainEqual(expect.objectContaining({ role: "button", name: expect.stringMatching(/^Control \d+ for/) }));
+    expect(result.response).not.toHaveProperty("rank");
+    const names = result.response.elements.map((e: { name: string }) => e.name);
+    expect(names).toEqual(expect.arrayContaining(["Container image URL", "Container port", "Key 1", "Value 1", "Add label", "Create"]));
+    expect(names.filter((n: string) => n.startsWith("Left menu")).length).toBeLessThan(90);
 
-    const last = result.response.elements.at(-1);
-    socket.receive({ type: "tool_call", id: "function-call-point-1", name: "highlight", args: { text: last.name, role: "button" } });
-    await vi.waitFor(() => expect(sent(socket)).toContainEqual(expect.objectContaining({ type: "tool_result", id: "function-call-point-1", response: expect.objectContaining({ found: true, i: last.i }) })));
+    socket.receive({ type: "tool_call", id: "function-call-point-1", name: "highlight", args: { text: "Key 1", section: "Labels" } });
+    await vi.waitFor(() => expect(sent(socket)).toContainEqual(expect.objectContaining({ type: "tool_result", id: "function-call-point-1", response: expect.objectContaining({ found: true, name: "Key 1" }) })));
     expect(socket.close).not.toHaveBeenCalled();
   });
 });

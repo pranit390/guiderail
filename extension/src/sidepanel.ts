@@ -77,6 +77,8 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
     open = null;
   },
 });
+// The control the coach last pointed at; a trimmed read keeps it and its section after form controls.
+let stepTarget: { name: string; section?: string } | null = null;
 let connectionAttempt = 0;
 // The Live connection opens on the first typed message or Talk press; input sent meanwhile waits here.
 let connecting = false;
@@ -431,7 +433,12 @@ async function readSnapshot(tab: chrome.tabs.Tab): Promise<PageSnapshot> {
   const snap = await toPage<PageSnapshot>({ kind: "read_page" }, tab.id);
   bound = { tabId: tab.id!, url: tab.url ?? snap.url, generation: snap.generation, elements: snap.elements };
   boundStale = false;
-  return snap;
+  const rank = snap.elements.map((e, k) => {
+    const own = snap.rank?.[k] ?? 3;
+    const step = stepTarget && (e.name === stepTarget.name || (stepTarget.section !== undefined && e.section === stepTarget.section));
+    return step ? Math.min(own, 2) : own;
+  });
+  return { ...snap, rank };
 }
 
 async function runHighlight(args: Record<string, unknown>): Promise<HighlightResult> {
@@ -467,6 +474,8 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     await clearBoundHighlight();
     return live;
   }
+  const target = snap!.elements.find((e) => e.i === decision.i);
+  stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
   return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
 }
 
