@@ -22,6 +22,8 @@ npm run build:site
 
 Unzip the archive and load the `guiderail-extension` folder, which contains `manifest.json`, with Chrome's Load unpacked. `dist/` is gitignored, so the zip is not committed. Run the same command again to rebuild it.
 
+Build the release zip only from `develop`, after the Assist Database ID fill has merged there, because the page describes that fill. The release zip is built at deploy time from `develop`, not from a feature branch.
+
 Node 22.22 or newer, and `python3` on PATH for the zip step.
 
 ## Preview
