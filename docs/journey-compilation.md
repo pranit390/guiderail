@@ -47,11 +47,39 @@ Typed follow-ups use the existing Live connection. Live receives page text and
 validated cached Journey instructions, never search or URL-context tools.
 Page tools stay bound to the briefing tab only while it is the active public
 doc. Switching tabs or navigating away (for example to the Firebase console)
-ends the briefing, and reads and highlights return to the current page so the
-compiled Journey continues there. A Journey cache read failure is logged and
+ends the briefing. Start a console Journey to bind its page tools to a new
+Firestore tab; a docs briefing never silently rebinds a console Journey. A Journey cache read failure is logged and
 Guide connects with its plain instruction instead.
 
 Tests use a labelled deterministic fixture. Live-provider timing and browser
 screenshots must be recorded separately; test success is not provider or
 real-console evidence. The 30-second uncached target is a stretch; record actual
 time and warm the cache before recording or judging.
+
+## Bound console Journey
+
+Choose **Start Firestore Journey**, or ask Guide to open the Firestore Goal.
+`open_page` accepts only `{"goalId":"create-firestore-database"}` and opens the
+catalog URL `https://console.firebase.google.com/project/_/firestore/databases`.
+It rejects additional URL arguments. Choose the project yourself. The Journey
+pins the first concrete Firestore project in that tab. Switching tabs pauses
+commands; closed tabs, another project, unsupported pages, and sign-in pages
+cannot substitute for it. Use **End Journey binding** to start over.
+
+Cited Steps remain documentation-derived. **Read and point to Step** resolves
+the Step's control in a fresh page read with the shared resolver (exact name
+first, else one clear fuzzy match; ties and weak matches are refused). It does
+not click or fill the console.
+If a control is absent, the Step retains its citation and says "The doc says X.
+I can't see it on this screen." Re-read or explicitly skip it. **I did this ·
+Next step** records the person's report, not independent verification. After
+the person clicks the pointed control, Next stays available while the bound tab
+stays on the same project, even if a re-read no longer finds that control.
+Another tab, project or unsupported page revokes it. The
+final Create action remains human-only and cannot be marked done by the model.
+Prerequisite/role guidance stays in the expandable cited warnings section;
+existing Blocker/Detour tools handle permission requests without granting access.
+Entering Teach ends the binding. Reloading the side panel does not resume it.
+
+See [the real-console probe](firestore-console-probe.md) for observed control
+names and the explicit limits of the read-only rehearsal.

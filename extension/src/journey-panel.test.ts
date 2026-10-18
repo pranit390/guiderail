@@ -12,6 +12,22 @@ function mount() {
   return { container, compiled, panel, button: container.querySelector<HTMLButtonElement>("[data-compile]")! };
 }
 describe("Journey panel", () => {
+  it("starts a fresh compile after ending a pending Journey and ignores its old response", async () => {
+    const responses: Array<(response: Response) => void> = [];
+    const fetcher = vi.fn().mockImplementation(() => new Promise<Response>((resolve) => responses.push(resolve)));
+    vi.stubGlobal("fetch", fetcher);
+    const { container, compiled, panel, button } = mount();
+    button.click(); panel.endJourney(); button.click();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    responses[0](new Response(JSON.stringify(fixture)));
+    await vi.waitFor(() => expect(fetcher.mock.results[0].value).resolves.toBeInstanceOf(Response));
+    expect(compiled).not.toHaveBeenCalled();
+    expect(button.disabled).toBe(true);
+    responses[1](new Response(JSON.stringify(fixture)));
+    await vi.waitFor(() => expect(compiled).toHaveBeenCalledOnce());
+    expect(container.querySelectorAll("li")).toHaveLength(10);
+    expect(button.disabled).toBe(false);
+  });
   it("shows loading, validated cited Steps and cache status", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(fixture)));
     vi.stubGlobal("fetch", fetcher);

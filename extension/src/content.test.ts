@@ -1,7 +1,10 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mountJourneyPanel } from "./journey-panel.ts";
+import { fixtureDraft } from "../../server/src/journeys/fixture.ts";
+import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import seed from "../../seed/rules/org-labeling-rules.json";
-import type { FormState, ToPage } from "./messages.ts";
+import type { FormState, PageSnapshot, ToPage } from "./messages.ts";
 import { evaluate, type Rule } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
@@ -12,6 +15,13 @@ function request(msg: ToPage | { kind: "customize"; preset: unknown }): unknown 
   const reply = vi.fn();
   listener(msg, {}, reply);
   return reply.mock.calls[0][0];
+}
+
+// The side panel always pins a highlight to the latest read; an unpinned one is refused.
+function highlightPinned(text: string, role: string): unknown {
+  const snap = request({ kind: "read_page" }) as PageSnapshot;
+  const el = snap.elements.find((e) => e.role === role && e.name === text)!;
+  return request({ kind: "highlight", text, role, generation: snap.generation, index: el.i, name: el.name });
 }
 
 function form(): FormState {
@@ -44,6 +54,99 @@ afterEach(() => {
 });
 
 describe("calmer content messages", () => {
+  it("places the pointer inside a wizard top layer and returns it to the page", () => {
+    const surface = document.createElement("dialog");
+    surface.setAttribute("open", "");
+    surface.innerHTML = '<button>Standard edition</button>';
+    document.body.append(surface);
+    expect(highlightPinned("Standard edition", "button")).toMatchObject({ found: true });
+    expect(surface.querySelector("guiderail-overlay")).not.toBeNull();
+    expect(highlightPinned("Create", "button")).toMatchObject({ found: true });
+    expect(document.documentElement.querySelector(":scope > guiderail-overlay")).not.toBeNull();
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    expect(request({ kind: "highlight", text: "Gone", generation: snap.generation, index: snap.elements.length + 1, name: "Gone" })).toMatchObject({ found: false });
+    expect(document.querySelector("guiderail-overlay")?.shadowRoot?.querySelector<HTMLElement>(".ring")?.hidden).toBe(true);
+  });
+  it.each(["remove", "hide", "close"])("restores Guard, Show field and Calmer after dialog %s", async (teardown) => {
+    const surface = document.createElement("dialog"); surface.open = true;
+    surface.innerHTML = "<button>Standard edition</button>"; document.body.append(surface);
+    highlightPinned("Standard edition", "button");
+    const host = surface.querySelector("guiderail-overlay")!;
+    if (teardown === "remove") surface.remove();
+    else if (teardown === "hide") surface.hidden = true;
+    else surface.open = false;
+    await vi.advanceTimersByTimeAsync(20);
+    expect(host.parentElement).toBe(document.documentElement);
+    const violations = evaluate(rules, form());
+    expect(request({ kind: "show_violations", violations })).toMatchObject({ shown: ["label:environment"] });
+    expect(host.shadowRoot!.querySelectorAll(".bad")).toHaveLength(1);
+    request({ kind: "show_field", field: "label:environment" });
+    request({ kind: "customize", preset: "calm" });
+    await vi.advanceTimersByTimeAsync(20);
+    expect(host.isConnected).toBe(true);
+    expect(host.shadowRoot!.querySelector<HTMLElement>(".ring")!.hidden).toBe(false);
+    expect(host.shadowRoot!.querySelector<HTMLElement>(".gr-shade")!.hidden).toBe(false);
+    request({ kind: "customize", preset: null });
+    expect(host.shadowRoot!.querySelector<HTMLElement>(".gr-shade")!.hidden).toBe(true);
+    expect(host.shadowRoot!.querySelectorAll(".bad")).toHaveLength(1);
+  });
+  it("clears the real pointer on Next, a missing re-read and End without clearing Guard", async () => {
+    document.body.insertAdjacentHTML("beforeend", "<button>Databases &amp; Storage</button>");
+    const parent = document.createElement("section");
+    const current = document.createElement("section");
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 1, compiledAt: "2026-10-18T00:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } }))));
+    const panel = mountJourneyPanel(parent, { http: "http://localhost:8829", compiled() {}, brief: async () => {}, open: async () => {}, currentRegion: current,
+      read: async () => request({ kind: "read_page" }) as PageSnapshot,
+      point: async (text, role) => highlightPinned(text, role!), clear: async () => request({ kind: "clear_highlight" }) });
+    await panel.openJourney();
+    const [read, next] = current.querySelectorAll("button");
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    read.click(); await vi.advanceTimersByTimeAsync(20);
+    expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(false);
+    next.click(); expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(true);
+    expect(shadow.querySelector<HTMLElement>(".step-chip")!.hidden).toBe(true);
+    read.click(); await vi.advanceTimersByTimeAsync(20);
+    expect(current.textContent).toContain("I can't see it on this screen");
+    expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(true);
+    highlightPinned("Create", "button"); panel.endJourney();
+    expect(shadow.querySelector<HTMLElement>(".ring")!.hidden).toBe(true);
+    expect(shadow.querySelector<HTMLElement>(".step-chip")!.hidden).toBe(true);
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(1);
+  });
+  it("refuses a renamed or duplicated pinned Journey target", () => {
+    document.body.innerHTML = '<button>Create</button>';
+    const read = request({ kind: "read_page" }) as PageSnapshot;
+    const create = read.elements.find((e) => e.name === "Create")!;
+    document.querySelector("button")!.textContent = "Create database";
+    expect(request({ kind: "highlight", text: "Create", generation: read.generation, index: create.i, name: "Create" })).toMatchObject({ found: false });
+    document.body.innerHTML = '<button>Next</button><button>Next</button>';
+    const twins = request({ kind: "read_page" }) as PageSnapshot;
+    const next = twins.elements.find((e) => e.name === "Next")!;
+    expect(request({ kind: "highlight", text: "Next", generation: twins.generation, index: next.i, name: "Next" })).toMatchObject({ found: false });
+    expect(document.querySelector("guiderail-overlay")?.shadowRoot?.querySelector<HTMLElement>(".ring")?.hidden).toBe(true);
+  });
+  it("reads a transparent native radio with a visible painted label, but not a hidden wizard choice", () => {
+    document.body.insertAdjacentHTML("beforeend", '<label for="edition">Standard edition<input id="edition" type="radio" style="opacity:0" checked></label><label for="mode" style="visibility:hidden">Production mode<input id="mode" type="radio" style="opacity:0;visibility:hidden"></label>');
+    const snapshot = request({ kind: "read_page" });
+    expect(snapshot).toMatchObject({ elements: expect.arrayContaining([expect.objectContaining({ role: "radio", name: "Standard edition", value: "checked" })]) });
+    expect(snapshot).not.toMatchObject({ elements: expect.arrayContaining([expect.objectContaining({ name: "Production mode" })]) });
+    expect(highlightPinned("Standard edition", "radio")).toMatchObject({ found: true });
+    expect(document.querySelector<HTMLInputElement>("#edition")!.checked).toBe(true);
+  });
+  it("reads and highlights a visible ARIA radio without selecting it", () => {
+    const radio = document.createElement("div");
+    radio.setAttribute("role", "radio"); radio.setAttribute("aria-label", "Standard edition"); radio.setAttribute("aria-checked", "true");
+    document.body.append(radio); const clicked = vi.fn(); radio.addEventListener("click", clicked);
+    expect(request({ kind: "read_page" })).toMatchObject({ elements: expect.arrayContaining([{ i: expect.any(Number), role: "radio", name: "Standard edition", value: "checked" }]) });
+    expect(highlightPinned("Standard edition", "radio")).toMatchObject({ found: true, name: "Standard edition" });
+    expect(clicked).not.toHaveBeenCalled(); expect(radio.getAttribute("aria-checked")).toBe("true");
+  });
+  it("rejects a stale bound URL before reading or highlighting", () => {
+    expect(request({ kind: "read_page", expectedUrl: "https://accounts.google.com/" })).toHaveProperty("error");
+    expect(request({ kind: "highlight", text: "Create", expectedUrl: "https://accounts.google.com/" })).toHaveProperty("error");
+    expect(request({ kind: "read_page", expectedUrl: location.href })).toHaveProperty("elements");
+  });
   it("rejects arbitrary presets at the page boundary", () => {
     expect(request({ kind: "customize", preset: "body { display: none }" })).toHaveProperty("error");
     expect(document.querySelector("#guiderail-customize")).toBeNull();
@@ -53,7 +156,7 @@ describe("calmer content messages", () => {
     const before = form();
     const violations = evaluate(rules, before);
     expect(violations.length).toBeGreaterThan(0);
-    expect(request({ kind: "highlight", text: "Labels", role: "heading" })).toMatchObject({ found: true });
+    expect(highlightPinned("Labels", "heading")).toMatchObject({ found: true });
     request({ kind: "customize", preset: "calm" });
     request({ kind: "show_violations", violations });
     vi.advanceTimersByTime(20);
@@ -75,7 +178,7 @@ describe("calmer content messages", () => {
 
   it("clears the spotlight when a Step finishes without turning off the kept preset", () => {
     request({ kind: "customize", preset: "calm" });
-    request({ kind: "highlight", text: "Labels", role: "heading" });
+    highlightPinned("Labels", "heading");
     request({ kind: "clear" });
     vi.advanceTimersByTime(20);
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
@@ -103,7 +206,7 @@ describe("calmer content messages", () => {
   it("themes the Step ring and each Violation box from their own surroundings", () => {
     document.querySelector<HTMLElement>('section[aria-label="Labels"]')!.style.backgroundColor = "rgb(22, 29, 40)";
     request({ kind: "show_violations", violations: evaluate(rules, form()) });
-    expect(request({ kind: "highlight", text: "Create", role: "button" })).toMatchObject({ found: true });
+    expect(highlightPinned("Create", "button")).toMatchObject({ found: true });
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
     expect(shadow.querySelector<HTMLElement>(".ring")!.dataset.theme).toBe("light");
     expect(shadow.querySelector<HTMLElement>(".bad")!.dataset.theme).toBe("dark");
@@ -192,5 +295,63 @@ describe("Rule state mapping", () => {
     expect(shadow.querySelector(".bad.stop")).not.toBeNull();
     expect(shadow.querySelector(".chip:not(.step-chip)")!.textContent).toContain("Rule ·");
     expect(shadow.querySelector(".chip:not(.step-chip) .state-glyph.stop")).not.toBeNull();
+  });
+});
+
+describe("highlight freshness", () => {
+  function ring() {
+    return document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".ring")!;
+  }
+
+  function layOut(root: ParentNode = document) {
+    for (const el of root.querySelectorAll<HTMLElement>("*")) {
+      if (el.style.display === "none") continue;
+      el.getBoundingClientRect = () => new DOMRect(40, 100, 200, 60);
+    }
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = `<section aria-label="Labels"><h2>Labels</h2>
+      <input aria-label="Key 1" value="environment"><input aria-label="Value 1" value="production">
+      </section><section aria-label="Billing"><button type="button">Save</button></section>
+      <label for="db">Database ID</label><input id="db">`;
+    layOut();
+  });
+
+  it("hides the ring when a second Save appears after a successful highlight", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    expect(ring().hidden).toBe(false);
+
+    document.querySelector("section")!.insertAdjacentHTML("beforeend", `<button type="button">Save</button>`);
+    layOut();
+    const save = snap.elements.find((el) => el.name === "Save")!;
+    expect(request({ kind: "highlight", text: "Save", role: "button", generation: snap.generation, index: save.i, name: "Save" })).toMatchObject({ found: false, reason: "stale" });
+    expect(ring().hidden).toBe(true);
+  });
+
+  it("hides the ring when the pinned target is no longer visible, and keeps Violation marks", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    expect(shadow.querySelectorAll(".bad").length).toBeGreaterThan(0);
+
+    (document.getElementById("db") as HTMLElement).style.display = "none";
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: false, reason: "stale" });
+    expect(ring().hidden).toBe(true);
+    expect(shadow.querySelectorAll(".bad").length).toBeGreaterThan(0);
+  });
+
+  it("hides the ring when the page moves, without waiting for the next highlight", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    history.pushState(null, "", "/moved");
+    vi.advanceTimersByTime(500);
+    expect(ring().hidden).toBe(true);
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: false, reason: "stale" });
   });
 });

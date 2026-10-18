@@ -1,8 +1,9 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
-import { allElements, BAD_DARK, BAD_LIGHT, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, textOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
+import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, textOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
+import { liveHighlight } from "./resolve.ts";
 import { readDocument, findDocumentHeading } from "./document.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
@@ -12,6 +13,8 @@ const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
 
 let indexed = new Map<number, Element>();
+let snapshotRoles = new Map<number, string>();
+let generation = 0;
 let highlighted: Element | null = null;
 let violationSummary = summarizeViolations([]);
 let warnedSubmitAt = 0;
@@ -22,53 +25,40 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
 
 
 function readPage(): PageSnapshot {
+  generation += 1;
   indexed = new Map();
+  snapshotRoles = new Map();
   const elements: PageElement[] = [];
-  for (const el of allElements()) {
-    if (elements.length >= MAX_ELEMENTS) break;
-    if (isSecret(el) || !isVisible(el)) continue;
-    const name = nameOf(el);
-    if (!name) continue;
-    const i = elements.length + 1;
-    indexed.set(i, el);
-    const item: PageElement = { i, role: roleOf(el), name };
-    const value = valueOf(el);
-    if (value) item.value = value.slice(0, 60);
-    const section = sectionOf(el);
-    if (section && section !== name) item.section = section;
+  for (const control of collectControls(MAX_ELEMENTS)) {
+    indexed.set(control.i, control.el);
+    snapshotRoles.set(control.i, control.role);
+    const item: PageElement = { i: control.i, role: control.role, name: control.name };
+    if (control.value) item.value = control.value;
+    if (control.section) item.section = control.section;
     elements.push(item);
   }
-  return { url: effectiveUrl(), title: document.title, elements, document: readDocument() };
+  return { url: effectiveUrl(), title: document.title, elements, generation, document: readDocument() };
 }
 
-// ---------- Finding an element by its text ----------
+// ---------- Pointing at a pinned element ----------
 
-function score(target: string, name: string): number {
-  const t = norm(target), n = norm(name);
-  if (!t || !n) return 0;
-  if (t === n) return 1;
-  if (n.startsWith(t) || t.startsWith(n)) return 0.85;
-  if (n.includes(t) || t.includes(n)) return 0.7;
-  const tw = new Set(t.split(" ")), nw = new Set(n.split(" "));
-  const shared = [...tw].filter((w) => nw.has(w)).length;
-  return (shared / Math.max(tw.size, nw.size)) * 0.6;
+function clearHighlight() {
+  highlighted = null;
+  ring.hidden = true;
+  stepChip.hidden = true;
+  cue.hidden = true;
 }
 
-function findElement(text: string, role?: string): HighlightResult {
-  const snap = readPage();
-  const ranked = snap.elements
-    .map((e) => ({ e, s: score(text, e.name) + (role && e.role === role ? 0.05 : 0) }))
-    .sort((a, b) => b.s - a.s);
-  const best = ranked[0];
-  if (best && best.s >= 0.6) {
-    pointAt(indexed.get(best.e.i)!, { scroll: !interacting() });
-    return { found: true, i: best.e.i, name: best.e.name };
-  }
-  return { found: false, alternatives: ranked.slice(0, 5).filter((r) => r.s > 0).map((r) => r.e.name) };
+function highlightRequest(msg: Extract<ToPage, { kind: "highlight" }>): HighlightResult {
+  const { result, el } = liveHighlight(msg, generation, indexed, snapshotRoles);
+  if (el) pointAt(el, { scroll: !interacting() });
+  else clearHighlight();
+  return result;
 }
 
 // ---------- Overlay (Shadow DOM so the page's styles can't reach it) ----------
 
+let overlayStopped = false;
 const host = document.createElement("guiderail-overlay");
 const shadow = host.attachShadow({ mode: "open" });
 shadow.innerHTML = `<style>
@@ -189,7 +179,36 @@ function placeCue(el: Element) {
   cue.textContent = side === "above" ? "↑ Step is above" : "↓ Step is below";
 }
 
+function surfaceVisible(surface: Element): boolean {
+  if (!surface.isConnected) return false;
+  for (let ancestor: Element | null = surface; ancestor; ancestor = ancestor.parentElement) {
+    const style = getComputedStyle(ancestor);
+    if (ancestor.hasAttribute("hidden") || style.display === "none" || style.visibility === "hidden") return false;
+    if (ancestor.matches("dialog:not([open])")) return false;
+    if (ancestor.hasAttribute("popover") && !ancestor.matches(":popover-open")) return false;
+  }
+  return true;
+}
+
+// All overlay users share this owner. Transient top-layer surfaces must never
+// strand the Guard or calm view when the application hides/removes a wizard.
+function ensureOverlaySurface(target?: Element) {
+  if (overlayStopped) return;
+  const replacement = document.querySelector("guiderail-overlay");
+  if (replacement && replacement !== host) { surfaceObserver.disconnect(); return; }
+  const candidate = target?.closest("[popover],dialog[open]");
+  const surface = candidate && surfaceVisible(candidate) ? candidate : document.documentElement;
+  if (target || !host.parentElement || !surfaceVisible(host.parentElement)) {
+    if (host.parentElement !== surface) surface.append(host);
+  }
+}
+const surfaceObserver = new MutationObserver(() => ensureOverlaySurface());
+surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "hidden", "style"] });
+document.addEventListener("toggle", onSurfaceToggle, true);
+function onSurfaceToggle() { ensureOverlaySurface(); }
+
 function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
+  ensureOverlaySurface(el);
   highlighted = el;
   applyTheme(ring, el);
   applyTheme(cue, el);
@@ -221,9 +240,10 @@ function startFollow() {
 
 function follow() {
   if (!alive()) return shutdown();
+  ensureOverlaySurface();
   calm.follow(highlighted, badBoxes.map(({ el }) => el));
   if (highlighted) {
-    if (highlighted.isConnected && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); placeChip(stepChip, highlighted); }
+    if (highlighted.isConnected && surfaceVisible(highlighted) && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); placeChip(stepChip, highlighted); }
     else { ring.hidden = true; highlighted = null; }
   } else ring.hidden = true;
   if (!highlighted) { cue.hidden = true; stepChip.hidden = true; }
@@ -291,6 +311,7 @@ function readForm(): FormState {
 
 /** Marks each Violation's exact field and returns the fields it could mark on this page. */
 function showViolations(violations: ViolationDetail[]): string[] {
+  ensureOverlaySurface();
   violationSummary = summarizeViolations(violations);
   for (const { box, chip } of badBoxes) { box.remove(); chip.remove(); }
   badBoxes = [];
@@ -368,13 +389,20 @@ let lastUrl = location.href;
 const urlTimer = setInterval(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
-    send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).` });
+    generation += 1;
+    clearHighlight();
+    send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).`, generation });
   }
 }, 500);
 
 // ---------- Requests from the side panel ----------
 
 chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
+  if (msg.expectedUrl && msg.expectedUrl !== location.href) {
+    reply({ error: "The page changed before the command. Re-read the bound Journey tab." });
+    return;
+  }
+  ensureOverlaySurface();
   switch (msg.kind) {
     case "customize":
       try { reply(calm.set(parseCalmPreset(msg.preset))); startFollow(); }
@@ -390,7 +418,8 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
       reply(heading ? { found: true, name: textOf(heading) } : { found: false, error: "That section is absent, hidden or ambiguous on this page." });
       break;
     }
-    case "highlight": reply(findElement(msg.text, msg.role)); break;
+    case "highlight": reply(highlightRequest(msg)); break;
+    case "clear_highlight": clearHighlight(); reply({ ok: true }); break;
     case "read_form": reply(readForm()); break;
     case "show_violations": reply({ shown: showViolations(msg.violations) }); break;
     case "show_field": showField(msg.field); reply({ ok: true }); break;
@@ -404,6 +433,9 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
 });
 
 function shutdown() {
+  overlayStopped = true;
+  surfaceObserver.disconnect();
+  document.removeEventListener("toggle", onSurfaceToggle, true);
   calm.restore();
   document.removeEventListener("input", onInput, true);
   document.removeEventListener("click", onClick, true);

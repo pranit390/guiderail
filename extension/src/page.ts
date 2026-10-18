@@ -1,7 +1,7 @@
 import { STATES } from "./states.ts";
 
 export const INTERACTIVE =
-  'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
+  'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
 
 export function effectiveUrl(): string {
   // Sandbox pages declare which Google page they stand in for.
@@ -23,7 +23,12 @@ export function isVisible(el: Element): boolean {
   const r = el.getBoundingClientRect();
   if (r.width === 0 && r.height === 0) return false;
   const s = getComputedStyle(el);
-  return s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0;
+  if (s.visibility === "hidden" || s.display === "none") return false;
+  if (Number(s.opacity) > 0) return true;
+  // Material paints the radio/checkbox through its associated label while the
+  // native hit target is transparent. Hidden wizard panels still fail above.
+  return el instanceof HTMLInputElement && (el.type === "radio" || el.type === "checkbox")
+    && [...(el.labels ?? [])].some((label) => isVisible(label));
 }
 
 export function textOf(el: Element | null): string {
@@ -81,6 +86,34 @@ export function sectionOf(el: Element): string | undefined {
 
 export function isSecret(el: Element): boolean {
   return el instanceof HTMLInputElement && (el.type === "password" || el.autocomplete.includes("password"));
+}
+
+export type CollectedControl = {
+  el: Element;
+  i: number;
+  role: string;
+  name: string;
+  value?: string;
+  section?: string;
+};
+
+// The same named controls read_page returns, in snapshot order. Callers keep the element
+// so a later highlight can point at that index only while the snapshot is still current.
+export function collectControls(limit = 150): CollectedControl[] {
+  const out: CollectedControl[] = [];
+  for (const el of allElements()) {
+    if (out.length >= limit) break;
+    if (isSecret(el) || !isVisible(el)) continue;
+    const name = nameOf(el);
+    if (!name) continue;
+    const item: CollectedControl = { el, i: out.length + 1, role: roleOf(el), name };
+    const value = valueOf(el);
+    if (value) item.value = value.slice(0, 60);
+    const section = sectionOf(el);
+    if (section && section !== name) item.section = section;
+    out.push(item);
+  }
+  return out;
 }
 
 export const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
