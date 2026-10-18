@@ -250,14 +250,9 @@ function hideTagOver(nodes: Iterable<Node | null>) {
   const tag = stepChip.getBoundingClientRect();
   for (const node of nodes) {
     const el = node instanceof Element ? node : node?.parentElement;
-    if (!el || el === host) continue;
+    if (!el || el === host || (highlighted && el.contains(highlighted))) continue;
     const r = el.getBoundingClientRect();
-    if (r.left < tag.right && tag.left < r.right && r.top < tag.bottom && tag.top < r.bottom) {
-      stepChip.hidden = true;
-      placementDirty = true;
-      layoutMovedAt = performance.now();
-      return;
-    }
+    if (r.left < tag.right && tag.left < r.right && r.top < tag.bottom && tag.top < r.bottom) { stepChip.hidden = true; return; }
   }
 }
 const surfaceObserver = new MutationObserver((records) => {

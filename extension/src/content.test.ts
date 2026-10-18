@@ -416,6 +416,26 @@ describe("calmer content messages", () => {
     expect(next.left < described.right && described.left < next.right && next.top < described.bottom && described.top < next.bottom).toBe(false);
   });
 
+  it("keeps the Here tag in its free spot while an ancestor of the target keeps changing class", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.classList.contains("step-chip")) return new DOMRect(parseFloat((this as HTMLElement).style.left), parseFloat((this as HTMLElement).style.top), 120, 20);
+      if (this === document.body || this === document.documentElement) return new DOMRect(0, 0, window.innerWidth, window.innerHeight);
+      return new DOMRect(40, 100, 200, 60);
+    });
+    highlightPinned("Create", "button");
+    const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
+    expect(tag.hidden).toBe(false);
+    const spot = [tag.style.left, tag.style.top];
+    for (let i = 0; i < 20; i++) {
+      document.body.classList.toggle("busy");
+      await vi.advanceTimersByTimeAsync(50);
+      expect(tag.hidden).toBe(false);
+    }
+    expect([tag.style.left, tag.style.top]).toEqual(spot);
+  });
+
   it("narrows a Rule chip to the room beside its field so it can sit there", () => {
     vi.stubGlobal("innerWidth", 520);
     vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 280, 60));
