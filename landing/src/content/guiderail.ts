@@ -19,22 +19,22 @@ export const cta = {
   href: downloadHref,
 } as const;
 
-export const pageTitle = "GuideRail. Your next step, in view.";
+export const pageTitle = "GuideRail. A Chrome coach for creating a Firestore database";
 
 export const pageDescription =
-  "GuideRail walks Create a Firestore database on the Firebase console. Cited Steps, Guide and Assist, and a Rules check. You click Create.";
+  "A Chrome side panel that walks you through creating a Firestore database in the Firebase console, with a Firebase docs citation on every Step. It warns you off Test mode and leaves the Create click to you.";
 
-export const judgeNote = "Judges sign in with the demo login from the deck.";
+export const judgeNote = "Judges, sign in with the demo login from the pitch deck.";
 
 export const installSteps = [
   "Unzip the download.",
   "Open chrome://extensions in Chrome.",
   "Turn on Developer mode.",
-  "Choose Load unpacked and select the unzipped folder that contains manifest.json.",
-  "Click Open GuideRail on the welcome page. It also shows your assigned keyboard shortcut, or how to set one.",
+  "Click Load unpacked and pick the unzipped folder. It's the one with manifest.json inside.",
+  "Click Open GuideRail on the welcome page. It also shows your keyboard shortcut, or how to set one.",
   "Pin GuideRail from the extensions menu.",
-  "Open the Firebase console and start Create a Firestore database.",
-  "Open GuideRail with its toolbar icon or your assigned shortcut, sign in, then type or talk. Typing works without a microphone.",
+  "Open the Firebase console and start creating a Firestore database.",
+  "Click the toolbar icon or press your shortcut. Sign in, then type or talk. You don't need a microphone to type.",
 ] as const;
 
 export const citedControls = [
@@ -51,14 +51,15 @@ export const citedControls = [
 ] as const;
 
 export const hero = {
-  titleLead: "Your next step.",
-  titleRest: "In view.",
-  intro: "A route from the official docs to the field in front of you. Guide first. Guard always. You set the dial.",
-  note: "The flagship Journey creates a Firestore database on the Firebase console. Guide and Assist. A Rules guard. You click Create.",
+  titleLead: "GuideRail points.",
+  titleRest: "You click.",
+  intro:
+    "GuideRail is a Chrome side panel. It reads the official Firebase docs and highlights the next control on the real console, with the doc citation beside each Step.",
+  note: "Guide only points. Assist can type the Database ID once you approve, then reads it back. Pick Test mode and GuideRail holds your first Create click. Neither Guide nor Assist clicks Create for you.",
   journeyLink: "See the Firestore Journey",
-  figureCaption: "Illustrative Firebase form. Synthetic values. No account connected.",
+  figureCaption: "This is a mock of the Firebase form with made-up values. It isn't connected to any account.",
   staticStory:
-    "Guide outlines Database ID and keeps the Firebase docs citation beside the Step. Assist proposes demo-guide, and an approval fills only that field on this page. Test mode is a Violation because anyone could read and overwrite the data. Production mode clears it. You press Create. The first click during a Violation is held and named. A second click continues anyway. This page sends nothing.",
+    "Guide outlines the Database ID field and keeps the Firebase docs citation next to the Step. Assist proposes demo-guide. When you approve, it fills that one field on this page. Test mode is a Violation because anyone could read and overwrite the data, and Production mode clears it. You press Create. If a Violation is showing, GuideRail holds your first click and names the Rule. A second click goes through anyway. This page sends nothing.",
 } as const;
 
 export const content: LandingContent = {
@@ -68,8 +69,8 @@ export const content: LandingContent = {
   cta,
   route: {
     id: "route",
-    heading: "Follow the rail",
-    lede: "Goal, cited Steps, a Rules check, then Done.",
+    heading: "The Journey in four stops",
+    lede: "Goal, cited Steps, Rules check, then you click Create.",
     stops: [
       {
         title: "Goal",
@@ -79,12 +80,12 @@ export const content: LandingContent = {
       {
         title: "Cited Steps",
         tone: "step",
-        paragraphs: ["The docs name the control. The open page confirms it."],
+        paragraphs: ["Each Step names a control from the docs. GuideRail finds it on the page."],
       },
       {
         title: "Rules check",
         tone: "check",
-        paragraphs: ["Test mode is a Violation. Production mode clears it."],
+        paragraphs: ["Test mode is a Violation. Production mode is fine."],
       },
       {
         title: "Done",
@@ -95,84 +96,84 @@ export const content: LandingContent = {
   },
   journey: {
     id: "journey",
-    heading: "The Firestore Journey",
-    lede: "Green is the way forward. Yellow asks you to check. Red is a Violation, and only a Violation.",
+    heading: "How the Firestore Journey runs",
+    lede: "Green means carry on and yellow means look first. Red is kept for Violations and nothing else.",
     stops: [
       {
         title: "Goal",
         tone: "go",
         paragraphs: [
-          "Create a Firestore database. You choose the Firebase project. GuideRail opens the databases catalog and walks that wizard.",
-          "Guide speaks or writes one Step at a time. Assist proposes a Database ID and types it into that one field only after you approve, then reads it back. Neither mode clicks Create.",
+          "You pick the Firebase project. GuideRail opens its databases page and walks you through the create wizard.",
+          "Guide gives you one Step at a time, out loud or in text. Assist also suggests a Database ID. Once you approve, it types the ID into that one field and reads it back. Neither mode clicks Create.",
         ],
       },
       {
         title: "Cited Steps",
         tone: "step",
         paragraphs: [
-          "The Journey is compiled from the Firebase manage-databases and locations docs before the voice session. Each Step names one control, in the order below.",
-          "Database ID uses 4 to 63 lowercase letters, numbers, and hyphens. It starts with a letter, ends with a letter or number, and is not shaped like a UUID. Leave it blank and Standard edition uses (default). A deleted ID waits about five minutes before reuse. A project can hold 100 databases. The location cannot be changed after creation. Creating a database needs roles/datastore.owner, permission datastore.databases.create.",
-          "If the doc names a control and the page does not show it, the coach says so and keeps the citation.",
+          "Before the voice session starts, GuideRail builds the Journey from two Firebase docs, Manage databases and Cloud Firestore locations. Each Step names one control, in this order.",
+          "The docs set the rules for the ID. It is 4 to 63 lowercase letters, numbers and hyphens, starts with a letter, ends with a letter or number, and can't look like a UUID. Leave it blank and Standard edition uses (default). After you delete a database, its ID takes about five minutes to free up. A project can hold 100 databases. You can't move a database to another location after you create it. Creating one needs roles/datastore.owner, which carries the datastore.databases.create permission.",
+          "If the docs name a control the page doesn't show, the coach tells you and keeps the citation up.",
         ],
       },
       {
         title: "Rules check",
         tone: "check",
         paragraphs: [
-          "Test mode allows anyone to read and overwrite your data. That choice is a Violation. The control gets a red outline and the Rule text stays on screen. Production mode clears it.",
-          "The first Create click during a Violation is held and named. A second click continues anyway. The guard is a warning in the extension. It does not replace Cloud IAM.",
+          "Test mode lets anyone read and overwrite your data, so picking it is a Violation. GuideRail outlines that option in red and keeps the Rule text on screen. Switch to Production mode and it clears.",
+          "While a Violation is showing, GuideRail holds your first Create click and names the Rule. Click again and it goes through. The guard is a warning inside the extension. It doesn't replace Cloud IAM.",
         ],
       },
       {
         title: "Done",
         tone: "done",
         paragraphs: [
-          "You click Create. The extension never clicks or sends. In Assist it types into one field, Database ID, only after you approve, then reads it back. On the illustration below, Assist fills demo-guide the same way.",
+          "You click Create. The extension never clicks or sends anything. In the demo below, Assist fills demo-guide into Database ID the same way it does on the console.",
         ],
       },
     ],
   },
   faq: {
     id: "trust",
-    heading: "Your control is part of the product",
-    lede: "This website does not ask for a microphone, a camera, or a Google account.",
+    heading: "What GuideRail will and won't do",
+    lede: "This website doesn't ask for your microphone, your camera or a Google account.",
     items: [
       {
         question: "Who clicks Create?",
         answer:
-          "You do. Guide highlights the Step and cites the doc. In Assist, the extension types into the Database ID field only after you approve, then reads it back. It never clicks or sends. You always click Create.",
+          "You do, every time. Guide highlights the Step and cites the doc. Assist types into the Database ID field after you approve and reads it back. That is the only field it touches, and it never clicks or sends.",
       },
       {
         question: "What is a Violation?",
         answer:
-          "A Rule whose check fails against what is on screen. In this Journey, Test mode is a Violation because anyone could read and overwrite the data. Production mode clears it. Red is reserved for that state.",
+          "A Rule that fails against what's on screen. In this Journey, Test mode is a Violation because anyone could read and overwrite the data. Production mode clears it. GuideRail uses red for Violations and nothing else.",
       },
       {
         question: "Does a failed check lock Create?",
         answer:
-          "The first Create click is held and named. A second click continues anyway. The console stays available, and the click is still yours.",
+          "No. GuideRail holds your first click and names the Rule. Click again and it goes through. The console never locks.",
       },
       {
         question: "Where do I practice before a real project?",
         answer:
-          "The hosted coach serves labelled practice pages. They are copies for the extension, not the Firebase console, and they are not this illustration.",
+          "On the labelled practice pages the hosted coach serves. They're copies built for the extension to run on. They aren't the Firebase console, and they aren't the demo on this page.",
       },
       {
         question: "Is the form on this page the Firebase console?",
         answer:
-          "No. It is an illustration with synthetic values. Nothing you type here is sent. The extension Journey runs on the real Firebase console after you load it.",
+          "No. It's a mock with made-up values, and nothing you type in it leaves the page. Once you load the extension, the Journey runs on the real Firebase console.",
       },
     ],
   },
   close: {
-    heading: "A route you can understand. A decision that stays yours.",
-    lede: "Guide first. Guard always. You set the dial.",
+    heading: "Download it, load it, then open GuideRail on the Firebase console.",
+    lede: "Use the toolbar icon or your keyboard shortcut. The welcome page shows the shortcut, or how to set one.",
   },
-  footer: "GuideRail. A Chrome extension. Guide first. Guard always. You set the dial.",
+  footer: "GuideRail is a Chrome extension that coaches you through creating a Firestore database.",
 };
 
 export const nav = [
-  { href: "#journey", label: "Journey" },
+  { href: "#journey", label: "How it works" },
   { href: "#install", label: "Install" },
-  { href: "#trust", label: "Your control" },
+  { href: "#trust", label: "Questions" },
 ];
