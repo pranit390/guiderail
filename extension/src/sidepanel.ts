@@ -124,10 +124,16 @@ const assist = mountAssist($("#assist"), {
     return { tabId: tab.id!, url: tab.url!, bindingGeneration: binding.generation };
   },
   readForm: () => toPage<FormState>({ kind: "read_form" }),
-  async fill({ context, fieldIndex, value, retry }) {
+  async pin({ snapshot }, fieldIndex) {
+    const result = await toPage<{ pin?: unknown }>({ kind: "pin_field", generation: snapshot.generation, index: fieldIndex });
+    if (typeof result.pin !== "number") throw new Error("Database ID could not be pinned. Re-read this step, or type your value manually.");
+    return result.pin;
+  },
+  async fill({ context, pin, value, retry, guard }) {
     const tab = await binding.tab();
     if (tab.id !== context.tabId || tab.url !== context.url || binding.generation !== context.bindingGeneration) throw new Error("Journey changed. Review a new plan.");
-    const result: unknown = await chrome.tabs.sendMessage(context.tabId, { kind: "fill_field", fieldName: "Database ID", value, generation: context.snapshot.generation, index: fieldIndex, retry, expectedUrl: context.url } satisfies ToPage);
+    guard();
+    const result: unknown = await chrome.tabs.sendMessage(context.tabId, { kind: "fill_field", fieldName: "Database ID", value, pin, retry, expectedUrl: context.url } satisfies ToPage);
     if (!result || typeof result !== "object" || !("filled" in result) || result.filled !== true) throw new Error("Database ID changed or the fill could not be confirmed. Re-read this step, or copy and type your value manually.");
   },
   rules: () => rules,
@@ -505,7 +511,6 @@ async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
 
 async function runTool(name: string, args: Record<string, any>): Promise<Record<string, unknown>> {
   switch (name) {
-    case "fill_field": return assist.fill(args);
     case "open_page":
       parseCompileRequest(args);
       await journeyPanel.openJourney();

@@ -473,11 +473,14 @@ describe("bound Journey tool and event routing", () => {
     for (const name of ["click", "submit", "send"]) expect(await tool(name, { text: "Create" })).toHaveProperty("error");
     expect(sendMessage).not.toHaveBeenCalled();
   });
-  it("routes an approved Assist fill only to the bound page, verifies readback, and rechecks Rules", async () => {
+  let value: string;
+  let generation: number;
+  async function planAssist() {
     await start();
-    let value = "(default)";
+    value = "(default)"; generation = 8;
     sendMessage.mockImplementation(async (_id, message) => {
-      if (message.kind === "read_page") return { url: boundUrl, title: "Fixture", generation: 9, elements: [{ i: 1, name: "Database ID", role: "textbox", value }] };
+      if (message.kind === "read_page") return { url: boundUrl, title: "Fixture", generation: ++generation, elements: [{ i: 1, name: "Database ID", role: "textbox", value }] };
+      if (message.kind === "pin_field") return message.generation === 9 && message.index === 1 ? { pin: 3 } : { error: "stale" };
       if (message.kind === "read_form") return { url: boundUrl.replace("https://", ""), fields: { "Database ID": value }, labels: {}, sections: [] };
       if (message.kind === "fill_field") { value = message.value; return { filled: true }; }
       return { ok: true };
@@ -487,13 +490,38 @@ describe("bound Journey tool and event routing", () => {
     $<HTMLInputElement>("#assist-id").value = "customer-db";
     $("#assist-questions").dispatchEvent(new Event("submit", { cancelable: true }));
     await vi.waitFor(() => expect($<HTMLButtonElement>("[data-approve]").disabled).toBe(false));
+  }
+  it("routes an approved Assist fill only to the bound page, verifies readback, and rechecks Rules", async () => {
+    await planAssist();
     expect(sendMessage.mock.calls.some(([, msg]) => msg.kind === "fill_field")).toBe(false);
     expect(await tool("fill_field", { fieldName: "Database ID", value: "customer-db" })).toHaveProperty("error");
+    expect(await tool("read_page")).toMatchObject({ generation: 10 });
     $<HTMLButtonElement>("[data-approve]").click();
     await vi.waitFor(() => expect($("[data-assist-status]").textContent).toContain("Read back Database ID: customer-db"));
-    expect(sendMessage).toHaveBeenCalledWith(7, { kind: "fill_field", fieldName: "Database ID", value: "customer-db", generation: 9, index: 1, retry: false, expectedUrl: boundUrl });
+    expect(sendMessage).toHaveBeenCalledWith(7, { kind: "fill_field", fieldName: "Database ID", value: "customer-db", pin: 3, retry: false, expectedUrl: boundUrl });
     expect(sendMessage).toHaveBeenCalledWith(7, { kind: "show_violations", violations: [], expectedUrl: boundUrl });
     expect(document.querySelector(".assist-stop")?.closest("#scroll")).toBeNull();
+  });
+  it.each(["Stop", "an ID edit", "a Test mode choice"])("%s during the final tab check cancels the fill before dispatch", async (change) => {
+    await planAssist();
+    let release!: () => void;
+    let calls = 0;
+    const tab = { id: 7, url: boundUrl };
+    getTab.mockImplementation(() => {
+      // Sixth bound-tab check after approval is the fill option's own validation, after both form reads.
+      if (++calls !== 6) return Promise.resolve(tab);
+      return new Promise((resolve) => { release = () => resolve(tab); });
+    });
+    $<HTMLButtonElement>("[data-approve]").click();
+    await vi.waitFor(() => expect(release).toBeDefined());
+    expect(sendMessage.mock.calls.filter(([, msg]) => msg.kind === "read_form")).toHaveLength(2);
+    if (change === "Stop") $<HTMLButtonElement>(".assist-stop").click();
+    if (change === "an ID edit") { $<HTMLInputElement>("#assist-id").value = "other-db"; $("#assist-id").dispatchEvent(new Event("input")); }
+    if (change === "a Test mode choice") { $<HTMLSelectElement>("#assist-mode").value = "Test mode"; $("#assist-mode").dispatchEvent(new Event("input")); }
+    release();
+    await vi.waitFor(() => expect($<HTMLButtonElement>("#assist-questions button").disabled).toBe(false));
+    expect(sendMessage.mock.calls.some(([, msg]) => msg.kind === "fill_field")).toBe(false);
+    expect(value).toBe("(default)");
   });
   it("routes reads and highlights only to the bound tab; tab switching pauses them", async () => {
     await start();

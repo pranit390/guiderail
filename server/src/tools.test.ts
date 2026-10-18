@@ -12,3 +12,10 @@ describe("customize tool contract", () => {
     expect(SERVER_TOOLS.has("customize")).toBe(false);
   });
 });
+
+describe("Assist fill contract", () => {
+  it("offers the Live model no fill, click, submit or send tool", () => {
+    const names = tools.map((tool) => tool.name);
+    for (const name of ["fill_field", "click", "submit", "send"]) expect(names).not.toContain(name);
+  });
+});

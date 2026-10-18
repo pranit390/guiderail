@@ -18,6 +18,9 @@ const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
 let indexed = new Map<number, Element>();
 let snapshotRoles = new Map<number, string>();
 let generation = 0;
+// The approved Assist target survives later reads; only navigation or a reload drops it.
+let assistPin: { token: number; el: Element } | undefined;
+let pins = 0;
 let highlighted: Element | null = null;
 let violationSummary = summarizeViolations([]);
 let warnedSubmitAt = 0;
@@ -399,6 +402,7 @@ const urlTimer = setInterval(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
     generation += 1;
+    assistPin = undefined;
     clearHighlight();
     send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).`, generation });
   }
@@ -434,10 +438,16 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "highlight": reply(highlightRequest(msg)); break;
     case "clear_highlight": clearHighlight(); reply({ ok: true }); break;
     case "read_form": reply(readForm()); break;
+    case "pin_field": {
+      const el = msg.generation === generation ? indexed.get(msg.index) : undefined;
+      if (el) assistPin = { token: ++pins, el };
+      reply(el ? { pin: pins } : { error: "The page read is stale. Review a new plan." });
+      break;
+    }
     case "fill_field":
       try {
-        if (msg.fieldName !== "Database ID" || msg.generation !== generation) throw new Error("The approved page read is stale. Review a new plan.");
-        reply(fillDatabaseId(indexed.get(msg.index), msg.value, msg.retry));
+        if (msg.fieldName !== "Database ID" || !assistPin || msg.pin !== assistPin.token) throw new Error("The approved page read is stale. Review a new plan.");
+        reply(fillDatabaseId(assistPin.el, msg.value, msg.retry));
       } catch (error) { reply({ error: error instanceof Error ? error.message : "Fill refused." }); }
       break;
     case "show_violations": reply({ shown: showViolations(msg.violations) }); break;

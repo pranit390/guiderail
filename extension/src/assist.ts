@@ -5,13 +5,14 @@ import { evaluate, type Rule } from "./policy.ts";
 import { norm } from "./page.ts";
 
 export type AssistContext = { tabId: number; url: string; bindingGeneration: number; snapshot: PageSnapshot };
-type Plan = { context: AssistContext; fieldIndex: number; value: string; mode: "Production mode" | "Test mode"; before: string; formKey: string; createdAt: number };
+type Plan = { context: AssistContext; pin: number; value: string; mode: "Production mode" | "Test mode"; before: string; formKey: string; createdAt: number };
 export type AssistReceipt = { kind: "plan" | "fill" | "readback" | "mismatch" | "stop" | "violation"; at: string; field: "Database ID"; outcome: string };
 type Options = {
   context: () => Promise<AssistContext>;
   current: () => Promise<{ tabId: number; url: string; bindingGeneration: number }>;
   readForm: () => Promise<FormState>;
-  fill: (plan: { context: AssistContext; fieldIndex: number; value: string; retry: boolean }) => Promise<unknown>;
+  pin: (context: AssistContext, fieldIndex: number) => Promise<number>;
+  fill: (plan: { context: AssistContext; pin: number; value: string; retry: boolean; guard: () => void }) => Promise<unknown>;
   rules: () => Rule[];
   checked: (form: FormState) => Promise<unknown>;
   receipt: (event: AssistReceipt) => void;
@@ -51,13 +52,12 @@ export function mountAssist(container: HTMLElement, options: Options) {
   container.after(stop);
   let revision = 0;
   let plan: Plan | undefined;
-  let approved: Plan | undefined;
   let copyValue: string | undefined;
   let busy = false;
   let enabled = true;
   const emit = (kind: AssistReceipt["kind"], outcome: string) => options.receipt({ kind, at: new Date().toISOString(), field: "Database ID", outcome });
   function invalidate(message: string) {
-    revision++; plan = undefined; approved = undefined; copyValue = undefined;
+    revision++; plan = undefined; copyValue = undefined;
     approve.disabled = true; copy.disabled = true;
     get("[data-plan]").hidden = true;
     status.textContent = `${message} Already filled values remain; correct them manually.`;
@@ -69,8 +69,8 @@ export function mountAssist(container: HTMLElement, options: Options) {
   }
   stop.onclick = () => cancel();
   level.onchange = () => {
-    cancel(level.value === "assist" ? "Assist selected. Answer both questions, then review your plan." : "Guide selected. Guide cannot fill.");
-    if (level.value === "guide") invalidate("Guide selected. Guide cannot fill.");
+    if (level.value === "assist") { invalidate(""); status.textContent = "Assist selected. Answer both questions, then review your plan."; }
+    else { cancel("Guide selected. Guide cannot fill."); invalidate("Guide selected. Guide cannot fill."); }
     get("[data-assist-body]").hidden = level.value !== "assist";
     stop.hidden = level.value !== "assist";
   };
@@ -99,7 +99,7 @@ export function mountAssist(container: HTMLElement, options: Options) {
     event.preventDefault();
     if (busy || level.value !== "assist" || !enabled) return;
     const token = ++revision;
-    plan = undefined; approved = undefined; copyValue = undefined; approve.disabled = true; copy.disabled = true;
+    plan = undefined; copyValue = undefined; approve.disabled = true; copy.disabled = true;
     get("[data-plan]").hidden = true;
     let value: string;
     try { value = databaseId(id.value); } catch (error) { status.textContent = error instanceof Error ? error.message : "Invalid Database ID."; return; }
@@ -118,9 +118,10 @@ export function mountAssist(container: HTMLElement, options: Options) {
         const context = await options.context(); active(token);
         const matches = context.snapshot.elements.filter((el) => norm(el.name) === "database id" && el.role === "textbox");
         if (matches.length !== 1) throw new Error("Database ID is missing or ambiguous. Re-read this step, or type your value manually.");
+        const pin = await options.pin(context, matches[0].i); active(token);
         const form = await options.readForm(); active(token);
         check(form, { value, mode }, true);
-        const p: Plan = { context, fieldIndex: matches[0].i, value, mode, before: form.fields["Database ID"] ?? "", formKey: formKey(form), createdAt: Date.now() };
+        const p: Plan = { context, pin, value, mode, before: form.fields["Database ID"] ?? "", formKey: formKey(form), createdAt: Date.now() };
         await current(p, token);
         plan = p; approve.disabled = false; copy.disabled = false;
         status.textContent = "Planned end state checked against Rules. Approve this Database ID only. Mode and location stay manual.";
@@ -129,11 +130,8 @@ export function mountAssist(container: HTMLElement, options: Options) {
       finally { busy = false; review.disabled = !enabled; }
     })();
   };
-  async function fill(args: Record<string, unknown>): Promise<Record<string, unknown>> {
-    if (Object.keys(args).length !== 2 || args.fieldName !== "Database ID" || typeof args.value !== "string") return { error: "Only fieldName: Database ID and the approved value are accepted. No click, submit or send is available. You click Create." };
-    const p = approved;
-    if (busy || !p || p !== plan || args.value !== p.value || level.value !== "assist" || !enabled) return { error: "Guide cannot fill. Assist needs a current, explicit human-approved plan for this exact value." };
-    approved = undefined; busy = true; approve.disabled = true; review.disabled = true;
+  async function fill(p: Plan) {
+    busy = true; approve.disabled = true; review.disabled = true;
     const token = revision;
     try {
       await current(p, token);
@@ -143,7 +141,7 @@ export function mountAssist(container: HTMLElement, options: Options) {
       for (let attempt = 0; attempt < 2; attempt++) {
         await current(p, token);
         // No transport retry: a lost reply must never replay a mutation.
-        await options.fill({ context: p.context, fieldIndex: p.fieldIndex, value: p.value, retry: attempt === 1 });
+        await options.fill({ context: p.context, pin: p.pin, value: p.value, retry: attempt === 1, guard: () => active(token) });
         emit("fill", attempt ? "single change/blur retry" : "native setter with input/change");
         active(token);
         const form = await options.readForm(); await current(p, token);
@@ -153,7 +151,7 @@ export function mountAssist(container: HTMLElement, options: Options) {
           emit("readback", "verified; Rules rerun");
           plan = undefined;
           status.textContent = `Read back Database ID: ${p.value}. Rules re-run on the current form. You select Production mode and location. You click Create.`;
-          return { verified: true, fieldName: "Database ID", value: p.value, note: "Rules re-run. Mode/location are manual. You click Create." };
+          return;
         }
       }
       emit("mismatch", "readback mismatch after one retry");
@@ -162,18 +160,16 @@ export function mountAssist(container: HTMLElement, options: Options) {
       plan = undefined;
       const message = error instanceof Error ? error.message : "Assist could not verify the field. Type the value yourself.";
       if (token === revision) status.textContent = `${message} Already filled values remain; correct them manually.`;
-      return { error: message };
     } finally { busy = false; review.disabled = !enabled; }
   }
   approve.onclick = () => {
-    if (!plan || busy || approve.disabled) return;
-    approved = plan;
-    void fill({ fieldName: "Database ID", value: plan.value });
+    if (!plan || busy || approve.disabled || level.value !== "assist" || !enabled) return;
+    void fill(plan);
   };
   copy.onclick = () => {
     // The copy value comes from the numbered plan, never from model/page text.
     if (!copyValue) return;
     void navigator.clipboard.writeText(copyValue).then(() => { status.textContent = "Database ID copied. You paste or type it; you click Create."; }).catch(() => { status.textContent = "Clipboard unavailable. Type the Database ID shown in the plan yourself."; });
   };
-  return { fill, invalidate, stop: cancel, setEnabled(value: boolean) { enabled = value; level.disabled = !value; review.disabled = !value; if (!value) cancel("Assist unavailable in Teach mode."); }, stopControl: stop };
+  return { invalidate, stop: cancel, setEnabled(value: boolean) { enabled = value; level.disabled = !value; review.disabled = !value; if (!value) cancel("Assist unavailable in Teach mode."); }, stopControl: stop };
 }

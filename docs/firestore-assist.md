@@ -7,10 +7,11 @@ and security mode manual, and ends **You click Create**.
 
 Only the panel's explicit **Approve and fill Database ID** button authorizes
 the exact proposed value. Chat or page instructions cannot approve a plan.
-The `fill_field` tool accepts only `fieldName: "Database ID"` and `value`;
-the side panel supplies the bound tab, URL, snapshot generation and pinned
-element index. No click, submit or send tool is added. Guide, Teach,
-unapproved values, extra arguments, stale approvals (two minutes), changed
+The model has no fill tool. The side panel pins the planned Database ID
+element in the bound tab when the plan is created; later page reads keep that
+pin, navigation drops it. No click, submit, send or fill tool is offered to
+the model. Guide, Teach,
+stale approvals (two minutes), changed
 forms, wrong tabs and changed Journeys are refused.
 
 The content script accepts only the original, uniquely named, visible,
