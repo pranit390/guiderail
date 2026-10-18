@@ -41,6 +41,7 @@ One amber, 12px working line sits outside the chat live region. It names the
 pending tool; aria-busy covers chat while it runs and clears on every exit.
 Page telemetry remains model/session context, without repeated chat rows.
 Page changes, Teach entry and draft review clear stale suggestion/Rule cards;
+in Guide, page changes then re-check Rules against the current form.
 Journey citations and mismatch messages retain their separate owner.
 Status is live text: unverified, visible, missing, ambiguous, skipped or paused.
 No inferred completion. Disabled controls retain their names. All controls are
