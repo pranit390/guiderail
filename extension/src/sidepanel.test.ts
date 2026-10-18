@@ -191,7 +191,7 @@ describe("audit recovery and announcements", () => {
     $("#teachstop").click();
     await vi.waitFor(() => expect($("#teach-failed").hidden).toBe(false));
     expect($("#teachbar").hidden).toBe(true);
-    expect($("[role=switch][aria-label='Learn mode']").getAttribute("aria-checked")).toBe("false");
+    expect($("#teach[role=switch]").getAttribute("aria-checked")).toBe("false");
     expect($("#teach-error").textContent).toContain(count ? "Recording stopped. Your 2 steps are saved here" : "No steps recorded. Start a new recording");
     expect($("#teach-retry").hidden).toBe(count === 0);
     if (count) {
@@ -337,8 +337,14 @@ describe("lazy Live connection", () => {
     expect(sessionRequests()).toBe(1);
     expect(sockets[0].url).toContain("credential=one-use");
     expect(sockets[0].send).not.toHaveBeenCalled();
+    expect(status()).toBe("Connecting…");
+    expect($("#status .connection-dot")).not.toBeNull();
     sockets[0].receive({ type: "ready" });
-    expect(status()).toBe("Connected to coach.example");
+    expect($("#status").textContent).toBe("");
+    expect($("#status").title).toBe("Connected to coach.example");
+    expect($("#status").getAttribute("aria-label")).toBe("Connected to coach.example");
+    expect($("#status").dataset.state).toBe("on");
+    expect($("#status .connection-dot").getAttribute("aria-hidden")).toBe("true");
     expect(sent(sockets[0])).toEqual([{ type: "text", text: "where are labels?" }]);
   });
 
@@ -383,6 +389,9 @@ describe("lazy Live connection", () => {
     socket.receive({ type: "error", message: "Disconnected after one minute without activity." });
     socket.closed(4000);
     expect(status()).toBe("Disconnected. Type or tap the mic to reconnect");
+    expect($("#status").title).toBe(status());
+    expect($("#status").getAttribute("aria-label")).toBe(status());
+    expect($("#status .connection-dot")).not.toBeNull();
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sockets).toHaveLength(1);
     type("next step?");
@@ -564,20 +573,24 @@ describe("panel mode and icon controls", () => {
     fetchMock.mockImplementation(async (url) => url.endsWith("/playbooks/draft")
       ? { ok: false, json: async () => ({ error: "Draft fixture unavailable" }) }
       : defaultFetch(url));
-    const learn = $<HTMLButtonElement>("[role=switch][aria-label='Learn mode']");
+    const learn = $<HTMLButtonElement>("#teach[role=switch]");
+    const description = "Learn mode: show GuideRail how you do a task so it can draft a Playbook";
+    expect(learn.getAttribute("aria-label")).toBe(description);
+    expect(learn.title).toBe(description);
     expect(learn.getAttribute("aria-checked")).toBe("false");
-    expect(learn.textContent).toContain("Off");
+    expect(learn.textContent?.trim()).toBe("Learn");
     learn.click();
     expect(learn.getAttribute("aria-checked")).toBe("true");
-    expect(learn.textContent).toContain("On");
+    expect(learn.textContent?.trim()).toBe("Learn");
     await vi.waitFor(() => expect($("#teachbar").hidden).toBe(false));
     expect(sendMessage).toHaveBeenCalledWith(1, { kind: "teach", on: true });
     learn.click();
     await vi.waitFor(() => expect(learn.getAttribute("aria-checked")).toBe("false"));
     await vi.waitFor(() => expect(fetchMock.mock.calls.some(([url]) => url.endsWith("/playbooks/draft"))).toBe(true));
     expect(sendMessage).toHaveBeenCalledWith(1, { kind: "teach", on: false });
-    expect(learn.textContent).toContain("Off");
-    expect(learn.getAttribute("aria-label")).toBe("Learn mode");
+    expect(learn.textContent?.trim()).toBe("Learn");
+    expect(learn.getAttribute("aria-label")).toBe(description);
+    expect(learn.title).toBe(description);
   });
 
   it("keeps mic icons and announces listening until the stop control is pressed", async () => {
