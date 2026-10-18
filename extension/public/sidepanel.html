@@ -9,10 +9,23 @@
 <body>
   <header>
     <strong>Guide<span>Rail</span></strong>
+    <span id="account" hidden><span id="account-email"></span><button id="signout" type="button">Sign out</button></span>
     <button id="teach" type="button" aria-pressed="false" title="Show GuideRail how your team does a task">Teach</button>
     <span id="status" role="status" data-state="idle"></span>
   </header>
   <main id="scroll" aria-label="Guidance and conversation" tabindex="0">
+    <section id="signin" class="card" hidden aria-labelledby="signin-title">
+      <h2 id="signin-title">Sign in to GuideRail</h2>
+      <p id="signin-hint">Use the demo login from the pitch deck.</p>
+      <form id="signin-form" novalidate>
+        <label for="signin-email">Email</label>
+        <input id="signin-email" type="email" autocomplete="username" required>
+        <label for="signin-password">Password</label>
+        <input id="signin-password" type="password" autocomplete="current-password" required>
+        <p id="signin-error" role="alert"></p>
+        <button id="signin-submit" type="submit">Sign in</button>
+      </form>
+    </section>
     <section id="current-step" aria-label="Current Journey Step" hidden></section>
     <div id="log" aria-live="polite">
       <section id="journey" class="card"></section>

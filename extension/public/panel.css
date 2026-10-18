@@ -97,3 +97,15 @@ header { flex-wrap: wrap; gap: 6px; }
 .journey-current button { font-size: 12px; padding: 5px 8px; }
 .citation { color: var(--ink); overflow-wrap: anywhere; }
 #journey li[data-current] { background: var(--gr-go-tint); }
+
+/* Demo sign-in: the card stands in for the conversation until an account is signed in; the composer stays visible but disabled. */
+body[data-signed-out] #scroll > :not(#signin) { display: none !important; }
+#signin { margin-top: 12px; }
+#signin-hint { margin: 0 0 10px; color: var(--muted); font-size: 12px; }
+#signin-form { display: flex; flex-direction: column; gap: 6px; padding: 0; border: 0; background: none; }
+#signin-form label { font-size: 12px; color: var(--muted); }
+#signin-form button { align-self: flex-start; margin-top: 4px; font-weight: 600; }
+#signin-error { margin: 0; color: var(--bad); font-size: 12px; }
+#account { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; font-size: 12px; color: var(--muted); }
+#account-email { min-width: 0; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#signout { flex: none; padding: 2px 8px; font-size: 12px; }

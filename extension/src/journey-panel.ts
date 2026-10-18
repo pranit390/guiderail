@@ -3,7 +3,7 @@ import { mountJourneyWalk } from "./journey-walk.ts";
 import type { PageSnapshot } from "./messages.ts";
 import { PUBLIC_DOCS } from "./document.ts";
 
-export function mountJourneyPanel(container: HTMLElement, options: { http: string; compiled: () => void; brief: () => Promise<void>; open?: () => Promise<unknown>; read?: () => Promise<PageSnapshot>; point?: (text: string, role: string | undefined) => Promise<unknown>; changed?: (text: string) => void; clear?: () => Promise<unknown>; currentRegion?: HTMLElement; reset?: () => void }) {
+export function mountJourneyPanel(container: HTMLElement, options: { http: string; fetch?: (url: string, init: RequestInit) => Promise<Response>; compiled: () => void; brief: () => Promise<void>; open?: () => Promise<unknown>; read?: () => Promise<PageSnapshot>; point?: (text: string, role: string | undefined) => Promise<unknown>; changed?: (text: string) => void; clear?: () => Promise<unknown>; currentRegion?: HTMLElement; reset?: () => void }) {
   container.innerHTML = `<h2>Firestore Goal</h2><p>Create a Firestore database</p>
     <button type="button" data-open>Start Firestore Journey</button>
     <button type="button" data-reset hidden>End Journey binding</button>
@@ -38,7 +38,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     status.textContent = "Reading the Firestore docs… This can take up to 90 seconds.";
     container.setAttribute("aria-busy", "true");
     try {
-      const response = await fetch(`${options.http}/journeys/compile`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goalId: FIRESTORE_GOAL.id }), signal: AbortSignal.timeout(95_000) });
+      const response = await (options.fetch ?? fetch)(`${options.http}/journeys/compile`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ goalId: FIRESTORE_GOAL.id }), signal: AbortSignal.timeout(95_000) });
       const body: unknown = await response.json();
       if (!response.ok) {
         const message = body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : "The docs could not be compiled.";
