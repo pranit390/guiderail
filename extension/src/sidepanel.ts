@@ -380,7 +380,7 @@ function clearGuidance() {
 
 // ---------- Connection to the relay ----------
 
-const IDLE_STATUS = `Type or tap the mic to connect to ${SERVER_HOST}`;
+const IDLE_STATUS = "Type or tap the mic to connect";
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let retries = 0;
 const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000];
@@ -450,7 +450,7 @@ function onReady() {
   ready = true;
   connecting = false;
   $("#server-banner").hidden = true;
-  setStatus(`Connected to ${SERVER_HOST}`, "on");
+  setStatus("Connected to GuideRail", "on");
   const summary = memory.summary();
   if (summary) sendServer({ type: "session", text: summary });
   const queued = pending;

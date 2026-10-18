@@ -328,7 +328,7 @@ describe("lazy Live connection", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sessionRequests()).toBe(0);
     expect(sockets).toHaveLength(0);
-    expect(status()).toBe("Type or tap the mic to connect to coach.example");
+    expect(status()).toBe("Type or tap the mic to connect");
   });
 
   it("connects on the first typed message and delivers it once the relay is ready", async () => {
@@ -340,9 +340,9 @@ describe("lazy Live connection", () => {
     expect(status()).toBe("Connecting…");
     expect($("#status .connection-dot")).not.toBeNull();
     sockets[0].receive({ type: "ready" });
-    expect(status()).toBe("Connected to coach.example");
+    expect(status()).toBe("Connected to GuideRail");
     expect($("#status").lastElementChild?.className).toBe("sr-only");
-    expect($("#status").title).toBe("Connected to coach.example");
+    expect($("#status").title).toBe("Connected to GuideRail");
     expect($("#status").dataset.state).toBe("on");
     expect($("#status .connection-dot").getAttribute("aria-hidden")).toBe("true");
     expect(sent(sockets[0])).toEqual([{ type: "text", text: "where are labels?" }]);
@@ -378,7 +378,7 @@ describe("lazy Live connection", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sockets).toHaveLength(1);
     expect(sessionRequests()).toBe(1);
-    expect(status()).toBe("Type or tap the mic to connect to coach.example");
+    expect(status()).toBe("Type or tap the mic to connect");
     type("why this region?");
     await vi.waitFor(() => expect(sockets).toHaveLength(2));
     expect(sockets[1].url).toContain("mode=teach");
@@ -714,7 +714,7 @@ describe("compile during Teach", () => {
 
     document.querySelector<HTMLButtonElement>("[data-compile]")!.click();
     document.querySelector<HTMLButtonElement>("#teach")!.click();
-    await vi.waitFor(() => expect(status()).toBe("Type or tap the mic to connect to coach.example"));
+    await vi.waitFor(() => expect(status()).toBe("Type or tap the mic to connect"));
     type("Explain this step");
     await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("teach"));
     const teach = sockets.at(-1)!;
@@ -725,7 +725,7 @@ describe("compile during Teach", () => {
     expect(teach.close).not.toHaveBeenCalled();
 
     document.querySelector<HTMLButtonElement>("#teachstop")!.click();
-    await vi.waitFor(() => expect(status()).toBe("Type or tap the mic to connect to coach.example"));
+    await vi.waitFor(() => expect(status()).toBe("Type or tap the mic to connect"));
     type("Continue the Journey");
     await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("guide"));
     expect(sockets.at(-1)!.params.get("goalId")).toBe(FIRESTORE_GOAL.id);
