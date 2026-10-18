@@ -46,7 +46,7 @@ issue "Demo video, 3–4 minutes" "submission,pitch" "$D3" \
 - [ ] Script from the 9-beat story in \`docs/pitch.md\`
 - [ ] Two Chrome profiles: Requester and Approver
 - [ ] Record a full run by **18 Oct 18:00 IST**, plus a backup take
-- [ ] Say the \"no login needed\" line for judges
+- [ ] Tell judges the demo login is in the judging packet (never shown on screen)
 - [ ] Upload and check the link is public"
 
 issue "Submission description (1024 chars)" "submission,pitch" "$D3" \
@@ -57,7 +57,7 @@ issue "Submission description (1024 chars)" "submission,pitch" "$D3" \
 issue "Deployed prototype that stays up during judging" "submission,infra" "$D3" \
 "Judges evaluate the live link. No retries if it's down.
 - [ ] Cloud Run \`--min-instances 1\`, \`--timeout 3600\`, session affinity
-- [ ] Judge sandbox works with no login and no GCP account
+- [ ] Judge demo login (judging packet only) works with no GCP account
 - [ ] Budget alert set
 - [ ] Smoke test from a fresh incognito window"
 

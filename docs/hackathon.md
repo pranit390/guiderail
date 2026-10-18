@@ -27,7 +27,7 @@ Suggested tech: Gemini on Vertex AI, Vertex AI Search, Document AI, Agent Engine
 
 - [ ] Team of 2 registered (Zap) before 16 Oct 23:59
 - [ ] Cloud Run min instances = 0 (cold starts aren't penalised; see below)
-- [ ] Judge sandbox works with no login and no GCP account
+- [ ] Judge demo login (judging packet only) works with no GCP account
 - [ ] Repo switched to public, after a secret scan
 - [ ] Video recorded by 18 Oct 18:00
 - [ ] Deck on the template, exported to PDF under 5 MB
