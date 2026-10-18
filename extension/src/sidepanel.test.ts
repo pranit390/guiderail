@@ -278,7 +278,7 @@ describe("readable current panel guidance", () => {
     sendMessage.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
     socket.receive({ type: "tool_call", id: "read", name: "read_page", args: {} });
     await vi.waitFor(() => expect($("#working").hidden).toBe(false));
-    if (event === "disconnect") socket.onclose?.(); else socket.receive({ type: event, message: "Fixture error" });
+    if (event === "disconnect") socket.closed(1000); else socket.receive({ type: event, message: "Fixture error" });
     expect($("#working").hidden).toBe(true);
     finish({ url: "https://console.firebase.google.com/", title: "Firestore", generation: 1, elements: [] });
     await new Promise((resolve) => setTimeout(resolve, 10));
