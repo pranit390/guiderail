@@ -6,7 +6,7 @@ The page is the Follow the rail concept with the Rail check logo. The primary bu
 
 `https://guiderail-coach-q7tihot5sq-uc.a.run.app/download/guiderail-extension.zip`
 
-That zip is produced by the coach deploy, which includes the Firebase sign-in key. This landing build does not produce it. Judges sign in with the demo login from the deck. Install is still Load unpacked.
+That zip is produced by the coach deploy, which includes the Firebase sign-in key. This landing build does not produce it. Judges sign in with the demo login provided with the judging packet. Install is still Load unpacked.
 
 ## One command
 

@@ -54,4 +54,4 @@ Green means Here / Done, yellow means Check / Suggested / Recording, and red mar
 
 ## For judges
 
-**No login required.** Open the demo link and press **Start guided demo**. You're signed in automatically with a private sandbox. Click **Admin view** to edit the Policy in your own sandbox.
+Judges sign in with the demo login provided with the judging packet. The login is shared only through the submission form's private field / judging packet and is never printed in the deck.

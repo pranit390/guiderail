@@ -24,7 +24,7 @@ export const pageTitle = "GuideRail. Your next step, in view.";
 export const pageDescription =
   "GuideRail walks Create a Firestore database on the Firebase console. Cited Steps, Guide and Assist, and a Rules check. You click Create.";
 
-export const judgeNote = "Judges sign in with the demo login from the deck.";
+export const judgeNote = "Judges sign in with the demo login provided with the judging packet.";
 
 export const installSteps = [
   "Unzip the download.",

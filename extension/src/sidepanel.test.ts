@@ -1263,7 +1263,7 @@ describe("demo sign-in", () => {
 
   it("asks for a sign-in before Talk, Send or Teach can be used", async () => {
     await openPanel(false);
-    expect($("#signin").textContent).toContain("Use the demo login from the pitch deck.");
+    expect($("#signin").textContent).toContain("Use the demo login provided with the judging packet.");
     expect(document.activeElement).toBe($("#signin-email"));
     for (const sel of ["#talk", "#text", "#form button[type=submit]", "#teach"]) expect($<HTMLButtonElement>(sel).disabled).toBe(true);
     expect(document.body.hasAttribute("data-signed-out")).toBe(true);
