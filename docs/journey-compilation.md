@@ -69,14 +69,19 @@ pins the first concrete Firestore project in that tab. Switching tabs pauses
 commands; closed tabs, another project, unsupported pages, and sign-in pages
 cannot substitute for it. Use **End Journey binding** to start over.
 
-Cited Steps remain documentation-derived. **Read and point to Step** resolves
-the Step's control in a fresh page read with the shared resolver (exact name
-first, else one clear fuzzy match; ties and weak matches are refused). It does
-not click or fill the console.
+Cited Steps remain documentation-derived. The Journey reads and points
+automatically: when the walk starts, when a Step begins, and after each page or
+wizard change in the bound tab, it resolves the Step's control in a fresh page
+read with the shared resolver (exact name first, else one clear fuzzy match;
+ties and weak matches are refused), highlights it, and announces the Step once
+in the panel (spoken when Voice is on). **Read and point to Step** / **Re-read
+this Step** runs the same read on demand. It does not click or fill the console.
 If a control is absent, the Step retains its citation and says "The doc says X.
-I can't see it on this screen." Re-read or explicitly skip it. **I did this ·
-Next step** records the person's report, not independent verification. After
-the person clicks the pointed control, Next stays available while the bound tab
+I can't see it on this screen." After two automatic reads on a screen miss it,
+the panel says so once; re-read or explicitly skip it. When the person clicks
+the pointed control, the Journey advances to the next Step. **I did this · Next
+step** records the person's report, not independent verification. After the
+person clicks the pointed control, Next stays available while the bound tab
 stays on the same project, even if a re-read no longer finds that control.
 Another tab, project or unsupported page revokes it. The
 final Create action remains human-only and cannot be marked done by the model.

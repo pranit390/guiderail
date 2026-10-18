@@ -46,8 +46,15 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   fetch: authFetch,
   open: () => binding.open({ goalId: FIRESTORE_GOAL.id }),
   read: async () => readSnapshot(await binding.tab()),
-  point: (text, role) => runHighlight({ text, role }),
+  point: (text, role) => runHighlight({ text, role }, false),
   changed: appEvent,
+  prompt(text) {
+    say("step", text);
+    if (voiceOn && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+    }
+  },
   clear: clearJourneyPointer,
   currentRegion: $("#current-step"),
   reset() { assist.stop("Journey ended. Assist stopped."); binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
@@ -155,6 +162,7 @@ const voice = $<HTMLButtonElement>("#voice");
 voice.disabled = true;
 function renderVoice() {
   speaker.setMuted(!voiceOn);
+  if (!voiceOn && "speechSynthesis" in window) window.speechSynthesis.cancel();
   voice.setAttribute("aria-pressed", String(voiceOn));
   voice.textContent = voiceOn ? "Voice on" : "Voice off";
   voice.title = `Spoken replies ${voiceOn ? "on" : "off"} (Alt+Shift+V)`;
@@ -351,7 +359,7 @@ function connectionLost(text: string, retry = true) {
 }
 
 $("#server-retry").addEventListener("click", () => { void connect(); });
-window.addEventListener("pagehide", () => disconnect(IDLE_STATUS, "idle"));
+window.addEventListener("pagehide", () => { journeyPanel.setEnabled(false); disconnect(IDLE_STATUS, "idle"); });
 
 async function connect(retrying = false) {
   if (signedOut) return;
@@ -689,7 +697,7 @@ async function confirmCompose(args: Record<string, unknown>): Promise<Record<str
   });
 }
 
-async function runHighlight(args: Record<string, unknown>): Promise<HighlightResult> {
+async function runHighlight(args: Record<string, unknown>, syncJourney = true): Promise<HighlightResult> {
   const text = String(args.text ?? "");
   const role = args.role == null || args.role === "" ? undefined : String(args.role);
   const section = args.section == null || args.section === "" ? undefined : String(args.section);
@@ -737,7 +745,7 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     }
     const target = snap!.elements.find((e) => e.i === decision.i);
     stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
-    journeyPanel.pointed(decision.name);
+    if (syncJourney) journeyPanel.pointed(decision.name);
     return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
   }
 }
@@ -875,7 +883,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       refreshViolations();
       boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
-        if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
+        if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Reading the next Step…", true);
         else journeyPanel.invalidate("The tab changed. Return to the bound Firestore tab and re-read this Step.");
       } else if (mode === "teach") void followTab(msg.tabId);
       // A reload of the coached tab drops the content script's generation counter, so the old snapshot cannot authorize a target.
@@ -891,8 +899,8 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
         refreshViolations();
       }
       if (binding.tabId !== undefined) {
-        if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control. Choose I did this · Next step, or re-read this Step.");
-        else journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
+        if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control.");
+        else journeyPanel.invalidate("The page changed. Reading the next Step…", true);
       }
       if (bound && sender.tab?.id === bound.tabId && msg.generation !== undefined && msg.generation !== bound.generation) {
         boundStale = true;

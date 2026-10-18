@@ -32,7 +32,8 @@ The current heading names the cited Step being pointed to, with its Journey
 index and total (distinct from the console wizard's own three sections). A
 pointed control moves guidance only when it uniquely equals a Step control or
 ends with it as a whole phrase, never by fuzzy match and never onto Create;
-earlier Steps remain unreviewed. Only the person's Next or Skip records progress. Duplicate Next
+earlier Steps remain unreviewed. Only the person's Next, Skip or click on the
+pointed control records progress. Duplicate Next
 names never choose a Step by guesswork; Create never enables Next.
 Next spans the card width with a 36px minimum height. Skip stays secondary.
 Model replies and Playbook drafts share safe bold/italic/code and list
