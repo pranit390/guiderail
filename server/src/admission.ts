@@ -50,26 +50,17 @@ export class LiveAdmission {
   }
 
   // Charge a non-Live model call to the same daily allowance as voice; false once it's used up.
-  charge(ms: number): boolean {
-    this.settle();
-    if (this.used >= DAILY_LIVE_MS) return false;
-    this.used += ms;
-    this.schedule();
+  // No daily allowance: model calls are never refused.
+  charge(_ms: number): boolean {
     return true;
   }
 
   admit(expire: () => void): Admission {
     this.settle();
-    if (this.active.size >= 3) return { allowed: false, message: "The coach is busy. Three sessions are already active; please retry shortly." };
-    if (this.used >= DAILY_LIVE_MS) return { allowed: false, message: "Today's demo voice allowance is used. Please try again tomorrow (UTC)." };
+    // No concurrency, session-length or daily caps: every signed-in request is admitted.
     const id = Symbol();
     this.active.set(id, { started: Date.now(), expire });
-    this.schedule();
-    return { allowed: true, release: () => {
-      this.settle();
-      this.active.delete(id);
-      this.schedule();
-    } };
+    return { allowed: true, release: () => { this.active.delete(id); } };
   }
 }
 

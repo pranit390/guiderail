@@ -5,7 +5,6 @@ import { instructionFor, playbookTitle, type Mode } from "./instructions.ts";
 import { guideJourneyInstruction } from "./journeys/compile.ts";
 import { loadPlaybooks, loadRuleLines } from "./playbooks/load.ts";
 import { untrustedData, untrustedToolResult, UNTRUSTED_DATA_INSTRUCTION } from "./untrusted.ts";
-import { IDLE_MS, SESSION_MS } from "./live-limits.ts";
 import { liveSpeechConfig } from "./live-voice.ts";
 
 export { IDLE_MS } from "./live-limits.ts";
@@ -53,17 +52,11 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
   let session: Session | undefined;
-  const started = Date.now();
-  let audioBytes = 0;
-  let textChars = 0;
   const pendingTools = new Map<string, string>();
-  let idle: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   const shutdown = () => {
     if (stopped) return;
     stopped = true;
-    clearTimeout(cap);
-    clearTimeout(idle);
     pendingTools.clear();
     session?.close();
     release();
@@ -73,14 +66,8 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
     shutdown();
     client.close(4000, reason);
   };
-  // Only user input, page activity and model output keep a connection open; raw mic frames (often silence) do not.
-  // An email proposal awaiting the user's confirmation pauses idle expiry; the session cap still applies.
-  const active = () => {
-    clearTimeout(idle);
-    if (client.readyState !== client.OPEN || [...pendingTools.values()].includes("draft_message")) return;
-    idle = setTimeout(() => end("idle", `Disconnected after ${IDLE_MS / 1000} seconds without activity. Type or tap the mic to reconnect.`), IDLE_MS);
-  };
-  const cap = setTimeout(() => end("session limit", `This demo session reached its ${SESSION_MS / 60_000}-minute limit. Type or tap the mic to reconnect if today's allowance remains.`), SESSION_MS);
+  // No idle, session-length or input caps: a session lasts until the person or the model closes it.
+  const active = () => {};
   client.once("close", shutdown);
   client.on("error", shutdown);
   void open();
@@ -93,7 +80,6 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         config: {
           responseModalities: [Modality.AUDIO],
           speechConfig: liveSpeechConfig(),
-          maxOutputTokens: 512,
           systemInstruction: `${await buildInstruction(mode, goal, goalId)}\n\n${UNTRUSTED_DATA_INSTRUCTION}`,
           tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
           inputAudioTranscription: {},
@@ -130,29 +116,14 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         return;
       }
       if (stopped || !session || !msg || typeof msg !== "object") return;
-      if ("text" in msg && (typeof msg.text !== "string" || msg.text.length > 4000)) {
-        send({ type: "error", message: "That message was not delivered: the coach accepts text of up to 4,000 characters per message." });
-        return;
-      }
+      if ("text" in msg && typeof msg.text !== "string") return;
       if (msg.type === "audio" && (typeof msg.data !== "string" || msg.data.length > 48_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(msg.data))) return;
       if (msg.type === "tool_result" && (typeof msg.id !== "string" || typeof msg.name !== "string" || !msg.response || typeof msg.response !== "object")) return;
       if (msg.type === "tool_result") {
         if (pendingTools.get(msg.id) !== msg.name) return;
         pendingTools.delete(msg.id); // Each issued call can be answered only once.
-        const chars = msg.id.length + msg.name.length + JSON.stringify(untrustedToolResult("tool result", msg.response)).length;
-        textChars += chars;
-        if (chars > 4000) {
-          end("input allowance reached", "This demo session reached its input allowance.");
-          return;
-        }
       }
       const modelText = "text" in msg ? textForModel(msg) : undefined;
-      if (modelText !== undefined) textChars += modelText.length;
-      if (msg.type === "audio") audioBytes += Buffer.byteLength(msg.data, "base64");
-      if (textChars > 24_000 || audioBytes > (Date.now() - started) * 32 + 64_000) {
-        end("input allowance reached", "This demo session reached its input allowance.");
-        return;
-      }
       if (ACTIVITY.has(msg.type) || (msg.type === "tool_result" && msg.name === "draft_message")) active();
       switch (msg.type) {
         case "audio":
