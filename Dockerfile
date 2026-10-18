@@ -8,6 +8,14 @@ COPY --chown=node:node server server
 COPY --chown=node:node shared shared
 COPY --chown=node:node seed seed
 COPY --chown=node:node sandbox sandbox
+# Package the extension for this coach's origin, with manifest.json at the ZIP root.
+ARG GUIDERAIL_SERVER_URL=https://guiderail-coach-q7tihot5sq-uc.a.run.app
+ARG GUIDERAIL_BUILD_REVISION=release
+COPY --chown=node:node extension extension
+RUN apt-get update && apt-get install -y --no-install-recommends zip && rm -rf /var/lib/apt/lists/* \
+ && GUIDERAIL_SERVER_URL="$GUIDERAIL_SERVER_URL" GUIDERAIL_BUILD_REVISION="$GUIDERAIL_BUILD_REVISION" npm run build:ext \
+ && mkdir download && cd extension/dist && zip -qr ../../download/guiderail-extension.zip . \
+ && cd /app && rm -rf extension/dist && chown -R node:node download
 RUN mkdir data && chown node:node data
 USER node
 ENV NODE_ENV=production PORT=8080
