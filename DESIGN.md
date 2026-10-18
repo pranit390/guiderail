@@ -8,7 +8,7 @@ Light: background #f4f7f5, surface #ffffff, secondary #eef2ef, separator #dde4df
 
 ## Typography and geometry
 
-Retain system UI at 14px/1.5, 16px brand, 12px secondary copy, 13px cards and 11px page chips. Retain existing panel scroll ownership; shared scrolling belongs to https://github.com/pranit390/guiderail/pull/47. The compact current Journey Step sits outside the conversation log so its controls stay reachable; the full cited template is a disclosure. Page outlines sit outside fields; chips use existing collision detection. Neutral chat surfaces keep colour meaningful.
+Retain system UI at 14px/1.5, 16px brand, 12px secondary copy, 13px cards and 11px page chips. Panel scroll ownership is specified in extension/DESIGN.md. The full cited template is a disclosure. Page outlines sit outside fields; chips use existing collision detection. Neutral chat surfaces keep colour meaningful.
 
 ## Primitives and states
 

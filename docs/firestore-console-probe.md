@@ -77,7 +77,7 @@ Four independently reproduced defects were repaired after the initial probe:
 
 - Step transitions, rereads and End clear the previous pointer without clearing policy markers or losing a recorded human click's explicit-Next eligibility.
 - The shared overlay reconnects to the document when a modal/popover closes, hides or is removed. Guard, Show field and Calmer/Restore remain usable.
-- The current Step, citation and progression controls sit in a compact region outside the conversation log. The full template is a disclosure. Shared scrolling is owned by https://github.com/pranit390/guiderail/pull/47 and is not integrated here; this branch is designed to merge after it and touches `sidepanel.ts`, `sidepanel.html` and `panel.css` lightly.
+- The current Step, citation and progression controls sit in a compact region outside the conversation log. The full template is a disclosure. Panel scroll ownership is now specified in `extension/DESIGN.md`.
 - Bound Journeys use the shared unique fuzzy resolver and retain tab/project, freshness and pinned content re-resolution checks.
 
 Local validation on the pre-removal build: 300 tests (66 server, 234 extension), both workspace typechecks, extension build and diff whitespace checks passed. Synthetic built-extension checks passed for present → Next → missing, modal pointer → End, dialog close/hide/remove, popover hide/remove, Guard and calm recovery, and actual bound-panel fuzzy success (0.9), weak-match refusal and tie refusal.
