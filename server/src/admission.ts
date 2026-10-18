@@ -4,6 +4,9 @@ import { DAILY_LIVE_MS, SESSION_MS } from "./live-limits.ts";
 export { DAILY_LIVE_MS, SESSION_MS } from "./live-limits.ts";
 
 const MINUTE = 60_000;
+// What one non-Live Gemini call (a Teach draft, an uncached Journey compile) takes from the daily allowance.
+export const MODEL_CALL_MS = 30_000;
+export const ALLOWANCE_USED = "Today's demo allowance is used. Please try again tomorrow (UTC).";
 
 type Admission = { allowed: true; release: () => void } | { allowed: false; message: string };
 
@@ -44,6 +47,15 @@ export class LiveAdmission {
       this.schedule();
     }, Math.max(1, Math.min(remaining / this.active.size, SESSION_MS - (now - oldest), midnight - now)));
     this.timer.unref();
+  }
+
+  // Charge a non-Live model call to the same daily allowance as voice; false once it's used up.
+  charge(ms: number): boolean {
+    this.settle();
+    if (this.used >= DAILY_LIVE_MS) return false;
+    this.used += ms;
+    this.schedule();
+    return true;
   }
 
   admit(expire: () => void): Admission {

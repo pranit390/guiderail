@@ -22,12 +22,14 @@ const generateJourney: GenerateJourney = async () => {
 };
 export class CompileBusyError extends Error {}
 export class CompileDisabledError extends Error {}
+export class CompileAllowanceError extends Error {}
 
 export class JourneyCompiler {
   private pending: Promise<CompileResult> | undefined;
   private lastAttempt = 0;
   constructor(private store: JourneyStore, private generate: GenerateJourney = generateJourney) {}
-  async compile({ cachedOnly = false }: { cachedOnly?: boolean } = {}): Promise<CompileResult> {
+  // charge: takes a model call from the daily allowance; only a cache miss that will call Gemini is charged.
+  async compile({ cachedOnly = false, charge }: { cachedOnly?: boolean; charge?: () => boolean } = {}): Promise<CompileResult> {
     const cached = await this.store.get().catch(() => {
       throw new CompileError("Couldn't read the Journey cache. Retry compilation, or read the official docs.");
     });
@@ -35,6 +37,7 @@ export class JourneyCompiler {
     if (cachedOnly) throw new CompileDisabledError("Documentation compilation is disabled on this cost-limited demo. Open the official docs, or use a previously cached Journey.");
     if (this.pending) return this.pending;
     if (Date.now() - this.lastAttempt < 5000) throw new CompileBusyError("The docs compiler is busy. Retry in a few seconds.");
+    if (charge && !charge()) throw new CompileAllowanceError("Today's demo allowance is used. Please try again tomorrow (UTC).");
     this.lastAttempt = Date.now();
     this.pending = this.uncached();
     try { return await this.pending; } finally { this.pending = undefined; }
