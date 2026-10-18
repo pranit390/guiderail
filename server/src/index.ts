@@ -4,12 +4,13 @@ import { extname, join, normalize } from "node:path";
 import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
 import { CompileError, parseCompileRequest } from "../../shared/journey.ts";
-import { journeyCompiler, CompileBusyError } from "./journeys/compile.ts";
+import { journeyCompiler, CompileBusyError, CompileDisabledError } from "./journeys/compile.ts";
 import { draftPlaybook, DraftError, isRule } from "./playbooks/draft.ts";
 import { isAllowedOrigin } from "./origin.ts";
+import { LiveAdmission, SessionTickets } from "./admission.ts";
 import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
-import { approvals, approvalUrl, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
+import { approvals, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -38,9 +39,11 @@ async function readJson(req: IncomingMessage): Promise<Record<string, unknown> |
   }
 }
 
-const WRITE_ROUTES = new Set(["/journeys/compile", "/playbooks/draft", "/playbooks", "/approvals"]);
+const WRITE_ROUTES = new Set(["/session", "/journeys/compile", "/playbooks/draft", "/playbooks"]);
+const tickets = new SessionTickets();
+const admission = new LiveAdmission();
 
-const server = createServer(async (req, res) => {
+export const server = createServer(async (req, res) => {
   try {
     await handle(req, res);
   } catch (err) {
@@ -59,8 +62,24 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 
   if (url.pathname === "/health") return void res.end("ok");
 
+  if (url.pathname === "/" && req.method === "GET") {
+    return void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>GuideRail coach</title><h1>GuideRail coach</h1><p>The relay is online. Install the packaged extension, open a supported Google page, and type a question or press Talk.</p><p>This limited demo shares five connected Live minutes per UTC day per server instance. The panel connects when you first type or press Talk and disconnects after one minute without activity. At most three sessions can connect; each session ends within ten minutes. Instance replacement can reset the daily allowance. Voice, typed questions and supported page context are sent to Gemini on Vertex AI. No Firebase sign-in or durable receipts are provided by this relay.</p></html>`);
+  }
+
   if (req.method === "POST" && WRITE_ROUTES.has(url.pathname) && !isAllowedOrigin(req.headers.origin)) {
     return json(res, 403, { error: "This origin may not write to GuideRail." });
+  }
+
+  if (url.pathname === "/session" && req.method === "POST") {
+    if (process.env.DEMO_END_AT && Date.now() >= Date.parse(process.env.DEMO_END_AT)) {
+      return json(res, 410, { error: "This judging demo has ended." });
+    }
+    if (!req.headers.origin) return json(res, 403, { error: "A supported browser origin is required." });
+    const body = await readJson(req);
+    if (!body) return json(res, 400, { error: "Send a JSON object." });
+    const ticket = tickets.issue(req.headers.origin);
+    res.setHeader("Cache-Control", "no-store");
+    return json(res, ticket ? 201 : 429, ticket ?? { error: "The coach is busy. Please retry shortly." });
   }
 
   if (url.pathname === "/rules") {
@@ -74,12 +93,17 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       if (!(err instanceof CompileError)) throw err;
       return json(res, 400, { error: err.message });
     }
-    try { return json(res, 200, await journeyCompiler.compile()); }
+    try { return json(res, 200, await journeyCompiler.compile({ cachedOnly: process.env.DISABLE_DRAFT === "true" || !!(process.env.DEMO_END_AT && Date.now() >= Date.parse(process.env.DEMO_END_AT)) })); }
     catch (err) {
+      if (err instanceof CompileDisabledError) return json(res, 503, { error: err.message });
       if (err instanceof CompileBusyError) return json(res, 429, { error: err.message });
       if (err instanceof CompileError) return json(res, 502, { error: err.message });
       throw err;
     }
+  }
+
+  if ((url.pathname === "/playbooks/draft" || url.pathname === "/playbooks") && req.method === "POST" && process.env.DISABLE_DRAFT === "true") {
+    return json(res, 503, { error: "Playbook drafting and publishing are disabled on this cost-limited demo." });
   }
 
   if (url.pathname === "/playbooks/draft" && req.method === "POST") {
@@ -126,21 +150,6 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (url.pathname === "/role") {
     const found = lookupRole(url.searchParams.get("permission") ?? "");
     return json(res, found ? 200 : 404, found);
-  }
-
-  if (url.pathname === "/approvals" && req.method === "POST") {
-    const body = await readJson(req);
-    const fields = ["requester", "role", "resource", "reason"] as const;
-    if (!body || fields.some((f) => typeof body[f] !== "string" || !body[f])) {
-      return json(res, 400, { error: `JSON body needs ${fields.join(", ")}` });
-    }
-    const approval = await approvals.create({
-      requester: body.requester as string,
-      role: body.role as string,
-      resource: body.resource as string,
-      reason: body.reason as string,
-    });
-    return json(res, 201, { id: approval.id, url: approvalUrl(approval.id) });
   }
 
   const approvalRoute = url.pathname.match(/^\/approvals\/([\w-]+)(\/grant)?$/);
@@ -234,12 +243,26 @@ function approverPage(approval?: Approval) {
 </script>`);
 }
 
-const wss = new WebSocketServer({ server, path: "/live" });
+const wss = new WebSocketServer({ server, path: "/live", maxPayload: 64 * 1024 });
 wss.on("connection", (client, req) => {
+  // ws emits an error (including maxPayload violations) before closing. Even
+  // rejected clients need a listener so a malformed frame cannot kill Node.
+  client.on("error", () => client.terminate());
   const params = new URL(req.url ?? "", "http://x").searchParams;
+  const reject = (message: string) => {
+    client.send(JSON.stringify({ type: "error", message }));
+    client.close(4001, "session admission denied");
+  };
+  if (!isAllowedOrigin(req.headers.origin) || !tickets.consume(params.get("credential"), req.headers.origin)) {
+    reject("Missing, invalid or expired session credential. Reconnect from the extension.");
+    return;
+  }
+  let end: ReturnType<typeof relay> | undefined;
+  const slot = admission.admit(() => end?.("demo allowance reached", "This demo session reached its session or daily voice limit."));
+  if (!slot.allowed) { reject(slot.message); return; }
   const mode = params.get("mode") === "teach" ? "teach" : "guide";
   const goal = params.get("goal")?.slice(0, 200) || undefined;
-  void relay(client, params.get("resume") ?? undefined, mode, goal, params.get("goalId") ?? undefined);
+  end = relay(client, params.get("resume") ?? undefined, mode, goal, slot.release, params.get("goalId") ?? undefined);
 });
 
 server.listen(PORT, () => console.log(`GuideRail server on http://localhost:${PORT}  (ws /live, /rules, /approvals, /a/, /role, /sandbox/)`));

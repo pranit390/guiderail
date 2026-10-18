@@ -5,7 +5,8 @@ import type { CalmPreset } from "./calm.ts";
 
 export type PageElement = { i: number; role: string; name: string; value?: string; section?: string };
 
-export type PageSnapshot = { url: string; title: string; elements: PageElement[]; generation: number; document?: DocumentSnapshot };
+// rank[k] orders elements[k] for trimming an oversized read: lower is kept first.
+export type PageSnapshot = { url: string; title: string; elements: PageElement[]; generation: number; document?: DocumentSnapshot; rank?: number[] };
 
 export type FormState = {
   url: string;

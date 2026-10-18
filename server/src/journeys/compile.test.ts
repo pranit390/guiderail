@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { UrlRetrievalStatus } from "@google/genai";
 import { CompileError, FIRESTORE_GOAL, parseCompileRequest, parseJourneyDraft, type CompiledJourney } from "../../../shared/journey.ts";
-import { JourneyCompiler, guideJourneyInstruction, journeyInstruction, type GenerateJourney } from "./compile.ts";
+import { JourneyCompiler, CompileDisabledError, guideJourneyInstruction, journeyInstruction, type GenerateJourney } from "./compile.ts";
 import { FileJourneyStore, type JourneyStore } from "./store.ts";
 import { fixtureDraft } from "./fixture.ts";
 
@@ -21,6 +21,17 @@ function store(): JourneyStore {
   return { async get() { return value; }, async put(journey) { value = journey; } };
 }
 describe("compile boundary", () => {
+  it("serves cached Journeys in cost-limited mode without opening an unmetered provider call", async () => {
+    const cache = store();
+    const generate = vi.fn<GenerateJourney>().mockResolvedValue(response());
+    const compiler = new JourneyCompiler(cache, generate);
+    await expect(compiler.compile({ cachedOnly: true })).rejects.toBeInstanceOf(CompileDisabledError);
+    expect(generate).not.toHaveBeenCalled();
+    const first = await compiler.compile();
+    generate.mockClear();
+    expect(await compiler.compile({ cachedOnly: true })).toEqual({ ...first, cacheHit: true });
+    expect(generate).not.toHaveBeenCalled();
+  });
   it("reports an unreadable cache as a compile error without spending provider quota", async () => {
     const generate = vi.fn<GenerateJourney>().mockResolvedValue(response());
     const cache = { get: vi.fn().mockRejectedValue(new Error("EACCES")), put: vi.fn() };

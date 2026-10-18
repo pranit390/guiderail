@@ -32,7 +32,7 @@ export function maskValue(value: string): string {
 }
 
 // Fields whose value is always secret, whatever it looks like.
-const SECRET_FIELD = /pass(word)?|secret|token|credential|api[ _-]?key/i;
+const SECRET_FIELD = /pass(word|code)?|secret|token|credential|api[\s_-]*key|access[\s_-]*key|private[\s_-]*key|otp|one[\s_-]*time[\s_-]*(password|code)|verification[\s_-]*code|(?:recovery|seed|wallet|backup)[\s_-]*(?:code|phrase|key)|mnemonic|cookie|security[\s_-]*(?:answer|question)|auth(?:entication)?[\s_-]*code/i;
 export function isSecretField(target: { name: string; section?: string }): boolean {
   return SECRET_FIELD.test(target.name) || SECRET_FIELD.test(target.section ?? "") || target.section === "Variables & Secrets";
 }

@@ -147,6 +147,52 @@ describe("calmer content messages", () => {
     expect(request({ kind: "highlight", text: "Create", expectedUrl: "https://accounts.google.com/" })).toHaveProperty("error");
     expect(request({ kind: "read_page", expectedUrl: location.href })).toHaveProperty("elements");
   });
+  it.each([
+    '<label for="private">Recovery code</label><input id="private" aria-label="Display name">',
+    '<input name="seed_phrase" aria-label="Display name">',
+    '<span id="hint">Session cookie</span><textarea aria-describedby="hint" aria-label="Display name"></textarea>',
+    '<input aria-label="Display name" aria-description="Client secret">',
+    '<input aria-label="Display name" aria-valuetext="Private key">',
+    '<input aria-label="Security answer">',
+    '<input aria-label="Wallet phrase">',
+  ])("masks plausible secret metadata even when the primary label looks ordinary: %s", (markup) => {
+    document.body.innerHTML = markup + '<input aria-label="Region" value="us-central1">';
+    const secret = document.querySelector<HTMLInputElement | HTMLTextAreaElement>("input,textarea")!;
+    secret.value = "AB12-CD34";
+    for (const result of [request({ kind: "read_page" }), form()]) {
+      const output = JSON.stringify(result);
+      expect(output).not.toContain("AB12-CD34");
+      expect(output).toContain("«masked»");
+      expect(output).toContain("us-central1");
+    }
+  });
+
+  it("masks non-password secrets in page and form reads, including label values", () => {
+    document.body.innerHTML = `<input aria-label="API token" value="synthetic-secret">
+      <textarea name="credential">plain-looking-secret</textarea>
+      <input aria-label="One time code" value="123456">
+      <input aria-label="Service name" value="ocr-service">
+      <section aria-label="Labels"><input aria-label="Key 1" value="api_key"><input aria-label="Value 1" value="label-secret"></section>`;
+    const page = JSON.stringify(request({ kind: "read_page" }));
+    const fields = JSON.stringify(form());
+    for (const output of [page, fields]) {
+      for (const secret of ["synthetic-secret", "plain-looking-secret", "123456", "label-secret"]) expect(output).not.toContain(secret);
+      expect(output).toContain("ocr-service");
+      expect(output).toContain("«masked»");
+    }
+  });
+
+  it("refuses reads, Teach and event forwarding on the real sign-in origin despite sandbox metadata", () => {
+    vi.stubGlobal("location", new URL("https://accounts.google.com/signin"));
+    runtime.sendMessage.mockClear();
+    expect(request({ kind: "read_page" })).toHaveProperty("error");
+    expect(request({ kind: "read_form" })).toHaveProperty("error");
+    expect(request({ kind: "teach", on: true })).toHaveProperty("error");
+    document.querySelector("input")!.dispatchEvent(new Event("input", { bubbles: true }));
+    document.querySelector("button")!.click();
+    vi.advanceTimersByTime(1000);
+    expect(runtime.sendMessage).not.toHaveBeenCalled();
+  });
   it("rejects arbitrary presets at the page boundary", () => {
     expect(request({ kind: "customize", preset: "body { display: none }" })).toHaveProperty("error");
     expect(document.querySelector("#guiderail-customize")).toBeNull();

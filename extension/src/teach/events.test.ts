@@ -45,6 +45,7 @@ describe("isSecretField", () => {
     [{ name: "Password" }], [{ name: "DB_PASS" }], [{ name: "Client secret" }], [{ name: "Access token" }],
     [{ name: "Credentials file" }], [{ name: "API key" }], [{ name: "api_key" }], [{ name: "Value 1", section: "Variables & Secrets" }],
     [{ name: "Value", section: "Secret Manager" }],
+    ...["Recovery code", "Seed phrase", "recovery phrase", "mnemonic", "Session cookie", "Security answer", "Security question", "backup_code", "authentication-code", "auth code", "wallet phrase", "private  key", "client_secret"].map((name): [{ name: string }] => [{ name }]),
   ])("treats %j as secret", (t) => expect(isSecretField(t)).toBe(true));
   it.each([[{ name: "Service name" }], [{ name: "Value 1", section: "Labels" }], [{ name: "Region" }]])(
     "treats %j as plain",
