@@ -1,0 +1,7 @@
+{
+  "hosting": {
+    "site": "guiderail",
+    "public": "landing/dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
+  }
+}

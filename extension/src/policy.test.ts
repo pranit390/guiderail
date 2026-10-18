@@ -1,0 +1,204 @@
+import { describe, expect, it } from "vitest";
+import seed from "../../seed/rules/org-labeling-rules.json";
+import type { FormState } from "./messages.ts";
+import { evaluate, guidance, rulesFor, sectionOnScreen, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
+
+const rules = seed.rules as Rule[];
+
+const validLabels = {
+  environment: "dev",
+  application: "ocr-service",
+  component: "api",
+  owner: "pranit",
+  "managed-by": "manual",
+};
+
+const cloudRun = (labels: Record<string, string>, fields: Record<string, string> = {}): FormState => ({
+  url: "console.cloud.google.com/run/create",
+  labels,
+  fields,
+  sections: ["Labels"],
+});
+
+const ids = (violations: Violation[]) => violations.map((violation) => violation.ruleId);
+
+describe("rulesFor", () => {
+  it("matches console.cloud.google.com URL globs and skips other hosts", () => {
+    const matched = rulesFor(rules, { url: "console.cloud.google.com/run/create", sections: ["Labels"] });
+    expect(matched.map((rule) => rule.id)).toContain("label-required-environment");
+    expect(matched.every((rule) => rule.scope.url.startsWith("console.cloud.google.com/"))).toBe(true);
+
+    expect(rulesFor(rules, { url: "mail.google.com", sections: ["Labels"] })).toEqual([]);
+  });
+
+  it("filters by section", () => {
+    const form = { url: "console.cloud.google.com/iam-admin/iam", sections: ["Labels", "Grant access"] };
+
+    const labels = rulesFor(rules, form, "Labels");
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels.every((rule) => rule.scope.section === "Labels")).toBe(true);
+
+    expect(rulesFor(rules, form, "Grant access").map((rule) => rule.id)).toEqual(["iam-no-owner"]);
+    expect(rulesFor(rules, { url: "console.cloud.google.com/run/create", sections: ["Labels"] }, "Grant access")).toEqual([]);
+  });
+});
+
+describe("evaluate", () => {
+  it("blocks the five required labels when a Cloud Run form has none", () => {
+    const violations = evaluate(rules, cloudRun({}));
+    const blocks = violations.filter((violation) => violation.severity === "block");
+
+    expect(blocks).toHaveLength(5);
+    expect(ids(blocks).sort()).toEqual([
+      "label-required-application",
+      "label-required-component",
+      "label-required-environment",
+      "label-required-managed-by",
+      "label-required-owner",
+    ]);
+  });
+
+  it("flags environment=production as env-enum", () => {
+    const violations = evaluate(rules, cloudRun({ ...validLabels, environment: "production" }));
+    expect(ids(violations)).toEqual(["env-enum"]);
+    expect(violations[0]?.severity).toBe("block");
+  });
+
+  it("flags an email owner as owner-format and label-format", () => {
+    const violations = evaluate(rules, cloudRun({ ...validLabels, owner: "pranit@example.com" }));
+    expect(ids(violations).sort()).toEqual(["label-format", "owner-format"]);
+    expect(violations.every((violation) => violation.severity === "block")).toBe(true);
+  });
+
+  it("flags managed-by=pranit as managed-by-enum", () => {
+    const violations = evaluate(rules, cloudRun({ ...validLabels, "managed-by": "pranit" }));
+    expect(ids(violations)).toEqual(["managed-by-enum"]);
+    expect(violations[0]?.severity).toBe("block");
+  });
+
+  it("flags a KYC_API key as label-format", () => {
+    const violations = evaluate(rules, cloudRun({ ...validLabels, KYC_API: "ocr-service" }));
+    expect(ids(violations)).toEqual(["label-format"]);
+    expect(violations[0]).toMatchObject({ field: "label:KYC_API", severity: "block" });
+  });
+
+  it("accepts a fully valid Cloud Run label set", () => {
+    const violations = evaluate(rules, cloudRun(validLabels));
+    expect(violations.filter((violation) => violation.severity === "block")).toEqual([]);
+  });
+
+  it("warns only when component is outside the preferred set", () => {
+    const violations = evaluate(rules, cloudRun({ ...validLabels, component: "service" }));
+    expect(violations).toEqual([
+      expect.objectContaining({ ruleId: "component-preferred", field: "label:component", severity: "warn" }),
+    ]);
+  });
+
+  it("blocks Owner on an IAM grant and allows a narrower role", () => {
+    const iam = (role: string): FormState => ({
+      url: "console.cloud.google.com/iam-admin/iam",
+      labels: {},
+      fields: { Role: role },
+      sections: ["Grant access"],
+    });
+
+    const owner = evaluate(rules, iam("Owner"));
+    expect(owner).toEqual([expect.objectContaining({ ruleId: "iam-no-owner", field: "Role", severity: "block" })]);
+    expect(evaluate(rules, iam("Cloud Run Developer"))).toEqual([]);
+  });
+});
+
+describe("summarizeViolations", () => {
+  it("counts unique fields to fix and to check, Rules secondary (panel/page agreement)", () => {
+    const vs: Violation[] = [
+      { ruleId: "a", field: "label:owner", message: "m1", severity: "block" },
+      { ruleId: "b", field: "label:owner", message: "m2", severity: "block" },
+      { ruleId: "c", field: "label:environment", message: "m3", severity: "warn" },
+      { ruleId: "d", field: "label:owner", message: "m4", severity: "warn" },
+    ];
+    expect(summarizeViolations(vs)).toEqual({ blockingFields: ["label:owner"], fixCount: 1, checkCount: 1, ruleCount: 4 });
+    expect(violationCountText(summarizeViolations(vs))).toBe("1 to fix · 1 to check (4 Rules)");
+    expect(violationCountText(summarizeViolations(vs.slice(2, 3)))).toBe("1 to check (1 Rule)");
+    expect(summarizeViolations([])).toMatchObject({ fixCount: 0, checkCount: 0, ruleCount: 0 });
+  });
+
+  it("gives the same text for a warn and a missing owner as the panel, toast and model see", () => {
+    const vs = evaluate(rules, cloudRun({ ...validLabels, component: "foo", owner: "" }));
+    expect(vs.map((v) => v.severity).sort()).toEqual(["block", "warn"]);
+    expect(violationCountText(summarizeViolations(vs))).toBe("1 to fix · 1 to check (2 Rules)");
+  });
+});
+
+describe("field rules on a create form", () => {
+  const rule = (id: string, check: Rule["check"]): Rule => ({
+    id, check, severity: "block", message: id,
+    scope: { url: "console.cloud.google.com/run/create*", section: "Authentication" },
+    guide: { explain: "", format: "", examples: [], suggest: null },
+  });
+  const taught = [
+    rule("require-auth", { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] }),
+    rule("name-pattern", { kind: "field_value_regex", field: "Service name", pattern: "^[a-z]+-[a-z0-9-]+-service$" }),
+  ];
+  const form = (fields: Record<string, string>): FormState => ({ url: "console.cloud.google.com/run/create", labels: {}, fields, sections: [] });
+
+  it("fires without a Labels or Grant access section on screen", () => {
+    expect(ids(evaluate(taught, form({ "Allow unauthenticated": "checked", "Service name": "invoices" }))).sort()).toEqual(["name-pattern", "require-auth"]);
+  });
+  it("passes a form that follows the playbook", () => {
+    expect(evaluate(taught, form({ "Require authentication": "checked", "Service name": "payment-invoice-service" }))).toEqual([]);
+  });
+  it("skips fields absent from the form and Rules for a different page", () => {
+    expect(evaluate(taught, form({}))).toEqual([]);
+    expect(evaluate(taught, { ...form({ "Allow unauthenticated": "checked" }), url: "console.cloud.google.com/iam-admin/iam" })).toEqual([]);
+  });
+});
+
+describe("sectionOnScreen", () => {
+  const authRule = { ...(rules[0] as Rule), id: "require-auth", check: { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] }, scope: { url: "console.cloud.google.com/run/create*", section: "Authentication" } } as Rule;
+  const form = (fields: Record<string, string>, sections: string[] = []): FormState => ({ url: "console.cloud.google.com/run/create", labels: {}, fields, sections });
+
+  it("treats a field Rule's section as on screen when its field is on the form", () => {
+    expect(sectionOnScreen([authRule], form({ "Allow unauthenticated": "checked" }), "Authentication")).toBe(true);
+    expect(sectionOnScreen([authRule], form({}), "Authentication")).toBe(false);
+  });
+  it("keeps Labels on screen only when the page shows the section", () => {
+    expect(sectionOnScreen(rules, form({}, ["Labels"]), "Labels")).toBe(true);
+    expect(sectionOnScreen(rules, form({ "Service name": "ocr" }), "Labels")).toBe(false);
+  });
+});
+
+describe("guidance", () => {
+  it("returns one Labels entry per key, with suggestions from the form and context", () => {
+    const suggestions = guidance(
+      rules,
+      cloudRun({}, { "Service name": "OCR Service" }),
+      { firstName: "Pranit", consoleCreate: true },
+      "Labels",
+    );
+
+    expect(suggestions.map((suggestion) => suggestion.key)).toEqual([
+      "environment",
+      "application",
+      "component",
+      "owner",
+      "managed-by",
+    ]);
+
+    const byKey = Object.fromEntries(suggestions.map((suggestion) => [suggestion.key, suggestion]));
+    expect(byKey.owner?.suggested).toBe("pranit");
+    expect(byKey["managed-by"]?.suggested).toBe("manual");
+    expect(byKey.application?.suggested).toBe("ocr-service");
+    expect(byKey.environment).toMatchObject({ ask: true, suggested: null });
+  });
+
+  it("still returns the label policy when the page has no Labels section (real Cloud Run create form)", () => {
+    const form: FormState = { url: "console.cloud.google.com/run/create", labels: {}, fields: { "Service name": "ocr-service" }, sections: [] };
+    const keys = guidance(rules, form, { firstName: "Pranit", consoleCreate: true }, "Labels").map((s) => s.key);
+    expect(keys).toEqual(["environment", "application", "component", "owner", "managed-by"]);
+  });
+
+  it("returns nothing for pages outside the Rules' URL scope", () => {
+    const form: FormState = { url: "mail.google.com/mail/compose", labels: {}, fields: {}, sections: [] };
+    expect(guidance(rules, form, { consoleCreate: false }, "Labels")).toEqual([]);
+  });
+});

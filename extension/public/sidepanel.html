@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GuideRail</title>
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <header>
+    <strong>Guide<span>Rail</span></strong>
+    <span id="account" hidden><span id="account-email"></span><button id="signout" type="button">Sign out</button></span>
+    <button id="teach" type="button" role="switch" aria-checked="false" aria-label="Learn mode: show GuideRail how you do a task so it can draft a Playbook" title="Learn mode: show GuideRail how you do a task so it can draft a Playbook">
+      <span>Learn</span>
+      <span class="switch-track" aria-hidden="true"></span>
+    </button>
+    <span id="status" role="status" data-state="idle"></span>
+  </header>
+  <section id="server-banner" class="card recovery" hidden aria-label="Server connection">
+    <p id="server-message" role="status" aria-atomic="true"></p>
+    <button id="server-retry" type="button">Retry connection</button>
+  </section>
+  <main id="scroll" aria-label="Guidance and conversation" tabindex="0">
+    <section id="signin" class="card" hidden aria-labelledby="signin-title">
+      <h2 id="signin-title">Sign in to GuideRail</h2>
+      <p id="signin-hint">Use the demo login from the pitch deck.</p>
+      <form id="signin-form" novalidate>
+        <label for="signin-email">Email</label>
+        <input id="signin-email" type="email" autocomplete="username" required>
+        <label for="signin-password">Password</label>
+        <input id="signin-password" type="password" autocomplete="current-password" required>
+        <p id="signin-error" role="alert"></p>
+        <button id="signin-submit" type="submit">Sign in</button>
+      </form>
+    </section>
+    <section id="goals" class="card" aria-label="Goals"></section>
+    <section id="current-step" aria-label="Current Journey Step" hidden></section>
+    <section id="assist" class="card" aria-label="Firestore assistance"></section>
+    <p id="reply-status" class="sr-only" role="status" aria-atomic="true"></p>
+    <p id="working" role="status" aria-live="polite" hidden></p>
+    <div id="log">
+      <section id="journey" class="card"></section>
+      <p class="msg system intro">Pick a goal above, or talk or type what you want to do.</p>
+    </div>
+    <section id="guidance" class="card" hidden></section>
+    <section id="issues" class="card" hidden aria-label="Policy issues">
+      <p id="policy-override" role="alert" hidden></p>
+      <h2 id="issues-summary" role="status" aria-live="polite"></h2>
+      <ul id="issues-list"></ul>
+    </section>
+    <section id="firestore-guidance" class="card" hidden aria-label="Firestore guidance"></section>
+    <section id="teach-failed" class="card recovery" hidden>
+      <p id="teach-error" role="status"></p>
+      <button id="teach-retry" type="button">Retry draft</button>
+    </section>
+    <section id="teachbar" class="card" hidden>
+      <p><span class="rec state-glyph check" aria-hidden="true"><span>!</span></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
+      <button id="teachstop" type="button">Stop and draft Playbook</button>
+    </section>
+    <section id="draft" class="card" hidden>
+      <h2>Playbook draft</h2>
+      <div id="draftmd"></div>
+      <div id="draftrules"></div>
+      <button id="publish" type="button">Publish</button>
+    </section>
+    <section id="compose-confirmation" class="card" hidden aria-labelledby="compose-confirmation-title">
+      <h2 id="compose-confirmation-title">Review proposed email</h2>
+      <p>Open this draft only if it matches your request. You will still review it before sending.</p>
+      <dl>
+        <dt>To</dt><dd><pre id="compose-to"></pre></dd>
+        <dt>Subject</dt><dd><pre id="compose-subject"></pre></dd>
+        <dt>Body</dt><dd><pre id="compose-body"></pre></dd>
+      </dl>
+      <button id="compose-confirm" type="button">Open compose window</button>
+      <button id="compose-cancel" type="button">Cancel</button>
+    </section>
+  </main>
+  <p id="mic-status" class="voice-status" role="status" aria-live="polite"></p>
+  <p id="voice-status" class="voice-status" role="status" aria-live="polite"></p>
+  <form id="form">
+    <label for="text">Ask GuideRail</label>
+    <button id="talk" class="icon-button" type="button" aria-label="Talk" aria-pressed="false" title="Talk">
+      <svg class="mic-idle" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg>
+      <svg class="mic-listening" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+    </button>
+    <input id="text" type="text" placeholder="Ask or type a goal" autocomplete="off">
+    <button class="icon-button" type="submit" aria-label="Send" title="Send">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/></svg>
+    </button>
+    <button id="voice" class="icon-button" type="button" aria-label="Spoken replies" aria-pressed="true" title="Spoken replies on (Alt+Shift+V)">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m11 5-6 4H2v6h3l6 4V5Z"/><path class="speaker-on" d="M15 8a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/><path class="speaker-off" d="m16 9 6 6m0-6-6 6"/></svg>
+    </button>
+  </form>
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>

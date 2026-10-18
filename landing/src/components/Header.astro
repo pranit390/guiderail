@@ -1,0 +1,25 @@
+---
+import type { CallToAction } from "../kit/types";
+
+interface Props {
+  name: string;
+  nav: { href: string; label: string }[];
+  cta: CallToAction;
+}
+
+const { name, nav, cta } = Astro.props;
+---
+
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header">
+  <div class="wrap header-bar">
+    <a class="logo" href="#top">
+      <img src="/logo/rail-check.svg" width="36" height="36" alt="" />
+      {name}
+    </a>
+    <nav class="site-nav" aria-label="Page">
+      {nav.map((item) => <a href={item.href}>{item.label}</a>)}
+      <a class="button primary" href={cta.href}>{cta.label}</a>
+    </nav>
+  </div>
+</header>

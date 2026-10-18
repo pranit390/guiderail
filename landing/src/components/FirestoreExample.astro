@@ -1,0 +1,101 @@
+---
+import { docsHref, hero } from "../content/guiderail";
+---
+
+<section class="proof" id="example" aria-labelledby="proof-title" data-example>
+  <div class="proof-top">
+    <div>
+      <h2 id="proof-title">Try the Database ID Step here.</h2>
+      <p>{hero.figureCaption}</p>
+    </div>
+    <button type="button" data-reset>Reset</button>
+  </div>
+  <div class="proof-body">
+    <div class="console">
+      <p class="console-top">Example console / Firestore / Create database</p>
+      <h3>Create a database</h3>
+      <div class="field" data-id-field>
+        <label for="db-id">Database ID</label>
+        <input id="db-id" data-db-id type="text" autocomplete="off" placeholder="Enter a database ID" aria-describedby="id-hint" />
+        <div class="field-tag">Current Step: Database ID</div>
+        <p class="hint" id="id-hint">Made-up example. This page can't create a database.</p>
+      </div>
+      <fieldset class="radios">
+        <legend>Starting mode</legend>
+        <label class="radio-option">
+          <input type="radio" name="db-mode" value="production" checked />
+          Production mode
+        </label>
+        <label class="radio-option" data-test-choice>
+          <input type="radio" name="db-mode" value="test" />
+          Test mode
+        </label>
+      </fieldset>
+      <button type="button" class="primary" data-create>Click Create</button>
+      <p class="result" data-create-result role="status">The last click is yours.</p>
+    </div>
+    <aside class="coach" aria-label="GuideRail coach demo">
+      <div class="coach-header">
+        <strong>GuideRail</strong>
+        <div class="dial" role="group" aria-label="Guide or Assist">
+          <button type="button" data-guide aria-pressed="true">Guide</button>
+          <button type="button" data-assist aria-pressed="false">Assist</button>
+        </div>
+      </div>
+      <p class="status-word go" data-state>
+        <svg class="glyph glyph-go" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="16" cy="16" r="11"></circle>
+          <path d="m11 16 3 3 7-7"></path>
+        </svg>
+        <svg class="glyph glyph-check" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="m16 3 13 13-13 13L3 16Z"></path>
+          <path d="M16 10v7m0 4v1"></path>
+        </svg>
+        <svg class="glyph glyph-stop" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M11 3h10l8 8v10l-8 8H11l-8-8V11Z"></path>
+          <path d="m12 12 8 8m0-8-8 8"></path>
+        </svg>
+        <span data-state-text>Guide. You type and click.</span>
+      </p>
+      <p class="caption" data-caption>Press Show the Step to start.</p>
+      <p class="coach-copy" data-coach-copy>In Guide, GuideRail points at the field and you type the value yourself.</p>
+      <a class="source" href={docsHref}>Source: Firestore docs, Manage databases</a>
+      <button type="button" class="primary" data-show-step>Show the Step</button>
+      <div class="proposal" data-proposal hidden>
+        <p><strong>Proposed value.</strong> Database ID demo-guide. It comes from this demo, not your project.</p>
+        <p>Only this text field changes. You choose the starting mode and click Create.</p>
+        <div class="actions">
+          <button type="button" data-approve>Approve the fill</button>
+          <button type="button" data-stop>Stop</button>
+        </div>
+      </div>
+      <div class="rule" data-rule hidden>
+        <strong>Violation. Test mode</strong>
+        <p>Test mode lets anyone read and overwrite your data. Choose Production mode to clear it.</p>
+        <p>GuideRail holds your first Create click. A second click goes through anyway.</p>
+      </div>
+      <p class="hint">This is a simulation. Nothing here talks to the extension.</p>
+    </aside>
+  </div>
+  <div class="proof-foot">
+    <span>Try Guide, then Assist, then pick Test mode and watch it turn red.</span>
+    <span class="tone-go">Circle, go</span>
+    <span class="tone-check">Diamond, check</span>
+    <span class="tone-stop">Octagon, Violation</span>
+  </div>
+  <details class="static-story">
+    <summary>Read what the demo does</summary>
+    <p>{hero.staticStory}</p>
+  </details>
+</section>
+
+<script>
+  import { startExample } from "../scripts/hero.ts";
+
+  document.querySelectorAll("[data-example]").forEach((node) => {
+    if (node instanceof HTMLElement && node.dataset.booted !== "1") {
+      node.dataset.booted = "1";
+      startExample(node);
+    }
+  });
+</script>

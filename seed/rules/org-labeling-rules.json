@@ -169,6 +169,30 @@
       "check": { "kind": "element_interaction", "text": "Add key" },
       "severity": "warn",
       "message": "You don't need a key for Cloud Run. Attach the service account to the service instead."
+    },
+    {
+      "id": "firestore-no-test-mode",
+      "scope": {
+        "url": "console.firebase.google.com/*",
+        "section": "Configure"
+      },
+      "guide": {
+        "explain": "Company Policy requires Production mode. Firebase warns that Test mode allows anyone to read and overwrite your data.",
+        "format": "Start in Production mode",
+        "examples": [
+          "Start in Production mode"
+        ],
+        "suggest": null
+      },
+      "check": {
+        "kind": "field_value_not_in",
+        "field": "Start in test mode",
+        "values": [
+          "checked"
+        ]
+      },
+      "severity": "block",
+      "message": "Test mode allows anyone to read and overwrite your data. Choose Start in Production mode before Create."
     }
   ]
 }

@@ -1,7 +1,7 @@
 # GuideRail
 
-**Guide first. Guard second.**
-The rail you hold onto in any Google tool.
+**Your experts teach it once. Every new hire is guided by it, and guarded by your rules.**
+Guide first. Guard second. The rail you hold onto in any Google tool.
 
 GuideRail is a voice coach for Google tools. It guides employees through a task by voice, highlighting each step on the live page in Cloud Console, IAM and Gmail. It explains company policy before the user fills in a form, and catches anything still wrong before they click Create. It never clicks for the user.
 
@@ -16,11 +16,22 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 
 ## What GuideRail does
 
+0. **Learns from your experts (Learn mode):** turn on Learn mode, do the task once in the real tool and say why. GuideRail records the steps by meaning (never passwords or screenshots), asks "why?" at key choices, and drafts a Playbook and suggested Rules when you turn Learn mode off.
 1. **Guides:** you say the Goal ("deploy my app to Cloud Run"). GuideRail speaks each Step and highlights the exact button or field.
 2. **Explains policy up front:** at a form section with Rules, it explains what's required and suggests values, e.g. `owner=pranit`, `managed-by=manual`.
 3. **Guards:** it checks every field change against company Rules and flags Create until the form is compliant.
 4. **Clears blockers:** on *permission denied* it finds the least-privilege role, drafts the request in Gmail (you click Send) and guides the Approver through IAM. Then it picks up where you left off.
-5. **Never acts for you:** there is no click, type or send tool.
+5. **Never acts for you:** there is no click, type or send tool. The one exception is opt-in: in Firestore Assist, your Approve click fills only the Database ID; you still click Create ([details](docs/firestore-assist.md)).
+
+## Spoken replies and guiding colours
+
+Use the **Spoken replies** speaker icon beside the input (or **Alt+Shift+V**) to toggle spoken replies. Spoken replies are on by default and your choice survives panel reloads. Turning them off fades current playback; chat captions keep arriving and microphone input remains independent. Turning them back on during a reply takes effect on the next reply. The microphone icon starts listening and becomes a stop icon while listening; the paper plane sends typed text, as does Enter.
+
+The relay and local probe use Google's prebuilt **Erinome** voice by default. Google describes it as “clear.” Set `LIVE_VOICE` on the server (for example, `LIVE_VOICE=Kore`) to select another [supported Live API voice](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api/configure-language-voice#voices-supported); an empty value keeps Erinome. Language detection is unchanged.
+
+Ask in chat to “make the page calmer” or “put it back” to apply or remove the calm page appearance preset.
+
+Green means Here / Done, yellow means Check / Suggested / Recording, and red marks only blocking Rule Violations. Shapes, line patterns and labels carry the same meaning without colour. Reduced motion keeps these states static. See [the design contract](DESIGN.md) for tokens and motion.
 
 ## Google stack
 
@@ -43,7 +54,7 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 | [`docs/adr/`](docs/adr) | Decision records |
 | [`docs/research/`](docs/research) | Competitor teardown (SupaMaus, TipTour) and alternatives we rejected |
 | [`docs/hackathon.md`](docs/hackathon.md) | Submission rules and deadlines |
-| [`seed/`](seed) | Seed Policy, Rules and Playbook for the demo org |
+| [`seed/`](seed) | Seed Policy, Rules and goal Playbooks for the demo org (more Playbooks come from Learn mode) |
 
 ## For judges
 

@@ -1,0 +1,24 @@
+{
+  "name": "@guiderail/server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
+    "probe": "tsx src/probe.ts",
+    "test": "vitest run",
+    "typecheck": "tsc -p .",
+    "warm:journeys": "tsx src/journeys/warm.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.30.0",
+    "firebase-admin": "14.5.0",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.23.15",
+    "vitest": "^5.0.5"
+  }
+}

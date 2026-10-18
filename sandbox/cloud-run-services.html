@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="guiderail-url" content="console.cloud.google.com/run">
+  <title>Services · GuideRail sandbox</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, Roboto, Arial, sans-serif; color: #202124; background: #f8fafd; } * { box-sizing: border-box; } body { margin: 0; }
+    .banner { background: #fff7e0; border-bottom: 1px solid #f9ab00; color: #6d4c00; padding: 10px max(24px, calc((100% - 1120px) / 2)); font-size: 14px; font-weight: 600; } header { background: #fff; border-bottom: 1px solid #dadce0; padding: 20px 24px; } header div, main { max-width: 1120px; margin: auto; } .crumb { font-size: 14px; color: #5f6368; } h1 { font-size: 28px; margin: 10px 0 0; font-weight: 500; }
+    main { padding: 28px 24px 60px; } .card { background: #fff; border: 1px solid #dadce0; border-radius: 12px; padding: clamp(20px, 4vw, 32px); box-shadow: 0 1px 2px #3c40431a; } h2 { font-size: 21px; font-weight: 500; margin: 0; }
+    .toolbar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; } th, td { text-align: left; padding: 12px 10px; border-bottom: 1px solid #dadce0; } th { color: #5f6368; font-size: 12px; font-weight: 600; } tr.selected td { background: #e8f0fe; } input[type="checkbox"] { width: 18px; height: 18px; accent-color: #1a73e8; }
+    button { border: 0; border-radius: 4px; min-height: 38px; padding: 0 18px; cursor: pointer; font: 600 14px/1 inherit; } button:focus-visible, input:focus { outline: 3px solid #a8c7fa; outline-offset: 1px; } .primary { color: #fff; background: #1a73e8; } .primary:hover { background: #185abc; } .secondary { color: #1967d2; background: #fff; border: 1px solid #dadce0; } .secondary:hover { background: #f8fafd; }
+    #info-panel { margin-top: 22px; padding-top: 18px; border-top: 1px solid #dadce0; } #info-panel h2 { margin-bottom: 14px; }
+    .tabs { display: flex; flex-wrap: wrap; gap: 4px; border-bottom: 1px solid #dadce0; margin: 0 0 16px; } .tab { color: #3c4043; background: transparent; border-radius: 0; border-bottom: 2px solid transparent; min-height: 40px; padding: 0 12px; } .tab[aria-selected="true"] { color: #1967d2; border-bottom-color: #1967d2; }
+    .muted { margin: 0; color: #5f6368; font-size: 14px; } .label-row { display: grid; grid-template-columns: 1fr 1fr 38px; gap: 10px; margin-bottom: 10px; } input[type="text"] { width: 100%; min-height: 44px; border: 1px solid #747775; border-radius: 4px; padding: 10px 12px; background: #fff; font: inherit; color: inherit; } .remove { min-width: 38px; padding: 0; color: #b3261e; background: transparent; font-size: 22px; } .actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+    .notice { margin-top: 18px; border-radius: 8px; padding: 15px 17px; line-height: 1.45; } .success { color: #0d652d; background: #e6f4ea; border: 1px solid #a8dab5; } @media (max-width: 520px) { .label-row { grid-template-columns: 1fr 1fr 34px; gap: 6px; } }
+  </style>
+</head>
+<body>
+  <div class="banner">GuideRail sandbox — practice copy, not Google Cloud</div>
+  <header><div><div class="crumb">Cloud Run / Services</div><h1>Services</h1></div></header>
+  <main><div class="card">
+    <div class="toolbar">
+      <h2>Services</h2>
+      <button class="secondary" type="button" id="info-toggle" aria-expanded="false" aria-controls="info-panel">Show info panel</button>
+    </div>
+    <table>
+      <thead><tr><th scope="col">Select</th><th scope="col">Name</th><th scope="col">Region</th><th scope="col">Last deployed</th></tr></thead>
+      <tbody id="service-rows">
+        <tr>
+          <td><input type="checkbox" aria-label="Select ocr-service"></td>
+          <td>ocr-service</td>
+          <td>us-central1</td>
+          <td>—</td>
+        </tr>
+      </tbody>
+    </table>
+    <section id="info-panel" aria-label="Info panel" hidden>
+      <h2 id="info-heading">Service details</h2>
+      <div class="tabs" role="tablist" aria-labelledby="info-heading">
+        <button class="tab" type="button" role="tab" id="permissions-tab" aria-selected="true" aria-controls="permissions-panel">Permissions</button>
+        <button class="tab" type="button" role="tab" id="labels-tab" aria-selected="false" aria-controls="labels-panel">Labels</button>
+      </div>
+      <div role="tabpanel" id="permissions-panel" aria-labelledby="permissions-tab">
+        <p class="muted">Permissions for the selected service.</p>
+      </div>
+      <div role="tabpanel" id="labels-panel" aria-labelledby="labels-tab" hidden>
+        <div id="label-rows">
+          <div class="label-row">
+            <input type="text" aria-label="Key 1" placeholder="Key" autocomplete="off">
+            <input type="text" aria-label="Value 1" placeholder="Value" autocomplete="off">
+            <button class="remove" type="button" aria-label="Remove label 1">×</button>
+          </div>
+        </div>
+        <div class="actions">
+          <button class="secondary" type="button" id="add-label">Add label</button>
+          <button class="primary" type="button" id="save-labels">Save</button>
+        </div>
+        <div id="result" aria-live="polite"></div>
+      </div>
+    </section>
+  </div></main>
+  <script>
+    const rows = document.getElementById('label-rows');
+    const tbody = document.getElementById('service-rows');
+    const infoToggle = document.getElementById('info-toggle');
+    const infoPanel = document.getElementById('info-panel');
+
+    function addService(name) {
+      const tr = document.createElement('tr');
+      const select = document.createElement('td');
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.setAttribute('aria-label', 'Select ' + name);
+      select.append(box);
+      const nameCell = document.createElement('td');
+      nameCell.textContent = name;
+      const region = document.createElement('td');
+      region.textContent = 'us-central1';
+      const deployed = document.createElement('td');
+      deployed.textContent = '—';
+      tr.append(select, nameCell, region, deployed);
+      tbody.append(tr);
+    }
+
+    const created = new URLSearchParams(location.search).get('created');
+    const names = [...tbody.querySelectorAll('tr td:nth-child(2)')].map((cell) => cell.textContent);
+    if (created && !names.includes(created)) addService(created);
+
+    tbody.addEventListener('change', (event) => {
+      const box = event.target;
+      if (!(box instanceof HTMLInputElement) || box.type !== 'checkbox') return;
+      const row = box.closest('tr');
+      if (row) row.classList.toggle('selected', box.checked);
+    });
+
+    infoToggle.addEventListener('click', () => {
+      const open = infoToggle.getAttribute('aria-expanded') === 'true';
+      infoToggle.setAttribute('aria-expanded', String(!open));
+      infoPanel.hidden = open;
+    });
+
+    document.querySelectorAll('#info-panel [role="tab"]').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('#info-panel [role="tab"]').forEach((item) => {
+          const selected = item === tab;
+          item.setAttribute('aria-selected', String(selected));
+          const panel = document.getElementById(item.getAttribute('aria-controls'));
+          if (panel) panel.hidden = !selected;
+        });
+      });
+    });
+
+    function renumber() {
+      [...rows.children].forEach((row, i) => {
+        const n = i + 1;
+        const inputs = row.querySelectorAll('input');
+        inputs[0].setAttribute('aria-label', 'Key ' + n);
+        inputs[1].setAttribute('aria-label', 'Value ' + n);
+        row.querySelector('button').setAttribute('aria-label', 'Remove label ' + n);
+      });
+    }
+
+    function addRow() {
+      const n = rows.children.length + 1;
+      const row = document.createElement('div');
+      row.className = 'label-row';
+      row.innerHTML = '<input type="text" aria-label="Key ' + n + '" placeholder="Key" autocomplete="off"><input type="text" aria-label="Value ' + n + '" placeholder="Value" autocomplete="off"><button class="remove" type="button" aria-label="Remove label ' + n + '">×</button>';
+      row.querySelector('button').addEventListener('click', () => { row.remove(); renumber(); });
+      rows.append(row);
+    }
+
+    rows.querySelectorAll('.remove').forEach((button) => {
+      button.addEventListener('click', () => { button.closest('.label-row').remove(); renumber(); });
+    });
+    document.getElementById('add-label').addEventListener('click', addRow);
+    document.getElementById('save-labels').addEventListener('click', () => {
+      const result = document.getElementById('result');
+      result.className = 'notice success';
+      result.textContent = 'Labels saved';
+    });
+  </script>
+</body>
+</html>
