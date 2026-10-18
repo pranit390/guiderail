@@ -124,4 +124,36 @@ describe("calmer content messages", () => {
     vi.advanceTimersByTime(20);
     expect(chip.hidden).toBe(false);
   });
+
+  it("places a Rule chip beside its field, then below, and never over another form control", () => {
+    const value = document.querySelector('[aria-label="Value 1"]')!;
+    const blockers: Record<string, DOMRect> = {};
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      return blockers[this.getAttribute("aria-label") ?? ""] ?? new DOMRect(40, 100, 200, 60);
+    });
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip")!;
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+    expect(chip.style.left).toBe("248px");
+    expect(parseFloat(chip.style.top)).toBeCloseTo(100 + (60 - chip.offsetHeight) / 2);
+
+    const right = document.createElement("input");
+    right.setAttribute("aria-label", "Right");
+    value.after(right);
+    blockers.Right = new DOMRect(244, 100, 200, 60);
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+    expect(chip.style.top).toBe("166px");
+
+    const under = document.createElement("input");
+    under.setAttribute("aria-label", "Under");
+    right.after(under);
+    blockers.Under = new DOMRect(40, 162, 400, 60);
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(true);
+    (value as HTMLInputElement).focus();
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+  });
 });

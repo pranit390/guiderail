@@ -128,9 +128,30 @@ function placeChip(chip: HTMLElement, el: Element) {
   chip.hidden = !!offscreen(el);
   if (chip.hidden) return;
   const r = el.getBoundingClientRect();
-  const top = Math.max(4, r.top - chip.offsetHeight - 8);
-  const left = Math.min(window.innerWidth - chip.offsetWidth - 8, Math.max(4, r.right - chip.offsetWidth));
+  const w = chip.offsetWidth, h = chip.offsetHeight;
+  const rtl = getComputedStyle(el).direction === "rtl";
+  // Beside the field at its inline end, vertically centred; else just below it. Never over another form control.
+  const beside = new DOMRect(rtl ? r.left - 8 - w : r.right + 8, r.top + (r.height - h) / 2, w, h);
+  const belowLeft = Math.min(window.innerWidth - w - 4, Math.max(4, rtl ? r.left : r.right - w));
+  const below = new DOMRect(belowLeft, r.bottom + 6, w, h);
+  const spot = [beside, below].find((s) => fitsViewport(s) && !coversControl(s, el));
+  // No free spot: show the chip only while its field is focused, below the field.
+  if (!spot && !el.contains(document.activeElement)) { chip.hidden = true; return; }
+  const { left, top } = spot ?? below;
   Object.assign(chip.style, { left: `${left}px`, top: `${top}px` });
+}
+
+function fitsViewport(s: DOMRect) {
+  return s.left >= 4 && s.top >= 4 && s.right <= window.innerWidth - 4 && s.bottom <= window.innerHeight - 4;
+}
+
+function coversControl(s: DOMRect, own: Element) {
+  for (const c of document.querySelectorAll(`input,select,textarea,button,${CUSTOM_FIELD}`)) {
+    if (c === own || own.contains(c) || c.contains(own) || !isVisible(c)) continue;
+    const o = c.getBoundingClientRect();
+    if (s.left < o.right && o.left < s.right && s.top < o.bottom && o.top < s.bottom) return true;
+  }
+  return false;
 }
 
 function applyTheme(node: HTMLElement, el: Element) {
