@@ -23,19 +23,21 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   let acted = -1;
   const statuses = rows.map(() => "Not checked on this screen.");
   const controls = document.createElement("div");
+  const heading = document.createElement("h2");
   const status = document.createElement("p");
   const reread = document.createElement("button"); reread.type = "button"; reread.textContent = "Read and point to Step";
-  const next = document.createElement("button"); next.type = "button"; next.textContent = "I did this · Next step"; next.disabled = true;
+  const next = document.createElement("button"); next.type = "button"; next.className = "journey-next"; next.textContent = "I did this · Next step"; next.disabled = true;
   const skip = document.createElement("button"); skip.type = "button"; skip.textContent = "Skip this Step explicitly";
   const labels = rows.map((row) => { const label = document.createElement("p"); row.append(label); return label; });
   const citation = document.createElement("a"); citation.className = "citation";
   citation.target = "_blank"; citation.rel = "noopener noreferrer";
   controls.className = "journey-current";
-  controls.append(status, citation, reread, next, skip); currentRegion.prepend(controls);
+  controls.append(heading, status, citation, reread, next, skip); currentRegion.prepend(controls);
   currentRegion.hidden = false;
   function render() {
     rows.forEach((row, i) => { row.toggleAttribute("data-current", i === current); if (i === current) row.setAttribute("aria-current", "step"); else row.removeAttribute("aria-current"); labels[i].textContent = statuses[i]; });
-    status.textContent = current < rows.length ? `Step ${current + 1}: ${journey.steps[current].control}. ${statuses[current]}` : "All Steps reviewed. GuideRail has not verified database creation.";
+    heading.textContent = current < rows.length ? `Step ${current + 1} of ${rows.length} · ${journey.steps[current].control}` : "Journey review ended";
+    status.textContent = current < rows.length ? statuses[current] : "Journey review ended. Some Steps may be unreviewed. GuideRail has not verified database creation.";
     const step = journey.steps[current];
     citation.hidden = !step;
     if (step) {
@@ -82,6 +84,17 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   skip.addEventListener("click", () => advance(true));
   render();
   return {
+    // A successful model pointer may move guidance to a later cited control.
+    // It never marks the earlier Steps done, and Create remains a human boundary.
+    pointed(name: string) {
+      if (!enabled) return;
+      const match = resolveName(name, journey.steps.map((step, i) => ({ i, role: "button", name: step.control })));
+      if (match.status !== "found") return;
+      if (current !== match.i) { revision++; current = match.i; acted = -1; }
+      observed = current; pointed = current;
+      statuses[current] = `${name} is visible. You operate this control.`;
+      render();
+    },
     setEnabled(value: boolean) { if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); },
     acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current || pointed === current) acted = current; statuses[current] = message; render(); },
     invalidate(message: string, sameTab = false) { void clear(); revision++; observed = -1; if (!sameTab) { pointed = -1; acted = -1; } if (current < rows.length) statuses[current] = message; render(); },
