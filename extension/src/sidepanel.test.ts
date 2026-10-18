@@ -234,6 +234,95 @@ describe("audit recovery and announcements", () => {
   });
 });
 
+describe("readable current panel guidance", () => {
+  it("renders streamed model emphasis and code while leaving HTML and unsafe links literal", async () => {
+    const socket = await connected();
+    socket.receive({ type: "transcript", role: "model", text: "Choose **Production" });
+    socket.receive({ type: "transcript", role: "model", text: " mode** and *review* `Next`. <img src=x onerror=alert(1)> [x](javascript:alert(1))" });
+    const reply = $(".msg.model");
+    expect(reply.querySelector("strong")?.textContent).toBe("Production mode");
+    expect(reply.querySelector("em")?.textContent).toBe("review");
+    expect(reply.querySelector("code")?.textContent).toBe("Next");
+    expect(reply.querySelector("img,a,script")).toBeNull();
+    expect(reply.textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+  it("keeps repeated page and passing-submit events in model context without adding chat noise", async () => {
+    const socket = await connected();
+    for (let i = 0; i < 4; i++) page({ kind: "page_event", text: 'User clicked "Next".' });
+    page({ kind: "submit_intent", label: "Next", form });
+    await vi.waitFor(() => expect(sent(socket).filter((m) => m.type === "event")).toHaveLength(5));
+    expect($("#log").textContent).not.toContain("User clicked");
+  });
+  it("uses one working line for concurrent slow tools and settles after failure", async () => {
+    const socket = await connected();
+    const finishes: ((result: unknown) => void)[] = [];
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finishes.push(resolve); }));
+    socket.receive({ type: "tool_call", id: "read", name: "read_page", args: {} });
+    await vi.waitFor(() => expect(finishes).toHaveLength(1));
+    expect($("#working").textContent).toBe("Reading the page…");
+    socket.receive({ type: "tool_call", id: "check", name: "check_policy", args: {} });
+    await vi.waitFor(() => expect(finishes).toHaveLength(2));
+    expect(document.querySelectorAll("#working")).toHaveLength(1);
+    expect($("#working").textContent).toBe("Checking policy…");
+    expect($("#log").getAttribute("aria-busy")).toBe("true");
+    finishes[0]({ url: "https://console.firebase.google.com/", title: "Firestore", generation: 1, elements: [] });
+    await vi.waitFor(() => expect(sent(socket).some((m) => m.id === "read")).toBe(true));
+    expect($("#working").hidden).toBe(false);
+    finishes[1]({ error: "The page changed." });
+    await vi.waitFor(() => expect($("#working").hidden).toBe(true));
+    expect($("#log").getAttribute("aria-busy")).toBe("false");
+  });
+  it.each(["turn_complete", "error", "interrupted", "disconnect"])("clears pending working state on %s, including late tool completion", async (event) => {
+    const socket = await connected();
+    let finish: (result: unknown) => void = () => {};
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    socket.receive({ type: "tool_call", id: "read", name: "read_page", args: {} });
+    await vi.waitFor(() => expect($("#working").hidden).toBe(false));
+    if (event === "disconnect") socket.closed(1000); else socket.receive({ type: event, message: "Fixture error" });
+    expect($("#working").hidden).toBe(true);
+    finish({ url: "https://console.firebase.google.com/", title: "Firestore", generation: 1, elements: [] });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect($("#working").hidden).toBe(true);
+    expect($("#log").getAttribute("aria-busy")).toBe("false");
+  });
+  it("clears resolved Violations and rejects a stale response after navigation", async () => {
+    await connected();
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner.", severity: "block" }];
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect($("#issues").hidden).toBe(false));
+    policy.violations = [];
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect($("#issues").hidden).toBe(true));
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner.", severity: "block" }];
+    let finish: (result: unknown) => void = () => {};
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    page({ kind: "form_changed", form });
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalled());
+    page({ kind: "tab_changed", tabId: 1, url: "https://console.firebase.google.com/project/other/firestore" });
+    finish({ shown: ["Labels"] });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect($("#issues").hidden).toBe(true);
+    expect($("#issues-list").children).toHaveLength(0);
+  });
+  it.each([
+    ["tab_changed", { kind: "tab_changed", tabId: 1, url: "https://console.firebase.google.com/project/other/firestore" }],
+    ["page_event", { kind: "page_event", text: "The page changed.", generation: 2 }],
+  ])("keeps the override notice hidden after %s during a held submit, but still warns the coach", async (_name, change) => {
+    const socket = await connected();
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner.", severity: "block" }];
+    let finish: (result: unknown) => void = () => {};
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    page({ kind: "submit_intent", label: "Create", form, continued: true });
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ kind: "show_violations" })));
+    sendMessage.mockResolvedValue({ ok: true });
+    page(change);
+    finish({ shown: ["Labels"] });
+    await vi.waitFor(() => expect(sent(socket)).toContainEqual({ type: "event", text: expect.stringContaining('User is about to click "Create" but 1 to fix (1 Rule) remain: Add an owner.') }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect($("#policy-override").hidden).toBe(true);
+  });
+});
+
 describe("lazy Live connection", () => {
   it("does not request a session or open a socket when the panel opens", async () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -1264,6 +1353,53 @@ describe("demo sign-in", () => {
 });
 
 describe("Firestore Guard panel", () => {
+  const firestoreTest = { ...form, url: "console.firebase.google.com/project/practice-only/firestore", fields: { "Start in test mode": "checked", "Start in Production mode": "" } };
+  function delayedReads() {
+    const reads: ((value: unknown) => void)[] = [];
+    sendMessage.mockImplementation((_tab: number, msg: { kind: string }) => msg.kind === "read_form" ? new Promise((resolve) => { reads.push(resolve); }) : Promise.resolve({ shown: [] }));
+    const shows = () => sendMessage.mock.calls.filter(([, msg]) => msg.kind === "show_violations");
+    return { reads, shows };
+  }
+  it("ignores a read from tab A that resolves after tab B, without sending stale Violations or reviving the Firestore card", async () => {
+    policy.violations = [{ ruleId: "firestore-no-test-mode", field: "Start in test mode", severity: "block", message: "Test mode allows anyone to read and overwrite your data." }];
+    const { reads, shows } = delayedReads();
+    page({ kind: "tab_changed", tabId: 1, url: "https://console.firebase.google.com/project/practice-only/firestore" });
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    page({ kind: "tab_changed", tabId: 2, url: "https://example.com/" });
+    await vi.waitFor(() => expect(reads).toHaveLength(2));
+    reads[1](form);
+    await vi.waitFor(() => expect(shows()).toHaveLength(1));
+    reads[0](firestoreTest);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(shows()).toHaveLength(1);
+    expect($("#firestore-guidance").hidden).toBe(true);
+  });
+  it("does not revive Firestore guidance from a policy read that began before a tab change", async () => {
+    const socket = await connected();
+    const { reads, shows } = delayedReads();
+    socket.receive({ type: "tool_call", id: "check", name: "check_policy", args: {} });
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    page({ kind: "tab_changed", tabId: 2 });
+    await vi.waitFor(() => expect(reads).toHaveLength(2));
+    reads[0](firestoreTest);
+    await vi.waitFor(() => expect(sent(socket).some((m) => m.id === "check")).toBe(true));
+    expect(shows()).toHaveLength(0);
+    expect($("#firestore-guidance").hidden).toBe(true);
+  });
+  it("does not show Violations or the Firestore card from a policy read that resolves after Teach starts", async () => {
+    policy.violations = [{ ruleId: "firestore-no-test-mode", field: "Start in test mode", severity: "block", message: "Test mode allows anyone to read and overwrite your data." }];
+    const socket = await connected();
+    const { reads, shows } = delayedReads();
+    socket.receive({ type: "tool_call", id: "check", name: "check_policy", args: {} });
+    await vi.waitFor(() => expect(reads).toHaveLength(1));
+    $<HTMLButtonElement>("#teach").click();
+    await vi.waitFor(() => expect(shows()).toHaveLength(1));
+    reads[0](firestoreTest);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(shows().map(([, msg]) => msg.violations)).toEqual([[]]);
+    expect($("#firestore-guidance").hidden).toBe(true);
+    expect($("#issues").hidden).toBe(true);
+  });
   it("renders the block reason, safe choice and location source, then clears on Production", async () => {
     await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
     const firestore = { ...form, url: "console.firebase.google.com/project/practice-only/firestore", fields: { "Start in test mode": "checked", "Start in Production mode": "" } };

@@ -11,6 +11,7 @@ import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
 import { FIRESTORE_CREATE_DIALOG } from "./firestore.ts";
+import { highlightRegion, padded, pageObstacles, placeTag, type Rect } from "./highlight-layout.ts";
 
 const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
@@ -93,7 +94,7 @@ shadow.innerHTML = `<style>
   .toast { position:fixed; left:50%; bottom:28px; transform:translateX(-50%); background:#16211c; color:#fff; font:600 14px/1.4 system-ui,sans-serif; padding:10px 14px; border-radius:8px; border:2px dashed ${STATES.check.dark}; max-width:420px; }
   .rec { position:fixed; right:16px; top:16px; background:#16211c; color:${STATES.check.dark}; border:2px dashed currentColor; font:600 13px/1.2 system-ui,sans-serif; padding:6px 10px; border-radius:6px; }
   :host(.gr-calm) .ring::after, :host(.gr-calm) .bad, :host(.gr-calm) .bad::after { animation:none; transition:none; }
-  .gr-shade { position: fixed; box-shadow: 0 0 0 100vmax rgba(0,0,0,.08); }
+  .gr-shade { position:fixed; box-shadow:0 0 0 100vmax rgba(0,0,0,.12); filter:blur(6px); pointer-events:none; }
   @media (prefers-reduced-motion: reduce) { .ring, .ring::after, .bad, .bad::after { animation:none !important; transition:none; } }
   @media (forced-colors: active) {
     .ring { outline: 2px solid Highlight; box-shadow: none; forced-color-adjust: none; }
@@ -123,6 +124,39 @@ layer.append(cue);
 let badBoxes: { el: Element; box: HTMLDivElement; chip: HTMLDivElement }[] = [];
 const calm = new CalmView(host, layer, (text) => send({ kind: "customize_event", text }));
 let followRunning = false;
+let obstacles: Rect[] = [];
+let placementDirty = true;
+let invalidatedAt = -Infinity;
+let lastTargetLayout = "";
+
+// Any page or viewport change leaves the tag's free space unverified: hide it until a fresh scan after 200ms of quiet.
+function invalidateTag() {
+  stepChip.hidden = true;
+  placementDirty = true;
+  invalidatedAt = performance.now();
+}
+
+function placeStep() {
+  if (!highlighted) return;
+  const { rect, radius } = highlightRegion(highlighted);
+  const bounds = padded(rect, 4);
+  Object.assign(ring.style, { left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px`, borderRadius: `${radius + 4}px` });
+  const layout = JSON.stringify([rect, window.innerWidth, window.innerHeight]);
+  if (layout !== lastTargetLayout) {
+    if (lastTargetLayout) invalidateTag();
+    placementDirty = true;
+    lastTargetLayout = layout;
+  }
+  if (!placementDirty || performance.now() - invalidatedAt < 200) return;
+  placementDirty = false;
+  stepChip.hidden = !!offscreen(highlighted);
+  if (stepChip.hidden) return;
+  Object.assign(stepChip.style, { left: "0px", top: "0px", maxWidth: `${Math.min(260, window.innerWidth - 16)}px` });
+  obstacles = pageObstacles();
+  const spot = placeTag(rect, { width: stepChip.offsetWidth, height: stepChip.offsetHeight }, { width: window.innerWidth, height: window.innerHeight }, obstacles);
+  stepChip.hidden = !spot;
+  if (spot) Object.assign(stepChip.style, { left: `${spot.left}px`, top: `${spot.top}px` });
+}
 
 function place(box: HTMLElement, el: Element, pad: number) {
   const r = el.getBoundingClientRect();
@@ -137,7 +171,7 @@ function placeChip(chip: HTMLElement, el: Element) {
   const rtl = getComputedStyle(el).direction === "rtl";
   // Narrow the chip to the room beside the field (gap 8px, margin 4px, padding 14px) so it can sit there.
   const room = (rtl ? r.left : window.innerWidth - r.right) - 26;
-  chip.style.maxWidth = `${room >= 120 ? Math.min(260, room) : 260}px`;
+  Object.assign(chip.style, { left: "0px", top: "0px", maxWidth: `${room >= 120 ? Math.min(260, room) : 260}px` });
   const w = chip.offsetWidth, h = chip.offsetHeight;
   // Beside the field at its inline end, vertically centred; else just below it. Never over another form control.
   const beside = new DOMRect(rtl ? r.left - 8 - w : r.right + 8, r.top + (r.height - h) / 2, w, h);
@@ -211,20 +245,26 @@ function ensureOverlaySurface(target?: Element) {
     if (host.parentElement !== surface) surface.append(host);
   }
 }
-const surfaceObserver = new MutationObserver(() => ensureOverlaySurface());
-surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "hidden", "style"] });
+const surfaceObserver = new MutationObserver(() => { invalidateTag(); ensureOverlaySurface(); });
+surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["open", "hidden", "style", "class"] });
 document.addEventListener("toggle", onSurfaceToggle, true);
 function onSurfaceToggle() { ensureOverlaySurface(); }
 
 function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   ensureOverlaySurface(el);
   highlighted = el;
+  layoutObserver.disconnect();
+  layoutObserver.observe(document.documentElement);
+  if (document.body) layoutObserver.observe(document.body);
+  layoutObserver.observe(el);
+  if (el instanceof HTMLInputElement) for (const label of el.labels ?? []) layoutObserver.observe(label);
   applyTheme(ring, el);
   applyTheme(cue, el);
   ring.hidden = false;
-  place(ring, el, 4);
   stepChip.replaceChildren(stateGlyph("go"), document.createTextNode(`Here · ${nameOf(el)}`));
-  placeChip(stepChip, el);
+  lastTargetLayout = "";
+  invalidatedAt = -Infinity;
+  placeStep();
   // Three soft breaths, then a static halo.
   ring.classList.remove("pulse");
   if (!reducedMotion()) { void ring.offsetWidth; ring.classList.add("pulse"); }
@@ -250,9 +290,9 @@ function startFollow() {
 function follow() {
   if (!alive()) return shutdown();
   ensureOverlaySurface();
-  calm.follow(highlighted, badBoxes.map(({ el }) => el));
+  calm.follow(highlighted);
   if (highlighted) {
-    if (highlighted.isConnected && surfaceVisible(highlighted) && isVisible(highlighted)) { place(ring, highlighted, 4); ring.hidden = false; placeCue(highlighted); placeChip(stepChip, highlighted); }
+    if (highlighted.isConnected && surfaceVisible(highlighted) && isVisible(highlighted)) { placeStep(); ring.hidden = false; placeCue(highlighted); }
     else { ring.hidden = true; highlighted = null; }
   } else ring.hidden = true;
   if (!highlighted) { cue.hidden = true; stepChip.hidden = true; }
@@ -265,7 +305,9 @@ function follow() {
   if (highlighted || badBoxes.length || calm.active) requestAnimationFrame(follow);
   else followRunning = false;
 }
-function onViewportChange() { if (highlighted || badBoxes.length || calm.active) startFollow(); }
+function onViewportChange() { invalidateTag(); if (highlighted || badBoxes.length || calm.active) startFollow(); }
+const layoutObserver = new ResizeObserver(onViewportChange);
+document.fonts?.addEventListener("loadingdone", onViewportChange);
 window.addEventListener("resize", onViewportChange);
 document.addEventListener("scroll", onViewportChange, true);
 
@@ -466,6 +508,8 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
 function shutdown() {
   overlayStopped = true;
   surfaceObserver.disconnect();
+  layoutObserver.disconnect();
+  document.fonts?.removeEventListener("loadingdone", onViewportChange);
   document.removeEventListener("toggle", onSurfaceToggle, true);
   calm.restore();
   document.removeEventListener("input", onInput, true);

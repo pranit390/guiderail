@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="guiderail-url" content="https://console.firebase.google.com/project/fixture/firestore/databases">
+  <title>Firestore · Create a database · isolated fixture</title>
+  <style>
+    * { box-sizing:border-box; }
+    body { margin:0; color:#202124; background:#f8fafd; font:14px/1.5 Arial,sans-serif; }
+    header { height:64px; display:flex; align-items:center; gap:40px; padding:0 28px; background:white; border-bottom:1px solid #dadce0; }
+    header strong { font-size:20px; font-weight:500; }
+    header span { color:#5f6368; }
+    main { margin:32px auto; width:min(760px,calc(100% - 64px)); padding-bottom:260px; }
+    h1 { font-size:24px; font-weight:500; margin:24px 0; }
+    .wizard { background:white; border:1px solid #dadce0; border-radius:12px; padding:28px 32px; }
+    h2 { font-size:16px; font-weight:500; margin:0 0 20px; }
+    .step { display:inline-grid; place-items:center; width:28px; height:28px; background:#e8f0fe; color:#1967d2; border-radius:50%; margin-right:12px; }
+    .editions { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:0 0 28px 40px; }
+    .edition { display:block; border:1px solid #dadce0; border-radius:8px; padding:16px; cursor:pointer; }
+    .edition:has(:checked) { border:2px solid #1a73e8; padding:15px; background:#f8fbff; }
+    label { cursor:pointer; }
+    label input { margin:0 10px 0 0; accent-color:#1a73e8; }
+    .description { color:#5f6368; font-size:13px; margin:10px 0 0; }
+    .configure { border-top:1px solid #dadce0; padding-top:24px; }
+    .fields { margin:0 0 28px 40px; display:flex; gap:20px; }
+    .fields label { display:grid; gap:6px; color:#5f6368; }
+    .fields input, select { font:inherit; padding:9px; border:1px solid #747775; border-radius:4px; background:white; color:#202124; }
+    .mode { margin:0 0 24px 40px; }
+    .choice { display:inline-flex; align-items:center; border-radius:4px; padding:4px 0; font-weight:500; }
+    .mode p { margin:4px 0 0 24px; max-width:520px; }
+    .actions { display:flex; justify-content:flex-end; gap:12px; margin-top:28px; }
+    button { border:0; border-radius:4px; padding:10px 24px; font:500 14px Arial,sans-serif; cursor:pointer; background:#1a73e8; color:white; }
+    button.secondary { background:transparent; color:#1967d2; }
+    .notice { color:#5f6368; font-size:12px; margin-top:20px; }
+    @media(max-width:600px) { main { width:calc(100% - 24px); } .wizard { padding:20px; } .editions { grid-template-columns:1fr; } .fields { flex-direction:column; } }
+  </style>
+</head>
+<body>
+  <!-- Synthetic saved fixture based on the reported Firebase wizard structure, not a signed-in capture. -->
+  <header><strong>Firebase</strong><span>Isolated fixture / Firestore Database</span></header>
+  <main>
+    <h1>Create a database</h1>
+    <section class="wizard" aria-label="Create a database">
+      <h2><span class="step">1</span>Select edition</h2>
+      <div class="editions">
+        <label class="edition"><input type="radio" name="edition" aria-label="Standard edition" checked>Standard edition<p class="description">Automatic scaling and indexes. Build mobile and web applications.</p></label>
+        <label class="edition"><input type="radio" name="edition" aria-label="Enterprise edition">Enterprise edition<p class="description">Advanced query capabilities with MongoDB compatibility.</p></label>
+      </div>
+      <section class="configure" aria-label="Configure">
+        <h2><span class="step">2</span>Database ID and location</h2>
+        <div class="fields"><label>Database ID<input value="(default)"></label><label>Location<select><option>nam5 (United States)</option></select></label></div>
+      </section>
+      <section aria-label="Security rules">
+        <h2><span class="step">3</span>Configure</h2>
+        <div class="mode">
+          <label class="choice" for="production"><input id="production" type="radio" name="mode" checked>Start in Production mode</label>
+          <p class="description">Your data is private by default. Third-party client access is denied until you update your security rules.</p>
+        </div>
+        <div class="mode">
+          <label class="choice" for="test"><input id="test" type="radio" name="mode">Start in Test mode</label>
+          <p class="description">Your data is open by default. Anyone can read and overwrite your data for the next 30 days.</p>
+        </div>
+      </section>
+      <div class="actions"><button class="secondary" type="button">Back</button><button type="button">Next</button></div>
+    </section>
+    <p class="notice">Test fixture only · no Google session, project, network request or resource creation.</p>
+  </main>
+</body>
+</html>

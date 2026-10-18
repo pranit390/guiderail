@@ -1,3 +1,5 @@
+import { highlightRegion, padded } from "./highlight-layout.ts";
+
 export type CalmPreset = "calm" | null;
 
 export function parseCalmPreset(value: unknown): CalmPreset {
@@ -79,18 +81,13 @@ export class CalmView {
     this.shade.hidden = true;
   }
 
-  follow(step: Element | null, violations: Element[]) {
+  follow(step: Element | null) {
     this.shade.hidden = !this.active || !step?.isConnected || step.getClientRects().length === 0;
     if (this.shade.hidden || !step) return;
-    // Keep the Step, flagged fields and keyboard focus bright, including overlapping regions.
-    const focus = document.activeElement;
-    const targets = [step, ...violations, ...(focus && focus !== document.body && focus !== this.host ? [focus] : [])]
-      .filter((el) => el.isConnected && el.getClientRects().length > 0);
-    const rects = targets.map((el) => el.getBoundingClientRect());
-    const left = Math.min(...rects.map((r) => r.left)) - 8;
-    const top = Math.min(...rects.map((r) => r.top)) - 8;
-    const right = Math.max(...rects.map((r) => r.right)) + 8;
-    const bottom = Math.max(...rects.map((r) => r.bottom)) + 8;
-    Object.assign(this.shade.style, { left: `${left}px`, top: `${top}px`, width: `${right - left}px`, height: `${bottom - top}px` });
+    const { rect, radius } = highlightRegion(step);
+    // One soft cutout follows only the semantic target. Distant focus/Rules must
+    // not punch a large rectangular corridor through the rest of the dimmer.
+    const hole = padded(rect, 8);
+    Object.assign(this.shade.style, { left: `${hole.left}px`, top: `${hole.top}px`, width: `${hole.width}px`, height: `${hole.height}px`, borderRadius: `${radius + 8}px` });
   }
 }

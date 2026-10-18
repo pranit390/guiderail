@@ -16,6 +16,34 @@ function mount() {
 }
 afterEach(() => document.body.replaceChildren());
 describe("cited Guide walk", () => {
+  it("updates the current header when a unique later control is pointed to, without reporting earlier Steps done", () => {
+    const { parent, walk, next } = mount();
+    walk.pointed("Start in Production mode");
+    expect(parent.querySelector(".journey-current h2")?.textContent).toBe("Step 9 of 10 · Production mode");
+    expect(parent.querySelector('[aria-current="step"] strong')?.textContent).toBe("Production mode");
+    expect(parent.textContent).not.toContain("reported this Step done");
+    expect(parent.querySelector("li p:last-child")?.textContent).toBe("Not checked on this screen.");
+    expect(next.disabled).toBe(false);
+    expect(next.className).toBe("journey-next");
+    next.click();
+    expect(parent.querySelector(".journey-current h2")?.textContent).toBe("Step 10 of 10 · Create");
+    expect(next.disabled).toBe(true);
+    walk.pointed("Create"); expect(next.disabled).toBe(true);
+  });
+  it("moves only on a whole-phrase match and never fuzzily to Create", () => {
+    const { parent, walk, next } = mount();
+    walk.pointed("Create database"); walk.pointed("Firestore Studio"); walk.pointed("Add database later");
+    expect(parent.querySelector(".journey-current h2")?.textContent).toBe("Step 1 of 10 · Databases & Storage");
+    expect(next.disabled).toBe(true);
+    walk.pointed("Cloud Firestore");
+    expect(parent.querySelector(".journey-current h2")?.textContent).toBe("Step 2 of 10 · Firestore");
+  });
+  it("does not infer a current Step from a repeated Next name or an unrelated pointer", () => {
+    const { parent, walk, next } = mount();
+    walk.pointed("Next"); walk.pointed("Billing");
+    expect(parent.querySelector(".journey-current h2")?.textContent).toBe("Step 1 of 10 · Databases & Storage");
+    expect(next.disabled).toBe(true);
+  });
   it("keeps a missing Step citation, never guesses a highlight, and explicitly skips", async () => {
     const { parent, read, point, reread, next, skip } = mount(); reread.click();
     await vi.waitFor(() => expect(reread.disabled).toBe(false));
