@@ -1,0 +1,83 @@
+import { randomBytes, randomUUID } from "node:crypto";
+
+const MINUTE = 60_000;
+export const DAILY_LIVE_MS = 5 * MINUTE;
+export const SESSION_MS = 10 * MINUTE;
+
+type Admission = { allowed: true; release: () => void } | { allowed: false; message: string };
+
+/** Deliberately instance-local: replacements reset the demo allowance. */
+export class LiveAdmission {
+  private day = new Date().toISOString().slice(0, 10);
+  private last = Date.now();
+  private used = 0;
+  private active = new Map<symbol, { started: number; expire: () => void }>();
+  private timer: ReturnType<typeof setTimeout> | undefined;
+
+  private settle() {
+    const now = Date.now();
+    const day = new Date(now).toISOString().slice(0, 10);
+    if (day !== this.day) {
+      const midnight = Date.parse(`${day}T00:00:00Z`);
+      this.used = Math.max(0, now - midnight) * this.active.size;
+      this.day = day;
+    } else this.used += (now - this.last) * this.active.size;
+    this.last = now;
+  }
+
+  private schedule() {
+    clearTimeout(this.timer);
+    if (!this.active.size) return;
+    const now = Date.now();
+    const remaining = Math.max(0, DAILY_LIVE_MS - this.used);
+    const oldest = Math.min(...[...this.active.values()].map((session) => session.started));
+    const midnight = Date.parse(`${this.day}T00:00:00Z`) + 24 * 60 * MINUTE;
+    this.timer = setTimeout(() => {
+      this.settle();
+      for (const [id, session] of this.active) {
+        if (this.used >= DAILY_LIVE_MS || Date.now() - session.started >= SESSION_MS) {
+          this.active.delete(id);
+          session.expire();
+        }
+      }
+      this.schedule();
+    }, Math.max(1, Math.min(remaining / this.active.size, SESSION_MS - (now - oldest), midnight - now)));
+    this.timer.unref();
+  }
+
+  admit(expire: () => void): Admission {
+    this.settle();
+    if (this.active.size >= 3) return { allowed: false, message: "The coach is busy. Three sessions are already active; please retry shortly." };
+    if (this.used >= DAILY_LIVE_MS) return { allowed: false, message: "Today's demo voice allowance is used. Please try again tomorrow (UTC)." };
+    const id = Symbol();
+    this.active.set(id, { started: Date.now(), expire });
+    this.schedule();
+    return { allowed: true, release: () => {
+      this.settle();
+      this.active.delete(id);
+      this.schedule();
+    } };
+  }
+}
+
+/** One-use, 60-second capabilities bound to a fresh anonymous identity and Origin. */
+export class SessionTickets {
+  private tickets = new Map<string, { origin: string; expires: number; anonymousId: string }>();
+
+  issue(origin: string) {
+    for (const [token, ticket] of this.tickets) if (ticket.expires <= Date.now()) this.tickets.delete(token);
+    if (this.tickets.size >= 128) return undefined;
+    const credential = randomBytes(32).toString("base64url");
+    const ticket = { origin, expires: Date.now() + MINUTE, anonymousId: randomUUID() };
+    this.tickets.set(credential, ticket);
+    return { credential, anonymousId: ticket.anonymousId, expiresAt: ticket.expires };
+  }
+
+  consume(token: string | null, origin: string | undefined) {
+    if (!token || !origin) return undefined;
+    const ticket = this.tickets.get(token);
+    if (!ticket || ticket.origin !== origin || ticket.expires <= Date.now()) return undefined;
+    this.tickets.delete(token);
+    return ticket.anonymousId;
+  }
+}

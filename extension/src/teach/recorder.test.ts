@@ -26,6 +26,36 @@ const change = (id: string, value: string) => {
 };
 
 describe("recorder", () => {
+  it.each(["Recovery code", "Seed phrase", "recovery phrase", "mnemonic", "Session cookie", "Security answer", "backup code", "authentication code", "wallet phrase"])("masks a short %s secret identified by a secondary label", (label) => {
+    const associated = document.createElement("label");
+    associated.htmlFor = "private";
+    associated.textContent = label;
+    const field = document.createElement("input");
+    field.id = "private";
+    field.setAttribute("aria-label", "Display name");
+    document.body.append(associated, field);
+    change("private", "AB12-CD34");
+    expect(events).toEqual([expect.objectContaining({ t: "field", value: "«masked»" })]);
+  });
+
+  it("masks OTP, credential and token-named values through the shared page boundary", () => {
+    document.body.insertAdjacentHTML("beforeend", '<input id="otp" aria-label="One-time code"><textarea id="cred" name="credential"></textarea>');
+    change("otp", "123456");
+    change("cred", "ordinary-looking-secret");
+    change("tok", "short-token");
+    expect(events).toHaveLength(3);
+    expect(events.every((event) => event.t === "field" && event.value === "«masked»")).toBe(true);
+  });
+
+  it("records nothing on sensitive account origins", () => {
+    vi.stubGlobal("location", new URL("https://accounts.google.com/signin"));
+    try {
+      startRecording((event) => events.push(event));
+      document.querySelector("button")!.click();
+      change("svc", "must-not-leave-browser");
+      expect(events).toEqual([]);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("records a click with the element's meaning", () => {
     document.querySelector("button")!.click();
     expect(events[0]).toMatchObject({ t: "click", target: { role: "button", name: "Create service" } });

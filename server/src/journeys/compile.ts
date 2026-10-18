@@ -20,16 +20,18 @@ const generateJourney: GenerateJourney = async () => {
     config: { tools: [{ urlContext: {} }], temperature: 0, maxOutputTokens: 4500, thinkingConfig: { thinkingLevel: ThinkingLevel.LOW }, httpOptions: { timeout: 90_000, retryOptions: { attempts: 1 } }, abortSignal: AbortSignal.timeout(90_000) } });
 };
 export class CompileBusyError extends Error {}
+export class CompileDisabledError extends Error {}
 
 export class JourneyCompiler {
   private pending: Promise<CompileResult> | undefined;
   private lastAttempt = 0;
   constructor(private store: JourneyStore, private generate: GenerateJourney = generateJourney) {}
-  async compile(): Promise<CompileResult> {
+  async compile({ cachedOnly = false }: { cachedOnly?: boolean } = {}): Promise<CompileResult> {
     const cached = await this.store.get().catch(() => {
       throw new CompileError("Couldn't read the Journey cache. Retry compilation, or read the official docs.");
     });
     if (cached) return { journey: cached, cacheHit: true };
+    if (cachedOnly) throw new CompileDisabledError("Documentation compilation is disabled on this cost-limited demo. Open the official docs, or use a previously cached Journey.");
     if (this.pending) return this.pending;
     if (Date.now() - this.lastAttempt < 5000) throw new CompileBusyError("The docs compiler is busy. Retry in a few seconds.");
     this.lastAttempt = Date.now();

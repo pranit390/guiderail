@@ -1,4 +1,6 @@
+import { isSensitiveUrl } from "./privacy.ts";
 import { STATES } from "./states.ts";
+import { isSecretField, MASK, maskValue } from "./teach/events.ts";
 
 export const INTERACTIVE =
   'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=radio],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
@@ -7,6 +9,10 @@ export function effectiveUrl(): string {
   // Sandbox pages declare which Google page they stand in for.
   const meta = document.querySelector<HTMLMetaElement>('meta[name="guiderail-url"]');
   return meta?.content ?? location.host + location.pathname;
+}
+
+export function isSensitivePage(): boolean {
+  return isSensitiveUrl(location.href) || isSensitiveUrl(effectiveUrl());
 }
 
 export function allElements(root: Document | ShadowRoot = document): Element[] {
@@ -51,6 +57,9 @@ export function nameOf(el: Element): string {
   if (wrapping && wrapping !== el) return textOf(wrapping);
   const placeholder = el.getAttribute("placeholder");
   if (placeholder) return placeholder;
+  // A textarea/select/contenteditable's text can itself be the entered secret;
+  // never use a form value as its fallback accessible name.
+  if (el.matches("input,select,textarea,[contenteditable=true]")) return el.getAttribute("name") ?? el.getAttribute("title") ?? "";
   const t = textOf(el);
   if (t) return t.slice(0, 80);
   return el.getAttribute("title") ?? "";
@@ -95,19 +104,32 @@ export type CollectedControl = {
   name: string;
   value?: string;
   section?: string;
+  rank: number;
 };
+
+// Form controls first (on screen before off screen), page chrome such as headers, nav and menus last.
+function rankOf(el: Element): number {
+  if (el.closest("header,nav,[role=banner],[role=navigation],[role=menu],[role=menubar]")) return 4;
+  if (!el.matches("input,select,textarea,[contenteditable=true]") && !el.closest("main,form,fieldset,dialog,[role=main],[role=form],[role=dialog]")) return 3;
+  const r = el.getBoundingClientRect();
+  return r.bottom > 0 && r.top < window.innerHeight ? 0 : 1;
+}
 
 // The same named controls read_page returns, in snapshot order. Callers keep the element
 // so a later highlight can point at that index only while the snapshot is still current.
+// Past the limit, the lowest-ranked controls are kept, still in page order.
 export function collectControls(limit = 150): CollectedControl[] {
-  const out: CollectedControl[] = [];
+  const found: { el: Element; name: string; rank: number }[] = [];
   for (const el of allElements()) {
-    if (out.length >= limit) break;
     if (isSecret(el) || !isVisible(el)) continue;
-    const name = nameOf(el);
-    if (!name) continue;
-    const item: CollectedControl = { el, i: out.length + 1, role: roleOf(el), name };
-    const value = valueOf(el);
+    const name = maskValue(nameOf(el));
+    if (name) found.push({ el, name, rank: rankOf(el) });
+  }
+  const kept = new Set(found.length > limit ? [...found].sort((a, b) => a.rank - b.rank).slice(0, limit) : found);
+  const out: CollectedControl[] = [];
+  for (const { el, name, rank } of found.filter((c) => kept.has(c))) {
+    const item: CollectedControl = { el, i: out.length + 1, role: roleOf(el), name, rank };
+    const value = safeValueOf(el);
     if (value) item.value = value.slice(0, 60);
     const section = sectionOf(el);
     if (section && section !== name) item.section = section;
@@ -222,6 +244,32 @@ export function violationFieldElement(field: string): Element | null {
 
 export function violationFieldLabel(field: string): string {
   return field.startsWith("label:") ? `${field.slice("label:".length)} value` : field;
+}
+
+// A single value boundary for page/form reads and Teach. Field semantics catch
+// ordinary-looking secrets; value patterns catch secrets pasted elsewhere.
+export function isSecretControl(el: Element): boolean {
+  const references = ["aria-labelledby", "aria-describedby", "aria-details", "aria-errormessage"]
+    .flatMap((attribute) => (el.getAttribute(attribute) ?? "").split(/\s+/))
+    .map((id) => textOf(document.getElementById(id)));
+  const labels = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement || el instanceof HTMLSelectElement
+    ? [...(el.labels ?? [])].map(textOf) : [];
+  const aria = [...el.attributes].filter((attribute) => attribute.name.startsWith("aria-")).map((attribute) => attribute.value);
+  const name = [nameOf(el), el.id, el.getAttribute("name"), el.getAttribute("autocomplete"), textOf(el.closest("label")), ...labels, ...aria, ...references].filter(Boolean).join(" ");
+  if (isSecret(el) || isSecretField({ name, section: sectionOf(el) })) return true;
+  if (sectionOf(el) === "Labels") {
+    const inputs = [...(el.closest("section,fieldset,[role=region]")?.querySelectorAll("input") ?? [])];
+    const index = inputs.findIndex((input) => input === el);
+    if (index > 0 && index % 2 === 1 && isSecretField({ name: inputs[index - 1].value })) return true;
+  }
+  return false;
+}
+
+export function safeValueOf(el: Element): string | undefined {
+  const value = valueOf(el);
+  if (value === undefined) return undefined;
+  if (isSecretControl(el)) return MASK;
+  return maskValue(value);
 }
 
 // The field a dropdown option belongs to: the control that owns its listbox.

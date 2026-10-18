@@ -1,4 +1,5 @@
 import { randomInt } from "node:crypto";
+import { publicOrigin } from "./origin.ts";
 
 // An Approver's decision on what a Requester needs to clear a permission_denied Blocker.
 export type Approval = {
@@ -16,12 +17,14 @@ export type NewApproval = Pick<Approval, "requester" | "role" | "resource" | "re
 
 // Storage seam: in memory for now, Firestore later.
 export interface ApprovalStore {
-  create(input: NewApproval): Promise<Approval>;
+  create(input: NewApproval): Promise<Approval | undefined>;
   get(id: string): Promise<Approval | undefined>;
   setStatus(id: string, status: Approval["status"]): Promise<Approval | undefined>;
 }
 
 const TTL_MS = 24 * 60 * 60 * 1000;
+const MAX_APPROVALS = 100;
+const MAX_FIELD = 500;
 const BASE36 = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 function newId() {
@@ -37,7 +40,15 @@ export class MemoryApprovalStore implements ApprovalStore {
 
   async create(input: NewApproval) {
     const now = Date.now();
-    const approval: Approval = { id: newId(), ...input, status: "pending", createdAt: now, expiresAt: now + TTL_MS };
+    for (const [id, approval] of this.items) if (isExpired(approval, now)) this.items.delete(id);
+    if (this.items.size >= MAX_APPROVALS) return undefined;
+    const fields = {
+      requester: input.requester.slice(0, MAX_FIELD),
+      role: input.role.slice(0, MAX_FIELD),
+      resource: input.resource.slice(0, MAX_FIELD),
+      reason: input.reason.slice(0, MAX_FIELD),
+    };
+    const approval: Approval = { id: newId(), ...fields, status: "pending", createdAt: now, expiresAt: now + TTL_MS };
     this.items.set(approval.id, approval);
     return approval;
   }
@@ -78,4 +89,16 @@ export function roleTitle(role: string) {
   return Object.values(ROLES).find((r) => r.role === role)?.title ?? role;
 }
 
-export const approvalUrl = (id: string) => `http://localhost:${process.env.PORT ?? 8787}/a/${id}`;
+// Where Approvers open links: the validated PUBLIC_ORIGIN when set, localhost only off Cloud Run.
+export function approvalOrigin(): string | undefined {
+  if (process.env.PUBLIC_ORIGIN !== undefined) return publicOrigin();
+  return process.env.K_SERVICE ? undefined : `http://localhost:${process.env.PORT ?? 8787}`;
+}
+
+export async function requestApproval(input: NewApproval): Promise<{ id: string; url: string } | { error: string }> {
+  const origin = approvalOrigin();
+  if (!origin) return { error: "Approval links are unavailable: this coach has no valid PUBLIC_ORIGIN." };
+  const approval = await approvals.create(input);
+  if (!approval) return { error: "Too many open approval requests. Try again later." };
+  return { id: approval.id, url: `${origin}/a/${approval.id}` };
+}

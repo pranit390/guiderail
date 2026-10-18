@@ -3,7 +3,7 @@ import { JourneyBinding } from "./journey-binding.ts";
 import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
 import { mountJourneyPanel } from "./journey-panel.ts";
-import { briefPrompt, isPublicDoc, routePageTool, type DocumentSnapshot } from "./document.ts";
+import { briefPrompt, isPublicDoc, RELAY_TEXT_LIMIT, routePageTool, type DocumentSnapshot } from "./document.ts";
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, HighlightResult, PageSnapshot, ToPage } from "./messages.ts";
@@ -11,11 +11,12 @@ import { evaluate, guidance, summarizeViolations, violationCountText, type Rule,
 import { violationFieldLabel } from "./page.ts";
 import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, type BoundSnapshot } from "./resolve.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
-import { SessionLog } from "./sessionlog.ts";
+import { SessionLog, type Entry } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
+import { isSensitiveUrl } from "./privacy.ts";
+import { fitToolResult } from "./toolresult.ts";
 
-const SERVER = "ws://localhost:8787";
-const HTTP = "http://localhost:8787";
+import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
@@ -30,7 +31,6 @@ let ws: WebSocket | undefined;
 // Latest read of the tab this session is coaching. Highlight and Assist fill may use only these names.
 let bound: BoundSnapshot | null = null;
 let boundStale = false;
-let liveReady = false;
 let compiledGoal = false;
 // A compile finished during a tool call: reconnect with the compiled Goal once that turn ends.
 let restartPending = false;
@@ -54,17 +54,17 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
     if (mode !== "guide") return;
     docsTabId = undefined;
     if (toolCalls) return;
-    ws?.close();
-    connect();
+    void connect();
   },
   async brief() {
     if (binding.tabId !== undefined) throw new Error("End the console Journey before briefing another tab.");
-    if (!liveReady || ws?.readyState !== WebSocket.OPEN) throw new Error("The coach is not ready. Reconnect and retry.");
     const tab = await activeTab();
     if (!tab.url || !isPublicDoc(tab.url)) throw new Error("Choose the Firestore or IAM public docs tab.");
     const doc = await toPage<DocumentSnapshot | { error: string }>({ kind: "read_document" }, tab.id);
     if ("error" in doc) throw new Error(doc.error);
     if (!doc.text || !doc.headings.length) throw new Error("No visible document section was found.");
+    const prompt = briefPrompt(doc);
+    if (!prompt) throw new Error("This page is too long to brief.");
     docsTabId = tab.id;
     const preferred = doc.headings.find((h) => /^(Create a database|Grant access|Grant a single IAM role|Required roles and permissions)$/i.test(h)) ?? doc.headings[0];
     const highlight = await toPage<unknown>({ kind: "highlight_document", heading: preferred }, docsTabId);
@@ -72,11 +72,23 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
       docsTabId = undefined;
       throw new Error(`Couldn't point to “${preferred}” on this page.`);
     }
-    sendServer({ type: "text", text: briefPrompt(doc) });
+    sendInput({ type: "text", text: prompt });
     say("user", "Brief me from this page.");
     open = null;
   },
 });
+// The control the coach last pointed at; a trimmed read keeps it and its section after form controls.
+let stepTarget: { name: string; section?: string } | null = null;
+let connectionAttempt = 0;
+// The Live connection opens on the first typed message or Talk press; input sent meanwhile waits here.
+let connecting = false;
+let ready = false;
+// Each queued message carries the memory entry to record once it is delivered (or dropped).
+let pending: { raw: string; remember?: [Entry["kind"], string]; composerText?: string }[] = [];
+let cancelCompose: (() => void) | undefined;
+let pendingAudio = 0;
+// Base64 characters of speech kept while connecting: under the relay's two-second audio burst.
+const PENDING_AUDIO_LIMIT = 64_000;
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
 // Memory for this side-panel session, given to every new Live connection (e.g. after Teach ↔ Guide).
@@ -121,6 +133,10 @@ function toggleVoice() {
   });
 }
 voice.addEventListener("click", toggleVoice);
+// The tab the panel guides: the active tab. Only its pages may speak to the coach.
+let boundTab: number | undefined;
+// A blocking warning waiting for a connection; shown prominently if that connection fails.
+let pendingWarning: string | undefined;
 
 // ---------- Startup ----------
 
@@ -129,10 +145,11 @@ async function init() {
   voiceOn = saved.voiceOut !== false;
   renderVoice();
   voice.disabled = false;
+  setStatus(IDLE_STATUS, "idle");
+  void chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => { boundTab ??= tab?.id; }).catch(() => {});
   await loadRules();
   const profile = await chrome.identity.getProfileUserInfo({ accountStatus: chrome.identity.AccountStatus.ANY }).catch(() => null);
   firstName = profile?.email ? profile.email.split("@")[0].split(/[._-]/)[0] : undefined;
-  connect();
 }
 
 async function loadRules() {
@@ -143,7 +160,7 @@ async function loadRules() {
   }
 }
 
-function setStatus(text: string, state: "on" | "off" | "busy") {
+function setStatus(text: string, state: "on" | "off" | "busy" | "idle") {
   status.replaceChildren(stateGlyph(state === "on" ? "go" : "check"), document.createTextNode(text));
   status.dataset.state = state;
 }
@@ -152,55 +169,129 @@ function setStatus(text: string, state: "on" | "off" | "busy") {
 
 let open: { role: string; el: HTMLElement } | null = null;
 
-function say(role: "user" | "model" | "system" | "step", text: string) {
-  if (open && open.role === role && role !== "system" && role !== "step") {
+function say(role: "user" | "model" | "system" | "step" | "alert", text: string) {
+  const standalone = role === "system" || role === "step" || role === "alert";
+  if (open && open.role === role && !standalone) {
     open.el.textContent += text;
   } else {
     const el = document.createElement("p");
     el.className = `msg ${role}`;
+    if (role === "alert") el.setAttribute("role", "alert");
     el.textContent = text;
     log.append(el);
-    open = role === "system" || role === "step" ? null : { role, el };
+    open = standalone ? null : { role, el };
   }
   scroll.scrollTop = scroll.scrollHeight;
 }
 
 // ---------- Connection to the relay ----------
 
-function connect() {
+const IDLE_STATUS = `Type or press Talk to connect to ${SERVER_HOST}`;
+
+async function connect() {
   restartPending = false;
-  liveReady = false;
+  const attempt = ++connectionAttempt;
+  const previous = ws;
+  ws = undefined;
+  previous?.close();
+  ready = false;
+  connecting = true;
   setStatus("Connecting…", "busy");
   const params = new URLSearchParams({ mode });
   if (mode === "guide" && compiledGoal) params.set("goalId", FIRESTORE_GOAL.id);
   if (mode === "guide" && resumeHandle) params.set("resume", resumeHandle);
   if (mode === "teach" && teach) params.set("goal", teach.goal);
+  let credential: string;
+  try {
+    const response = await fetch(`${HTTP}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const body = await response.json();
+    if (!response.ok || typeof body.credential !== "string") throw new Error(body.error ?? "Session admission failed.");
+    credential = body.credential;
+  } catch (error) {
+    if (attempt !== connectionAttempt) return;
+    disconnect(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`);
+    say("system", error instanceof Error ? error.message : "Session admission failed.");
+    return;
+  }
+  if (attempt !== connectionAttempt) return;
+  params.set("credential", credential);
   const sock = new WebSocket(`${SERVER}/live?${params}`);
   ws = sock;
-  sock.onmessage = (e) => { if (ws === sock) void onServer(JSON.parse(e.data)); };
-  sock.onclose = () => {
+  sock.onmessage = (e) => {
     if (ws !== sock) return;
-    liveReady = false;
-    setStatus("Disconnected. Click to reconnect", "off");
-    speaker.interrupt();
-    speaker.turnEnded();
-    held.audio = [];
-    if (talking) stopTalking();
+    const msg = JSON.parse(e.data);
+    if (msg.type === "ready") onReady();
+    void onServer(msg);
   };
-  sock.onerror = () => { if (ws === sock) setStatus("Can't reach the GuideRail server on localhost:8787", "off"); };
+  sock.onclose = () => { if (ws === sock) disconnect("Disconnected. Type or press Talk to reconnect"); };
+  sock.onerror = () => { if (ws === sock) setStatus(`Can't reach ${SERVER_HOST}`, "off"); };
 }
 
-status.addEventListener("click", () => ws?.readyState !== WebSocket.OPEN && connect());
+function onReady() {
+  ready = true;
+  connecting = false;
+  setStatus(`Connected to ${SERVER_HOST}`, "on");
+  const summary = memory.summary();
+  if (summary) sendServer({ type: "session", text: summary });
+  const queued = pending;
+  pending = [];
+  pendingAudio = 0;
+  pendingWarning = undefined;
+  for (const { raw, remember, composerText } of queued) {
+    ws?.send(raw);
+    if (remember) memory.add(...remember);
+    if (composerText !== undefined && input.value === composerText) input.value = "";
+  }
+  input.readOnly = false;
+}
 
-const sendServer = (msg: object) => ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(msg));
+// Closes the Live connection without opening another; the next typed message or Talk press reconnects.
+function disconnect(text: string, state: "off" | "idle" = "off") {
+  connectionAttempt++;
+  const sock = ws;
+  ws = undefined;
+  ready = false;
+  connecting = false;
+  // Undelivered composer text stays verbatim in the input, never in a reconnect summary.
+  for (const { remember, composerText } of pending) if (remember && composerText === undefined) memory.add(...remember);
+  pending = [];
+  input.readOnly = false;
+  pendingAudio = 0;
+  cancelCompose?.();
+  sock?.close();
+  speaker.interrupt();
+  speaker.turnEnded();
+  held.audio = [];
+  if (talking) stopTalking();
+  setStatus(text, state);
+  if (pendingWarning) say("alert", pendingWarning);
+  pendingWarning = undefined;
+}
+
+function sendServer(msg: object) {
+  if (!ready || ws?.readyState !== WebSocket.OPEN) return false;
+  ws.send(JSON.stringify(msg));
+  return true;
+}
+
+// User input: delivered now, or kept and delivered once the connection it opens is ready.
+function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }, remember?: [Entry["kind"], string], composerText?: string) {
+  if (sendServer(msg)) {
+    if (remember) memory.add(...remember);
+    if (composerText !== undefined && input.value === composerText) input.value = "";
+    return;
+  }
+  if (msg.type === "audio") {
+    if (pendingAudio + msg.data.length > PENDING_AUDIO_LIMIT) return;
+    pendingAudio += msg.data.length;
+  }
+  pending.push({ raw: JSON.stringify(msg), remember, composerText });
+  if (composerText !== undefined) input.readOnly = true;
+  if (!connecting) void connect();
+}
 
 async function onServer(msg: any) {
   switch (msg.type) {
-    case "ready":
-      liveReady = true;
-      setStatus("Ready", "on");
-      if (memory.size) sendServer({ type: "session", text: memory.summary() });
-      break;
     case "audio":
       speaker.beginTurn();
       if (mode === "teach") held.audio.push(msg.data);
@@ -232,7 +323,7 @@ async function onServer(msg: any) {
       teach?.endTurn("user");
       teach?.endTurn("model");
       speaker.turnEnded();
-      if (restartPending && !toolCalls && mode === "guide") { ws?.close(); connect(); }
+      if (restartPending && !toolCalls && mode === "guide") { void connect(); }
       break;
     case "resumption":
       if (mode === "guide" && !restartPending) { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
@@ -242,7 +333,7 @@ async function onServer(msg: any) {
       toolCalls++;
       try {
         const response = await runTool(msg.name, msg.args).catch((err: Error) => ({ error: err.message }));
-        sendServer({ type: "tool_result", id: msg.id, name: msg.name, response });
+        sendServer({ type: "tool_result", id: msg.id, name: msg.name, response: fitToolResult(msg.id, msg.name, response) });
       } finally { toolCalls--; }
       break;
     }
@@ -265,7 +356,7 @@ async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
     : tabId === undefined ? await activeTab() : await chrome.tabs.get(tabId);
   if (generation !== binding.generation) throw new Error("The Journey changed. Re-read the page.");
   if (wasBound && tabId !== undefined && tabId !== tab.id) throw new Error("Journey paused: that is not the bound tab.");
-  if (tab.url && new URL(tab.url).hostname === "accounts.google.com") throw new Error("Sign-in pages are never read.");
+  if (tab.url && isSensitiveUrl(tab.url)) throw new Error("GuideRail does not read or record sensitive account pages.");
   const command = wasBound ? { ...msg, expectedUrl: tab.url } : msg;
   let result: T;
   try {
@@ -325,14 +416,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       return { violations };
     }
     case "draft_message": {
-      // Opens a pre-filled compose window; the user reviews it and clicks Send (ADR 0001).
-      const tab = await activeTab();
-      const sandbox = tab.url?.startsWith("http://localhost:8787/sandbox/");
-      const base = sandbox ? "http://localhost:8787/sandbox/gmail-compose.html?" : "https://mail.google.com/mail/?view=cm&";
-      const q = new URLSearchParams({ to: String(args.to ?? ""), su: String(args.subject ?? ""), body: String(args.body ?? "") });
-      await chrome.tabs.create({ url: base + q.toString() });
-      say("system", "Drafted the request. Review it and click Send yourself.");
-      return { opened: true, note: "The user must review and click Send." };
+      return confirmCompose(args);
     }
     case "complete_step":
       if (binding.tabId !== undefined) return { error: "Use the Journey's explicit Next or Skip control. A model cannot verify a Step or database creation." };
@@ -348,7 +432,65 @@ async function readSnapshot(tab: chrome.tabs.Tab): Promise<PageSnapshot> {
   const snap = await toPage<PageSnapshot>({ kind: "read_page" }, tab.id);
   bound = { tabId: tab.id!, url: tab.url ?? snap.url, generation: snap.generation, elements: snap.elements };
   boundStale = false;
-  return snap;
+  const rank = snap.elements.map((e, k) => {
+    const own = snap.rank?.[k] ?? 3;
+    const step = stepTarget && (e.name === stepTarget.name || (stepTarget.section !== undefined && e.section === stepTarget.section));
+    return step ? Math.min(own, 2) : own;
+  });
+  return { ...snap, rank };
+}
+const composing = () => !$("#compose-confirmation").hidden;
+
+async function confirmCompose(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+  if (composing()) return { opened: false, note: "Another proposed email is awaiting your decision." };
+  if (typeof args.to !== "string" || typeof args.subject !== "string" || typeof args.body !== "string") {
+    return { opened: false, error: "The email proposal needs a recipient, subject and body." };
+  }
+  const { to, subject, body } = args;
+  const attempt = connectionAttempt;
+  const tab = await activeTab();
+  if (!ready || attempt !== connectionAttempt) return { opened: false, note: "The connection ended before confirmation." };
+  // Another tool call may have reached this boundary while activeTab was pending.
+  if (composing()) return { opened: false, note: "Another proposed email is awaiting your decision." };
+  const card = $("#compose-confirmation");
+  const confirm = $<HTMLButtonElement>("#compose-confirm");
+  const cancel = $<HTMLButtonElement>("#compose-cancel");
+  $("#compose-to").textContent = to;
+  $("#compose-subject").textContent = subject;
+  $("#compose-body").textContent = body;
+  card.hidden = false;
+  confirm.disabled = false;
+  confirm.focus();
+  return new Promise((resolve) => {
+    let opening = false;
+    let answered = false;
+    const answer = (result: Record<string, unknown>) => {
+      if (answered) return;
+      answered = true;
+      cancelCompose = undefined;
+      resolve(result);
+    };
+    const finish = (result: Record<string, unknown>) => {
+      card.hidden = true;
+      confirm.onclick = null;
+      cancel.onclick = null;
+      answer(result);
+    };
+    // The card outlives its connection: after a disconnect the user can still open or dismiss it locally.
+    cancelCompose = () => answer({ opened: false, note: "The connection ended before the user decided." });
+    cancel.onclick = () => { if (!opening) finish({ opened: false, note: "The user declined the proposed email." }); };
+    confirm.onclick = () => {
+      if (opening) return;
+      opening = true;
+      confirm.disabled = true;
+      const base = tab.url?.startsWith(`${HTTP}/sandbox/`) ? `${HTTP}/sandbox/gmail-compose.html?` : "https://mail.google.com/mail/?view=cm&";
+      const q = new URLSearchParams({ to, su: subject, body });
+      void chrome.tabs.create({ url: base + q.toString() }).then(() => {
+        say("system", "Opened the email you confirmed. Review it and click Send yourself.");
+        finish({ opened: true, note: "The user confirmed opening this draft and must review and click Send." });
+      }).catch(() => finish({ opened: false, error: "The compose window could not be opened." }));
+    };
+  });
 }
 
 async function runHighlight(args: Record<string, unknown>): Promise<HighlightResult> {
@@ -384,6 +526,8 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     await clearBoundHighlight();
     return live;
   }
+  const target = snap!.elements.find((e) => e.i === decision.i);
+  stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
   return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
 }
 
@@ -463,6 +607,13 @@ async function updateViolations(form: FormState) {
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply) => {
+  if ((sender.url && isSensitiveUrl(sender.url)) || (sender.tab?.url && isSensitiveUrl(sender.tab.url))) {
+    if (binding.tabId !== undefined && sender.tab?.id === binding.tabId) {
+      journeyPanel.invalidate("Journey paused: return the bound tab to its Firebase Firestore project.");
+    }
+    if (msg.kind === "teach_status") reply({ on: false });
+    return;
+  }
   if (msg.kind === "teach_status") { reply({ on: mode === "teach" && binding.tabId === undefined }); return; }
   if (msg.kind === "tab_changed" || msg.kind === "toggle_voice") { handlePageMessage(msg, sender); return; }
   if (sender.frameId && sender.frameId !== 0) return;
@@ -480,7 +631,7 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
     }).catch((error) => { if (generation === binding.generation) journeyPanel.invalidate(error instanceof Error ? error.message : paused); });
     return;
   }
-  if (sender.url && new URL(sender.url).hostname === "accounts.google.com") return;
+  if (sender.tab?.id === undefined || sender.tab.id !== boundTab) return;
   handlePageMessage(msg, sender);
 });
 
@@ -492,6 +643,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       appEvent(msg.text);
       break;
     case "tab_changed":
+      boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
         if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
         else journeyPanel.invalidate("The tab changed. Return to the bound Firestore tab and re-read this Step.");
@@ -513,6 +665,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
         void clearBoundHighlight();
       }
       say("system", msg.text);
+      memory.add("page", msg.text);
       sendServer({ type: "event", text: msg.text });
       break;
     case "form_changed":
@@ -528,7 +681,13 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
           ? `User is about to click "${msg.label}" but ${violationCountText(summarizeViolations(violations))} remain: ${blocking.map((v) => v.message).join(" ")}`
           : `User clicked "${msg.label}" and all policy checks pass.`;
         say("system", text);
-        sendServer({ type: "event", text });
+        // A blocking warning is worth a connection: the coach should say it out loud.
+        const event = { type: "event" as const, text };
+        if (sendServer(event) || !blocking.length) memory.add("page", text);
+        else {
+          pendingWarning = text;
+          sendInput(event, ["page", text]);
+        }
       });
       break;
     case "teach_event":
@@ -553,7 +712,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
 // Recording follows the expert across page loads and tab switches.
 async function followTab(tabId: number) {
   const tab = await chrome.tabs.get(tabId).catch(() => null);
-  if (!tab || mode !== "teach") return;
+  if (!tab || mode !== "teach" || (tab.url && isSensitiveUrl(tab.url))) return;
   await toPage({ kind: "teach", on: true }, tabId).catch(() => {});
   if (!teach || !tab.url) return;
   teach.add({ t: "navigate", at: Date.now(), url: tab.url, title: tab.title ?? "" });
@@ -566,7 +725,7 @@ async function setTeach(on: boolean) {
   docsTabId = undefined;
   journeyPanel.setEnabled(!on);
   showTeachButton(on);
-  ws?.close();
+  disconnect(IDLE_STATUS, "idle");
   if (on) {
     violations = [];
     issues.hidden = true;
@@ -576,7 +735,6 @@ async function setTeach(on: boolean) {
   }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teachbar").hidden = !on;
-  connect();
 }
 
 // The Teach button is a toggle and shows its state at once, before the mode switch finishes.
@@ -633,7 +791,7 @@ async function stopAndDraft() {
   try {
     res = await fetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
   } catch {
-    say("system", "Couldn't reach the GuideRail server on localhost:8787. Press \"Stop and draft Playbook\" to try again.");
+    say("system", `Couldn't reach ${SERVER_HOST}. Try drafting again.`);
     $("#teachbar").hidden = false;
     return;
   }
@@ -672,7 +830,7 @@ $("#publish").addEventListener("click", async () => {
   try {
     res = await fetch(`${HTTP}/playbooks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft, ruleIds }) });
   } catch {
-    say("system", "Couldn't reach the GuideRail server on localhost:8787. Your draft is still here; press Publish to try again.");
+    say("system", "Couldn't reach the configured GuideRail coach. Your draft is still here; press Publish to try again.");
     return;
   }
   if (!res.ok) { say("system", `Publishing failed: ${await errorText(res)}. Your draft is still here; press Publish to try again.`); return; }
@@ -681,12 +839,11 @@ $("#publish").addEventListener("click", async () => {
   memory.add("app", `Playbook "${draft.title}" was published and is now used for guiding`);
   draft = null;
   await loadRules();
-  // Start a fresh Guide session so the relay loads the new Playbook.
+  // The next Guide session starts fresh so the relay loads the new Playbook.
   resumeHandle = undefined;
   void chrome.storage.session.remove("resumeHandle");
-  ws?.close();
-  connect();
-  say("system", "Reconnected with the new Playbook.");
+  disconnect(IDLE_STATUS, "idle");
+  say("system", "The next conversation will use the new Playbook.");
 });
 
 // ---------- Input ----------
@@ -701,19 +858,21 @@ for (const [id, preset] of [["#calmer", "calm"], ["#restore", null]] as const) {
 
 $("#form").addEventListener("submit", (e) => {
   e.preventDefault();
-  const text = input.value.trim();
-  if (!text) return;
+  const text = input.value;
+  if (!text.trim() || input.readOnly) return;
+  if (text.length > RELAY_TEXT_LIMIT) {
+    say("system", `This message is ${text.length} characters; the coach accepts up to ${RELAY_TEXT_LIMIT}. Shorten it and send again.`);
+    return;
+  }
   say("user", text);
   open = null;
   lastSent = { text, at: Date.now() };
-  memory.add("user", text);
-  sendServer({ type: "text", text });
-  input.value = "";
+  sendInput({ type: "text", text }, ["user", text], text);
 });
 
 async function startTalking() {
   try {
-    await mic.start((data) => sendServer({ type: "audio", data }));
+    await mic.start((data) => sendInput({ type: "audio", data }));
     talking = true;
     talk.setAttribute("aria-pressed", "true");
     talk.textContent = "Stop";
@@ -730,7 +889,7 @@ function stopTalking() {
   talk.setAttribute("aria-pressed", "false");
   talk.textContent = "Talk";
   delete talk.dataset.on;
-  sendServer({ type: "audio_end" });
+  if (ready || connecting) sendInput({ type: "audio_end" });
 }
 
 talk.addEventListener("click", () => (talking ? stopTalking() : void startTalking()));

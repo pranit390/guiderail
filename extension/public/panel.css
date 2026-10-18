@@ -30,6 +30,7 @@ header strong { font-size: 16px; } header strong span { color: var(--accent); }
 .msg.user { align-self: flex-end; background: var(--surface-2); }
 .msg.model { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); }
 .msg.system { align-self: center; color: var(--muted); font-size: 12px; text-align: center; }
+.msg.alert { align-self: stretch; max-width: none; color: var(--bad); border: 2px solid var(--bad); font-weight: 600; }
 .card { flex-shrink: 0; margin: 0 12px 10px; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .card h2 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .sugg { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); }
@@ -66,6 +67,8 @@ button:disabled { opacity: .5; cursor: default; }
 .msg.step { align-self:flex-start; color:var(--gr-go); background:var(--gr-go-tint); font-size:12px; padding:2px 10px; animation:gr-done 320ms cubic-bezier(.2,.8,.2,1); }
 @keyframes gr-done { from { opacity:0; transform:translateY(4px); } }
 #draftmd { white-space: pre-wrap; overflow-wrap:anywhere; font: 12px/1.5 ui-monospace, Menlo, monospace; background: var(--bg); padding: 8px; border-radius: 6px; }
+#compose-confirmation dd { margin-inline-start: 0; }
+#compose-confirmation pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 4px 0 12px; }
 #draftrules label { display: block; font-size: 13px; padding: 2px 0; }
 .page-look { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; }
 .page-look span { flex: 1; color: var(--muted); font-size: 12px; }

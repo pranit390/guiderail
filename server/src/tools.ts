@@ -1,6 +1,6 @@
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Type, type FunctionDeclaration } from "@google/genai";
-import { approvals, approvalUrl, lookupRole } from "./approvals.ts";
+import { lookupRole, requestApproval } from "./approvals.ts";
 
 // Tools Gemini may call. Most run in the extension and the relay only forwards them;
 // the ones in SERVER_TOOLS run here in the relay (see runServerTool).
@@ -114,15 +114,13 @@ export async function runServerTool(name: string, args: Record<string, unknown>)
   switch (name) {
     case "lookup_role":
       return lookupRole(str("permission")) ?? { found: false };
-    case "create_approval": {
-      const approval = await approvals.create({
+    case "create_approval":
+      return requestApproval({
         requester: str("requester"),
         role: str("role"),
         resource: str("resource"),
         reason: str("reason"),
       });
-      return { id: approval.id, url: approvalUrl(approval.id) };
-    }
     default:
       return { error: `unknown server tool ${name}` };
   }
