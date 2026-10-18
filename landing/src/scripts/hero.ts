@@ -39,13 +39,13 @@ export function startExample(root: HTMLElement): void {
     testChoice.classList.toggle("broken", broken);
     if (broken) {
       state.className = "status-word stop";
-      stateText.textContent = "Violation. Check before Create.";
-      caption.textContent = "This choice breaks a Rule.";
+      stateText.textContent = "Violation. Look before you click Create.";
+      caption.textContent = "Test mode breaks a Rule.";
       return;
     }
     state.className = mode === "guide" ? "status-word go" : "status-word check";
-    stateText.textContent = mode === "guide" ? "Guide. You act." : "Assist. Review the proposal.";
-    caption.textContent = mode === "guide" ? "Find the field. Keep the choice." : "A little help, with your approval.";
+    stateText.textContent = mode === "guide" ? "Guide. You type and click." : "Assist. Check the proposed value.";
+    caption.textContent = mode === "guide" ? "GuideRail points. You type." : "GuideRail can type the ID if you approve.";
   };
 
   const setMode = (next: Mode) => {
@@ -57,8 +57,8 @@ export function startExample(root: HTMLElement): void {
     stopPlan.disabled = false;
     coachCopy.textContent =
       next === "guide"
-        ? "You enter the value. The citation stays beside the Step."
-        : "Assist asks before it changes the text field. This page does not change the Firebase console.";
+        ? "You type the value. The docs citation stays next to the Step."
+        : "Assist asks before it touches the text field. Nothing on this page reaches the Firebase console.";
     paint();
   };
 
@@ -68,7 +68,7 @@ export function startExample(root: HTMLElement): void {
     void idField.offsetWidth;
     idField.classList.add("motion-pulse");
     caption.textContent = "Database ID is the next Step.";
-    coachCopy.textContent = "The outlined field is the current target. Type a value yourself, or switch to Assist.";
+    coachCopy.textContent = "That outlined field is the one to fill. Type a value, or switch to Assist.";
   });
 
   guide.addEventListener("click", () => setMode("guide"));
@@ -76,24 +76,24 @@ export function startExample(root: HTMLElement): void {
 
   approve.addEventListener("click", () => {
     if (selectedMode() === "test") {
-      coachCopy.textContent = "Plan paused. Clear the Violation before approving a fill.";
+      coachCopy.textContent = "Paused. Switch to Production mode before you approve the fill.";
       return;
     }
     dbId.value = "demo-guide";
     idField.classList.add("highlight");
-    coachCopy.textContent = "Read-back matches demo-guide. You choose the mode and click Create.";
+    coachCopy.textContent = "The field reads back demo-guide. Now pick a mode and click Create.";
     approve.disabled = true;
   });
 
   stopPlan.addEventListener("click", () => {
     proposal.hidden = true;
-    coachCopy.textContent = "Plan stopped. A value already in the field stays there.";
+    coachCopy.textContent = "Stopped. Anything already in the field stays there.";
   });
 
   root.querySelectorAll<HTMLInputElement>('[name="db-mode"]').forEach((input) => {
     input.addEventListener("change", () => {
       held = false;
-      createResult.textContent = "The final action remains yours.";
+      createResult.textContent = "The last click is yours.";
       paint();
     });
   });
@@ -103,12 +103,12 @@ export function startExample(root: HTMLElement): void {
     if (broken && !held) {
       held = true;
       createResult.textContent =
-        "First click held. Test mode is a Violation. Choose Production mode, or click again to continue anyway. This page sends nothing.";
+        "First click held, because Test mode is a Violation. Switch to Production mode, or click again to go ahead anyway. This page sends nothing.";
       return;
     }
     createResult.textContent = broken
-      ? "A second click would continue despite the Violation. This page sends nothing."
-      : "You made the final click. This page sends nothing.";
+      ? "On the real console, this second click would go ahead despite the Violation. This page sends nothing."
+      : "You clicked Create. This page sends nothing.";
   });
 
   reset.addEventListener("click", () => {
@@ -117,8 +117,8 @@ export function startExample(root: HTMLElement): void {
     if (production) production.checked = true;
     held = false;
     idField.classList.remove("highlight", "motion-pulse");
-    createResult.textContent = "The final action remains yours.";
+    createResult.textContent = "The last click is yours.";
     setMode("guide");
-    caption.textContent = "Start with the field. Understand it as you go.";
+    caption.textContent = "Press Show the Step to start.";
   });
 }

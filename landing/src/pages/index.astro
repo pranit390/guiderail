@@ -31,7 +31,7 @@ import {
           <p class="intro">{hero.intro}</p>
           <div class="actions">
             <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
-            <a class="button" href="#install">Install steps</a>
+            <a class="button" href="#install">How to install</a>
           </div>
           <p class="subtle">{hero.note}</p>
         </div>
@@ -42,15 +42,15 @@ import {
     <section class="install-band" id="install" aria-labelledby="install-heading">
       <div class="wrap">
         <h2 id="install-heading">{content.cta.label}</h2>
-        <p>Desktop Chrome. Unzip the file, then load the folder that contains manifest.json.</p>
+        <p>It runs in desktop Chrome as an unpacked extension. Unzip it, then load the folder with manifest.json in it.</p>
         <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
         <ol class="install-steps">
           {installSteps.map((step) => <li>{step}</li>)}
         </ol>
         <p class="hint">{judgeNote}</p>
         <p class="hint">
-          Open <a href={consoleHref}>the Firebase console</a> for the real Journey. For a labelled copy first, open
-          <a href={practiceHref}>the practice pages on the hosted coach</a>.
+          Then open <a href={consoleHref}>the Firebase console</a> and run the real Journey. To rehearse first, use
+          <a href={practiceHref}>the labelled practice pages on the hosted coach</a>.
         </p>
       </div>
     </section>
