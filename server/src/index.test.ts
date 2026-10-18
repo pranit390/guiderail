@@ -4,7 +4,8 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import WebSocket from "ws";
-import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { setTokenVerifier } from "./auth.ts";
 
 let base: string;
 let close: () => void;
@@ -37,6 +38,11 @@ afterAll(async () => {
   close();
   try { await rm(journeyCache, { recursive: true, force: true }); }
   finally { vi.unstubAllEnvs(); }
+});
+afterEach(() => {
+  vi.stubEnv("ALLOWED_EMAILS", "");
+  vi.stubEnv("K_SERVICE", "");
+  setTokenVerifier();
 });
 
 const firestoreGoal = (await import("../../shared/journey.ts")).FIRESTORE_GOAL.id;
@@ -83,6 +89,43 @@ describe("extension download", () => {
 });
 
 describe("cost-limited public coach", () => {
+  it("requires an allowed Firebase account for a session when configured", async () => {
+    vi.stubEnv("ALLOWED_EMAILS", "person@example.com");
+    const origin = "chrome-extension://abcdefghijklmnop";
+    const signedOut = await post("/session", {}, { Origin: origin });
+    expect(signedOut.status).toBe(401);
+    expect(await signedOut.json()).toEqual({ error: "sign_in_required", message: "Sign in to GuideRail to continue." });
+
+    setTokenVerifier(async () => ({ uid: "uid", email: "person@example.com", emailVerified: true }));
+    const signedIn = await post("/session", {}, { Origin: origin, Authorization: "Bearer token" });
+    expect(signedIn.status).toBe(201);
+    expect((await signedIn.json()).credential).toEqual(expect.any(String));
+  });
+
+  it("rejects drafting from an account outside the allowlist", async () => {
+    vi.stubEnv("ALLOWED_EMAILS", "person@example.com");
+    setTokenVerifier(async () => ({ uid: "uid", email: "other@example.com", emailVerified: true }));
+    const response = await post("/playbooks/draft", { goal: "g", events: [{}] }, {
+      Origin: "chrome-extension://abcdefghijklmnop",
+      Authorization: "Bearer token",
+    });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "not_allowed", message: "This account isn't allowed to use this GuideRail demo." });
+  });
+
+  it("keeps health and sandbox routes public", async () => {
+    vi.stubEnv("ALLOWED_EMAILS", "person@example.com");
+    expect((await fetch(base + "/health")).status).toBe(200);
+    expect((await fetch(base + "/sandbox/index.html")).status).toBe(200);
+  });
+
+  it("fails closed on Cloud Run without an allowlist", async () => {
+    vi.stubEnv("K_SERVICE", "coach");
+    const response = await post("/session", {}, { Origin: "chrome-extension://abcdefghijklmnop" });
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: "not_allowed", message: "This account isn't allowed to use this GuideRail demo." });
+  });
+
   it("survives an oversized authenticated frame and admits another session", async () => {
     const origin = "chrome-extension://abcdefghijklmnop";
     async function connect() {

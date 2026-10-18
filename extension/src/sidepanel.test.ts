@@ -16,7 +16,8 @@ vi.mock("./audio.ts", () => ({
 }));
 const policy = vi.hoisted(() => ({ violations: [] as { ruleId: string; field: string; message: string; severity: string }[] }));
 vi.mock("./policy.ts", async (original) => ({ ...(await original<typeof import("./policy.ts")>()), evaluate: () => policy.violations }));
-vi.mock("./config.ts", () => ({ HTTP: "https://coach.example", SERVER: "wss://coach.example", SERVER_HOST: "coach.example" }));
+const config = vi.hoisted(() => ({ firebaseKey: "" }));
+vi.mock("./config.ts", () => ({ HTTP: "https://coach.example", SERVER: "wss://coach.example", SERVER_HOST: "coach.example", get FIREBASE_API_KEY() { return config.firebaseKey; } }));
 let savedVoice: boolean | undefined;
 const storageSet = vi.fn().mockImplementation(async (value: { voiceOut:boolean }) => { savedVoice = value.voiceOut; });
 
@@ -51,6 +52,9 @@ const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)
 const status = () => $("#status").lastChild?.textContent;
 const sent = (socket: Socket) => socket.send.mock.calls.map(([raw]) => JSON.parse(raw));
 
+const panelHtml = () => readFileSync("public/sidepanel.html", "utf8")
+  .replace(/<head>[\s\S]*?<\/head>/, "").replace(/<script[\s\S]*?<\/script>/g, "");
+
 function type(text: string) {
   $<HTMLInputElement>("#text").value = text;
   $<HTMLFormElement>("#form").dispatchEvent(new Event("submit", { cancelable: true }));
@@ -77,8 +81,7 @@ beforeEach(async () => {
   session.remove.mockClear();
   getTab.mockReset().mockResolvedValue({ id: 1 });
   queryTabs.mockReset().mockResolvedValue([{ id: 1 }]);
-  document.body.innerHTML = readFileSync("public/sidepanel.html", "utf8")
-    .replace(/<head>[\s\S]*?<\/head>/, "").replace(/<script[\s\S]*?<\/script>/g, "");
+  document.body.innerHTML = panelHtml();
   vi.stubGlobal("WebSocket", Socket);
   vi.stubGlobal("fetch", fetchMock);
   vi.stubGlobal("chrome", {
@@ -621,7 +624,7 @@ describe("highlight wiring", () => {
     await connected();
   });
 
-  it("asks which Save, pins a unique target to the read, and refuses after the page moves on", async () => {
+  it("asks which Save, pins a unique target to the read, and re-reads after the page moves on", async () => {
     await call("read", "read_page", {});
 
     const save = await call("save", "highlight", { text: "Save", role: "button" });
@@ -636,10 +639,23 @@ describe("highlight wiring", () => {
 
     const listener = (globalThis as any).chrome.runtime.onMessage.addListener.mock.calls[0][0];
     listener({ kind: "page_event", text: "Page changed.", generation: 4 }, { tab: { id: 1 } }, () => {});
+    const reads = () => sendMessage.mock.calls.filter(([, msg]) => msg.kind === "read_page").length;
+    const readsBefore = reads();
     const after = await call("after", "highlight", { text: "Database ID" });
-    expect(after).toMatchObject({ found: false, reason: "stale" });
-    expect(logText()).toContain("This screen changed since I last read it, so I won't point at or fill anything.");
-    expect(highlights()).toHaveLength(1);
+    // The changed screen is read again on its own, then the same control is pointed at.
+    expect(reads()).toBe(readsBefore + 1);
+    expect(after).toMatchObject({ found: true, name: "Database ID" });
+    expect(logText()).not.toContain("This screen changed since I last read it");
+    expect(highlights()).toHaveLength(2);
+  });
+
+  it("re-reads once when the page reports a stale target, then gives up clearly", async () => {
+    await call("read", "read_page", {});
+    sendMessage.mockImplementation(async (_tab: number, msg: { kind: string }) =>
+      msg.kind === "read_page" ? snapshot : msg.kind === "highlight" ? { found: false, reason: "stale", alternatives: [] } : { ok: true });
+    const result = await call("gone", "highlight", { text: "Database ID" });
+    expect(result).toMatchObject({ found: false, reason: "stale" });
+    expect(highlights()).toHaveLength(2);
     expect(sendMessage).toHaveBeenCalledWith(1, { kind: "clear_highlight" });
   });
 
@@ -895,7 +911,7 @@ describe("page activity across idle disconnects", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "ready" });
     expect(sent(sockets[0])).toEqual([{ type: "event", text: expect.stringContaining("1 to fix (1 Rule) remain: Add an owner label. Form: Region=us-central1") }]);
-    expect(document.querySelector('[role="alert"]')).toBeNull();
+    expect(document.querySelector('#log [role="alert"]')).toBeNull();
   });
 
   it("shows a blocking submit warning prominently when the daily allowance is used", async () => {
@@ -905,7 +921,7 @@ describe("page activity across idle disconnects", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "error", message: "Today's demo voice allowance is used." });
     sockets[0].onclose?.();
-    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Add an owner label.");
+    expect(document.querySelector('#log [role="alert"]')?.textContent).toContain("Add an owner label.");
   });
 
   it("shows a blocking submit warning prominently when session admission fails", async () => {
@@ -913,7 +929,7 @@ describe("page activity across idle disconnects", () => {
     fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner label.", severity: "block" }];
     page({ kind: "submit_intent", label: "Create", form });
-    await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain("Add an owner label."));
+    await vi.waitFor(() => expect(document.querySelector('#log [role="alert"]')?.textContent).toContain("Add an owner label."));
     expect(sockets).toHaveLength(0);
   });
 
@@ -922,5 +938,117 @@ describe("page activity across idle disconnects", () => {
     page({ kind: "submit_intent", label: "Create", form });
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sessionRequests()).toBe(0);
+  });
+});
+
+describe("demo sign-in", () => {
+  let authStore: Record<string, unknown>;
+  const judge = { email: "judge@example.com", idToken: "id-1", refreshToken: "refresh-1" };
+  const signInRequests = () => fetchMock.mock.calls.filter(([url]) => url.includes("accounts:signInWithPassword"));
+
+  async function openPanel(signedIn: boolean) {
+    vi.resetModules();
+    config.firebaseKey = "test-key";
+    authStore = signedIn ? { guiderailAuth: { ...judge, expiresAt: Date.now() + 3_600_000 } } : {};
+    (chrome.storage as { session: unknown }).session = {
+      get: vi.fn(async (key: string) => (key in authStore ? { [key]: authStore[key] } : {})),
+      set: vi.fn(async (value: Record<string, unknown>) => { Object.assign(authStore, value); }),
+      remove: vi.fn(async (key: string) => { delete authStore[key]; }),
+    };
+    document.body.innerHTML = panelHtml();
+    await import("./sidepanel.ts");
+    await vi.waitFor(() => expect($(signedIn ? "#account" : "#signin").hidden).toBe(false));
+  }
+
+  afterEach(() => { config.firebaseKey = ""; });
+
+  it("asks for a sign-in before Talk, Send or Teach can be used", async () => {
+    await openPanel(false);
+    expect($("#signin").textContent).toContain("Use the demo login from the pitch deck.");
+    expect(document.activeElement).toBe($("#signin-email"));
+    for (const sel of ["#talk", "#text", "#form button[type=submit]", "#teach"]) expect($<HTMLButtonElement>(sel).disabled).toBe(true);
+    expect(document.body.hasAttribute("data-signed-out")).toBe(true);
+    $<HTMLFormElement>("#form").dispatchEvent(new Event("submit", { cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sessionRequests()).toBe(0);
+    expect(sockets).toHaveLength(0);
+  });
+
+  it("shows a plain message for a wrong password and keeps the form", async () => {
+    await openPanel(false);
+    fetchMock.mockImplementation(async (url: string) => url.includes("signInWithPassword")
+      ? new Response(JSON.stringify({ error: { message: "INVALID_LOGIN_CREDENTIALS" } }), { status: 400 })
+      : defaultFetch(url));
+    $<HTMLInputElement>("#signin-email").value = "judge@example.com";
+    $<HTMLInputElement>("#signin-password").value = "wrong";
+    $<HTMLFormElement>("#signin-form").dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect($("#signin-error").textContent).toBe("Wrong email or password."));
+    expect($("#signin").hidden).toBe(false);
+    expect($<HTMLButtonElement>("#signin-submit").disabled).toBe(false);
+    expect(authStore).toEqual({});
+  });
+
+  it("signs in, then sends the Bearer token with the session request", async () => {
+    await openPanel(false);
+    let finish!: () => void;
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url.includes("signInWithPassword")) {
+        await new Promise<void>((resolve) => { finish = resolve; });
+        return new Response(JSON.stringify({ ...judge, expiresIn: "3600", localId: "u1" })) as never;
+      }
+      return defaultFetch(url);
+    });
+    $<HTMLInputElement>("#signin-email").value = "judge@example.com";
+    $<HTMLInputElement>("#signin-password").value = "demo-pass";
+    $<HTMLFormElement>("#signin-form").dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect(signInRequests()).toHaveLength(1));
+    expect($<HTMLButtonElement>("#signin-submit").disabled).toBe(true);
+    finish();
+    await vi.waitFor(() => expect($("#signin").hidden).toBe(true));
+    expect($("#account-email").textContent).toBe("judge@example.com");
+    expect(document.activeElement).toBe($("#text"));
+    expect($<HTMLButtonElement>("#talk").disabled).toBe(false);
+    expect(JSON.stringify(authStore)).not.toContain("demo-pass");
+    type("hello");
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    const [, init] = fetchMock.mock.calls.find(([url]) => url.endsWith("/session")) as unknown as [string, RequestInit];
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer id-1");
+  });
+
+  it("goes straight to the panel with a stored session and shows the form again after a 401", async () => {
+    await openPanel(true);
+    expect($("#signin").hidden).toBe(true);
+    fetchMock.mockImplementation(async (url: string) => url.endsWith("/session")
+      ? new Response(JSON.stringify({ error: "sign_in_required" }), { status: 401 }) as never
+      : defaultFetch(url));
+    type("hello");
+    await vi.waitFor(() => expect($("#signin").hidden).toBe(false));
+    expect($("#signin-error").textContent).toBe("Your sign-in expired. Please sign in again.");
+    expect(authStore).toEqual({});
+    expect(sockets).toHaveLength(0);
+    expect($<HTMLButtonElement>("#talk").disabled).toBe(true);
+    expect(document.activeElement).toBe($("#signin-email"));
+  });
+
+  it("keeps the form visible with a clear message for a disallowed account", async () => {
+    await openPanel(true);
+    fetchMock.mockImplementation(async (url: string) => url.endsWith("/session")
+      ? new Response(JSON.stringify({ error: "not_allowed" }), { status: 403 }) as never
+      : defaultFetch(url));
+    type("hello");
+    await vi.waitFor(() => expect($("#signin-error").textContent).toBe("This account isn't allowed to use this GuideRail demo."));
+    expect($("#signin").hidden).toBe(false);
+  });
+
+  it("signs out: closes the live connection, clears the session and shows the form", async () => {
+    await openPanel(true);
+    const socket = await connected();
+    $<HTMLButtonElement>("#signout").click();
+    await vi.waitFor(() => expect($("#signin").hidden).toBe(false));
+    expect(socket.close).toHaveBeenCalled();
+    expect(authStore).toEqual({});
+    expect($("#account").hidden).toBe(true);
+    expect($<HTMLButtonElement>("#talk").disabled).toBe(true);
+    expect(status()).toBe("Sign in to use GuideRail");
   });
 });

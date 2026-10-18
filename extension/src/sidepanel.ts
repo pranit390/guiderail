@@ -17,6 +17,7 @@ import { isSensitiveUrl } from "./privacy.ts";
 import { fitToolResult } from "./toolresult.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
+import { AuthError, authFetch, authRequired, currentUser, onAuthLost, signIn, signOut, wsProtocols } from "./auth.ts";
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const log = $("#log");
@@ -39,6 +40,7 @@ let docsTabId: number | undefined;
 const binding = new JourneyBinding();
 const journeyPanel = mountJourneyPanel($("#journey"), {
   http: HTTP,
+  fetch: authFetch,
   open: () => binding.open({ goalId: FIRESTORE_GOAL.id }),
   read: async () => readSnapshot(await binding.tab()),
   point: (text, role) => runHighlight({ text, role }),
@@ -138,6 +140,83 @@ let boundTab: number | undefined;
 // A blocking warning waiting for a connection; shown prominently if that connection fails.
 let pendingWarning: string | undefined;
 
+// ---------- Sign-in ----------
+
+// With a Firebase key built in, nothing reaches the coach until a demo account is signed in.
+let signedOut = authRequired();
+const SIGNED_OUT_STATUS = "Sign in to use GuideRail";
+const signinForm = $<HTMLFormElement>("#signin-form");
+const signinEmail = $<HTMLInputElement>("#signin-email");
+const signinPassword = $<HTMLInputElement>("#signin-password");
+const signinError = $("#signin-error");
+const signinSubmit = $<HTMLButtonElement>("#signin-submit");
+
+function lockControls(locked: boolean) {
+  for (const el of [talk, input, $<HTMLButtonElement>("#form button[type=submit]"), $<HTMLButtonElement>("#teach")]) el.disabled = locked;
+}
+
+function showSignIn(message = "") {
+  signedOut = true;
+  document.body.toggleAttribute("data-signed-out", true);
+  lockControls(true);
+  $("#account").hidden = true;
+  $("#signin").hidden = false;
+  signinError.textContent = message;
+  signinPassword.value = "";
+  signinSubmit.disabled = false;
+  disconnect(SIGNED_OUT_STATUS, "idle");
+  signinEmail.focus();
+}
+
+function showSignedIn(email: string) {
+  signedOut = false;
+  document.body.toggleAttribute("data-signed-out", false);
+  lockControls(false);
+  $("#signin").hidden = true;
+  signinError.textContent = "";
+  $("#account-email").textContent = email;
+  $("#account").title = `Signed in as ${email}`;
+  $("#account").hidden = false;
+  setStatus(IDLE_STATUS, "idle");
+}
+
+if (signedOut) {
+  document.body.toggleAttribute("data-signed-out", true);
+  lockControls(true);
+}
+
+onAuthLost((error) => showSignIn(error.message));
+
+signinForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (signinSubmit.disabled) return;
+  const email = signinEmail.value.trim();
+  if (!email || !signinPassword.value) {
+    signinError.textContent = "Enter your email and password.";
+    (email ? signinPassword : signinEmail).focus();
+    return;
+  }
+  signinSubmit.disabled = true;
+  signinError.textContent = "";
+  try {
+    const user = await signIn(email, signinPassword.value);
+    signinPassword.value = "";
+    showSignedIn(user.email);
+    input.focus();
+  } catch (error) {
+    signinError.textContent = error instanceof Error ? error.message : "Sign-in failed. Try again.";
+    signinSubmit.disabled = false;
+  }
+});
+
+$("#signout").addEventListener("click", async () => {
+  // The next account starts a fresh conversation rather than resuming this one.
+  resumeHandle = undefined;
+  void chrome.storage.session.remove("resumeHandle");
+  await signOut();
+  showSignIn();
+});
+
 // ---------- Startup ----------
 
 async function init() {
@@ -145,7 +224,11 @@ async function init() {
   voiceOn = saved.voiceOut !== false;
   renderVoice();
   voice.disabled = false;
-  setStatus(IDLE_STATUS, "idle");
+  if (authRequired()) {
+    const user = await currentUser();
+    if (user) showSignedIn(user.email);
+    else showSignIn();
+  } else setStatus(IDLE_STATUS, "idle");
   void chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => { boundTab ??= tab?.id; }).catch(() => {});
   await loadRules();
   const profile = await chrome.identity.getProfileUserInfo({ accountStatus: chrome.identity.AccountStatus.ANY }).catch(() => null);
@@ -189,6 +272,7 @@ function say(role: "user" | "model" | "system" | "step" | "alert", text: string)
 const IDLE_STATUS = `Type or press Talk to connect to ${SERVER_HOST}`;
 
 async function connect() {
+  if (signedOut) return;
   restartPending = false;
   const attempt = ++connectionAttempt;
   const previous = ws;
@@ -203,19 +287,22 @@ async function connect() {
   if (mode === "teach" && teach) params.set("goal", teach.goal);
   let credential: string;
   try {
-    const response = await fetch(`${HTTP}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const response = await authFetch(`${HTTP}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const body = await response.json();
     if (!response.ok || typeof body.credential !== "string") throw new Error(body.error ?? "Session admission failed.");
     credential = body.credential;
   } catch (error) {
-    if (attempt !== connectionAttempt) return;
+    // A rejected sign-in has already shown the form and closed this attempt.
+    if (attempt !== connectionAttempt || error instanceof AuthError) return;
     disconnect(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`);
     say("system", error instanceof Error ? error.message : "Session admission failed.");
     return;
   }
   if (attempt !== connectionAttempt) return;
   params.set("credential", credential);
-  const sock = new WebSocket(`${SERVER}/live?${params}`);
+  const protocols = await wsProtocols();
+  if (attempt !== connectionAttempt) return;
+  const sock = protocols.length ? new WebSocket(`${SERVER}/live?${params}`, protocols) : new WebSocket(`${SERVER}/live?${params}`);
   ws = sock;
   sock.onmessage = (e) => {
     if (ws !== sock) return;
@@ -276,6 +363,7 @@ function sendServer(msg: object) {
 
 // User input: delivered now, or kept and delivered once the connection it opens is ready.
 function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }, remember?: [Entry["kind"], string], composerText?: string) {
+  if (signedOut) return;
   if (sendServer(msg)) {
     if (remember) memory.add(...remember);
     if (composerText !== undefined && input.value === composerText) input.value = "";
@@ -504,31 +592,45 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   } catch {
     tabId = null;
   }
-  const snap = bound;
-  const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
-  if (!actionAuthorized(decision)) {
-    say("system", highlightOutcome(decision));
-    await clearBoundHighlight();
-    return highlightResult(decision);
+  // A changed screen isn't a reason to give up: read it again and try once more.
+  const refresh = async () => {
+    try {
+      const tab = binding.tabId !== undefined ? await binding.tab() : await activeTab();
+      if (tab.id !== undefined) await readSnapshot(tab);
+    } catch { /* keep the old snapshot; the stale result below explains it */ }
+  };
+  if (boundStale || !bound) await refresh();
+  for (let attempt = 0; ; attempt++) {
+    const snap = bound;
+    const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
+    if (!actionAuthorized(decision)) {
+      if (decision.reason === "stale" && attempt === 0) { await refresh(); continue; }
+      say("system", highlightOutcome(decision));
+      await clearBoundHighlight();
+      return highlightResult(decision);
+    }
+    const live = await toPage<HighlightResult>({
+      kind: "highlight",
+      text,
+      ...(role ? { role } : {}),
+      ...(section ? { section } : {}),
+      generation: snap!.generation,
+      index: decision.i,
+      name: decision.name,
+    }, snap!.tabId);
+    if (!live.found) {
+      if (live.reason === "stale") {
+        boundStale = true;
+        if (attempt === 0) { await refresh(); continue; }
+      }
+      say("system", highlightOutcome(live));
+      await clearBoundHighlight();
+      return live;
+    }
+    const target = snap!.elements.find((e) => e.i === decision.i);
+    stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
+    return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
   }
-  const live = await toPage<HighlightResult>({
-    kind: "highlight",
-    text,
-    ...(role ? { role } : {}),
-    ...(section ? { section } : {}),
-    generation: snap!.generation,
-    index: decision.i,
-    name: decision.name,
-  }, snap!.tabId);
-  if (!live.found) {
-    if (live.reason === "stale") boundStale = true;
-    say("system", highlightOutcome(live));
-    await clearBoundHighlight();
-    return live;
-  }
-  const target = snap!.elements.find((e) => e.i === decision.i);
-  stepTarget = { name: decision.name, ...(target?.section ? { section: target.section } : {}) };
-  return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
 }
 
 function clearJourneyPointer(): Promise<unknown> {
@@ -791,8 +893,13 @@ async function stopAndDraft() {
   appEvent(`Teach mode stopped; drafting a Playbook from ${pendingPayload?.events.length ?? 0} recorded events (takes about 15 seconds)`);
   let res: Response;
   try {
-    res = await fetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
-  } catch {
+    res = await authFetch(`${HTTP}/playbooks/draft`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(pendingPayload) });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      say("system", `${error.message} Your recording is kept; press "Stop and draft Playbook" after signing in.`);
+      $("#teachbar").hidden = false;
+      return;
+    }
     say("system", `Couldn't reach ${SERVER_HOST}. Try drafting again.`);
     $("#teachbar").hidden = false;
     return;
@@ -830,8 +937,12 @@ $("#publish").addEventListener("click", async () => {
   const ruleIds = [...document.querySelectorAll<HTMLInputElement>("#draftrules input:checked")].map((i) => i.value);
   let res: Response;
   try {
-    res = await fetch(`${HTTP}/playbooks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft, ruleIds }) });
-  } catch {
+    res = await authFetch(`${HTTP}/playbooks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ draft, ruleIds }) });
+  } catch (error) {
+    if (error instanceof AuthError) {
+      say("system", `${error.message} Your draft is still here; press Publish after signing in.`);
+      return;
+    }
     say("system", "Couldn't reach the configured GuideRail coach. Your draft is still here; press Publish to try again.");
     return;
   }

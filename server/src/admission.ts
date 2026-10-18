@@ -62,21 +62,24 @@ export class LiveAdmission {
 
 /** One-use, 60-second capabilities bound to a fresh anonymous identity and Origin. */
 export class SessionTickets {
-  private tickets = new Map<string, { origin: string; expires: number; anonymousId: string }>();
+  private tickets = new Map<string, { origin: string; expires: number; anonymousId: string; uid?: string }>();
 
-  issue(origin: string) {
+  // uid: the signed-in Firebase user the ticket belongs to (none when sign-in is off).
+  issue(origin: string, uid?: string) {
     for (const [token, ticket] of this.tickets) if (ticket.expires <= Date.now()) this.tickets.delete(token);
     if (this.tickets.size >= 128) return undefined;
     const credential = randomBytes(32).toString("base64url");
-    const ticket = { origin, expires: Date.now() + MINUTE, anonymousId: randomUUID() };
+    const ticket = { origin, expires: Date.now() + MINUTE, anonymousId: randomUUID(), ...(uid ? { uid } : {}) };
     this.tickets.set(credential, ticket);
     return { credential, anonymousId: ticket.anonymousId, expiresAt: ticket.expires };
   }
 
-  consume(token: string | null, origin: string | undefined) {
+  // A ticket issued to a signed-in user is only valid for that same user.
+  consume(token: string | null, origin: string | undefined, uid?: string) {
     if (!token || !origin) return undefined;
     const ticket = this.tickets.get(token);
     if (!ticket || ticket.origin !== origin || ticket.expires <= Date.now()) return undefined;
+    if (ticket.uid !== undefined && ticket.uid !== uid) return undefined;
     this.tickets.delete(token);
     return ticket.anonymousId;
   }
