@@ -131,7 +131,10 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         return;
       }
       if (stopped || !session || !msg || typeof msg !== "object") return;
-      if ("text" in msg && (typeof msg.text !== "string" || msg.text.length > 4000)) return;
+      if ("text" in msg && (typeof msg.text !== "string" || msg.text.length > 4000)) {
+        send({ type: "error", message: "That message was not delivered: the coach accepts text of up to 4,000 characters per message." });
+        return;
+      }
       if (msg.type === "audio" && (typeof msg.data !== "string" || msg.data.length > 48_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(msg.data))) return;
       if (msg.type === "tool_result" && (typeof msg.id !== "string" || typeof msg.name !== "string" || !msg.response || typeof msg.response !== "object")) return;
       if (msg.type === "tool_result") {

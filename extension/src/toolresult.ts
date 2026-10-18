@@ -1,5 +1,6 @@
 // The relay ends the session when one tool result's id + name + JSON response exceeds 4,000
 // characters (server/src/live.ts). Results are fitted under that with margin before sending.
+import { fitDocument, type DocumentSnapshot } from "./document.ts";
 import type { PageElement } from "./messages.ts";
 
 export const TOOL_RESULT_LIMIT = 3_600;
@@ -8,8 +9,16 @@ export const toolResultSize = (id: string, name: string, response: unknown) =>
   id.length + name.length + JSON.stringify(response).length;
 
 // `rank` is a local trimming hint for page reads and is never sent.
+// A public document read keeps at least half the budget, or all room the controls leave.
 export function fitToolResult(id: string, name: string, { rank, ...response }: Record<string, unknown>): Record<string, unknown> {
   if (toolResultSize(id, name, response) <= TOOL_RESULT_LIMIT) return response;
+  if (response.document) {
+    const rest = toolResultSize(id, name, { ...response, document: null });
+    const fitted = fitDocument(response.document as DocumentSnapshot, Math.max(TOOL_RESULT_LIMIT / 2, TOOL_RESULT_LIMIT - rest));
+    if (!fitted) return { error: `The ${name} result was too large to send.` };
+    response = { ...response, document: fitted };
+    if (toolResultSize(id, name, response) <= TOOL_RESULT_LIMIT) return response;
+  }
   if (Array.isArray(response.elements)) {
     const elements = response.elements as PageElement[];
     const total = elements.length;

@@ -185,6 +185,18 @@ describe("Live limits", () => {
   });
 });
 
+describe("oversized text", () => {
+  it("tells the client the text was not delivered and keeps the session open", async () => {
+    const { client } = await start();
+    client.input({ type: "text", text: "x".repeat(4001) });
+    expect(live.session.sendClientContent).not.toHaveBeenCalled();
+    expect(client.sent.at(-1)).toEqual({ type: "error", message: "That message was not delivered: the coach accepts text of up to 4,000 characters per message." });
+    expect(client.close).not.toHaveBeenCalled();
+    client.input({ type: "text", text: "x".repeat(4000) });
+    expect(live.session.sendClientContent).toHaveBeenCalledOnce();
+  });
+});
+
 describe("tool result input boundary", () => {
   const call = (id: string, name = "read_page") => live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id, name, args: {} }] } });
 

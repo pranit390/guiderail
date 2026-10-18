@@ -21,6 +21,26 @@ describe("public document page boundary", () => {
     document.querySelector("article")!.append(document.createTextNode("x".repeat(30_000)));
     expect(readDocument()!.text.length).toBeLessThanOrEqual(12_000);
   });
+  it("fits the whole brief of a long docs page into one relay message and says what was cut", () => {
+    const article = document.querySelector("article")!;
+    for (let k = 0; k < 80; k++) article.insertAdjacentHTML("beforeend", `<h3>Step ${k} "quoted" \\ heading</h3><p>${'Paragraph with "quotes" and \\ slashes. '.repeat(10)}</p>`);
+    const doc = readDocument()!;
+    expect(doc.text.length).toBeGreaterThan(4_000);
+    const prompt = briefPrompt(doc)!;
+    expect(prompt.length).toBeLessThanOrEqual(4_000);
+    const sent = JSON.parse(prompt.slice(prompt.indexOf("\n") + 1));
+    expect(sent).toMatchObject({ url: doc.url, title: doc.title });
+    expect(doc.text.startsWith(sent.text)).toBe(true);
+    expect(sent.text.length).toBeGreaterThan(1_000);
+    expect(sent.headings).toEqual(doc.headings.slice(0, sent.headings.length));
+    expect(sent.headings.slice(0, 2)).toEqual(["Create a database", "Firebase console"]);
+    expect(sent.truncated).toContain(`first ${sent.text.length} of ${doc.text.length} characters`);
+    expect(sent.truncated).toContain(`of ${doc.headings.length} headings`);
+  });
+  it("sends a short page whole", () => {
+    const doc = readDocument()!;
+    expect(JSON.parse(briefPrompt(doc)!.split("\n")[1])).toEqual(doc);
+  });
   it("supports both pinned public docs without allowing account or unrelated pages", () => {
     expect(isPublicDoc(PUBLIC_DOCS[1] + "?hl=en#grant-access")).toBe(true);
     for (const url of ["https://accounts.google.com", PUBLIC_DOCS[0] + "-fake", "https://example.com", "bad", "http://firebase.google.com/docs/firestore/manage-databases"]) expect(readDocument(url)).toBeUndefined();

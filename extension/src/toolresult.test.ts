@@ -44,6 +44,25 @@ describe("fitToolResult", () => {
     expect(fitToolResult("id", "read_page", snap)).toEqual({ url: "u", title: "t", generation: 1, elements: [{ i: 1, role: "button", name: "Save", section: "Billing" }] });
   });
 
+  it("fits a long public document read with its controls instead of refusing it", () => {
+    const text = "Firestore databases store documents. ".repeat(320);
+    const headings = Array.from({ length: 60 }, (_, k) => `Section ${k + 1} about creating a database`);
+    const elements = Array.from({ length: 40 }, (_, k) => ({ i: k + 1, role: "link", name: `Docs navigation link ${k + 1}`, section: "Navigation" }));
+    const document = { url: "https://firebase.google.com/docs/firestore/manage-databases", title: "Manage databases", text, headings };
+    const fitted = fitToolResult("function-call-9", "read_page", { url: document.url, title: document.title, generation: 2, elements, document }) as {
+      error?: string; document: typeof document & { truncated: string }; elements: unknown[];
+    };
+    expect(fitted.error).toBeUndefined();
+    expect(wire("function-call-9", "read_page", fitted)).toBeLessThanOrEqual(TOOL_RESULT_LIMIT);
+    expect(fitted.document).toMatchObject({ url: document.url, title: document.title });
+    expect(text.startsWith(fitted.document.text)).toBe(true);
+    expect(fitted.document.text.length).toBeGreaterThan(500);
+    expect(fitted.document.headings).toEqual(headings.slice(0, fitted.document.headings.length));
+    expect(fitted.document.headings.length).toBeGreaterThan(5);
+    expect(fitted.document.truncated).toContain(`first ${fitted.document.text.length} of ${text.length} characters`);
+    expect(fitted.elements.length).toBeGreaterThan(0);
+  });
+
   it("replaces other oversized results with a bounded error", () => {
     const fitted = fitToolResult("id", "get_guidance", { requirements: Array.from({ length: 200 }, () => "requirement text") });
     expect(fitted).toEqual({ error: "The get_guidance result was too large to send." });

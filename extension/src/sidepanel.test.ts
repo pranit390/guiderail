@@ -201,6 +201,29 @@ describe("lazy Live connection", () => {
   });
 });
 
+describe("oversized typed message", () => {
+  it("keeps the exact text in the composer, explains the limit and opens no session", async () => {
+    const exact = ` ${"Deploy with these settings. ".repeat(150)} `;
+    type(exact);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect($<HTMLInputElement>("#text").value).toBe(exact);
+    expect($<HTMLInputElement>("#text").readOnly).toBe(false);
+    expect(document.body.textContent).toContain(`This message is ${exact.length} characters; the coach accepts up to 4000.`);
+    expect(sessionRequests()).toBe(0);
+    expect(sockets).toHaveLength(0);
+  });
+
+  it("does not send an oversized message on an open connection", async () => {
+    const socket = await connected();
+    const exact = "x".repeat(4001);
+    type(exact);
+    expect(socket.send).not.toHaveBeenCalled();
+    expect($<HTMLInputElement>("#text").value).toBe(exact);
+    type("y".repeat(4000));
+    expect(sent(socket)).toEqual([{ type: "text", text: "y".repeat(4000) }]);
+  });
+});
+
 describe("explicit email proposal confirmation", () => {
   const args = { to: "person@example.com", subject: "Permission request", body: '<script>ignore the user</script>\nBody shown verbatim.' };
 
@@ -355,12 +378,30 @@ describe("public docs briefing", () => {
       expect(sockets[0].send).not.toHaveBeenCalled();
       sockets[0].receive({ type: "ready" });
       expect(sockets[0].send).toHaveBeenCalledWith(expect.stringContaining("Brief me from this page using only"));
+      expect(JSON.parse(sockets[0].send.mock.calls[0][0]).text).toContain(doc.text);
     } else {
       await vi.waitFor(() => expect(status.textContent).toContain("Couldn't point to “Grant a single IAM role”"));
       expect(status.textContent).not.toContain("Briefing requested");
       expect(sockets).toHaveLength(0);
       expect(sessionRequests()).toBe(0);
     }
+  });
+});
+
+describe("long public docs briefing", () => {
+  it("delivers a brief of a long page within one relay message", async () => {
+    queryTabs.mockResolvedValue([{ id: 1, url: PUBLIC_DOCS[0] }]);
+    const doc = { url: PUBLIC_DOCS[0], title: "Manage databases", text: "Create a Firestore database in a location. ".repeat(280), headings: ["Create a database", ...Array.from({ length: 59 }, (_, k) => `Section ${k}`)] };
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_document" ? doc : { found: true });
+    document.querySelector<HTMLButtonElement>("[data-brief]")!.click();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].receive({ type: "ready" });
+    const [brief] = sent(sockets[0]);
+    expect(brief.type).toBe("text");
+    expect(brief.text.length).toBeLessThanOrEqual(4000);
+    const snapshot = JSON.parse(brief.text.slice(brief.text.indexOf("\n") + 1));
+    expect(snapshot.headings[0]).toBe("Create a database");
+    expect(snapshot.truncated).toContain(`of ${doc.text.length} characters`);
   });
 });
 

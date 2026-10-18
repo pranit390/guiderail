@@ -3,7 +3,7 @@ import { JourneyBinding } from "./journey-binding.ts";
 import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
 import { mountJourneyPanel } from "./journey-panel.ts";
-import { briefPrompt, isPublicDoc, routePageTool, type DocumentSnapshot } from "./document.ts";
+import { briefPrompt, isPublicDoc, RELAY_TEXT_LIMIT, routePageTool, type DocumentSnapshot } from "./document.ts";
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, HighlightResult, PageSnapshot, ToPage } from "./messages.ts";
@@ -62,6 +62,8 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
     const doc = await toPage<DocumentSnapshot | { error: string }>({ kind: "read_document" }, tab.id);
     if ("error" in doc) throw new Error(doc.error);
     if (!doc.text || !doc.headings.length) throw new Error("No visible document section was found.");
+    const prompt = briefPrompt(doc);
+    if (!prompt) throw new Error("This page is too long to brief.");
     docsTabId = tab.id;
     const preferred = doc.headings.find((h) => /^(Create a database|Grant access|Grant a single IAM role|Required roles and permissions)$/i.test(h)) ?? doc.headings[0];
     const highlight = await toPage<unknown>({ kind: "highlight_document", heading: preferred }, docsTabId);
@@ -69,7 +71,7 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
       docsTabId = undefined;
       throw new Error(`Couldn't point to “${preferred}” on this page.`);
     }
-    sendInput({ type: "text", text: briefPrompt(doc) });
+    sendInput({ type: "text", text: prompt });
     say("user", "Brief me from this page.");
     open = null;
   },
@@ -857,6 +859,10 @@ $("#form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value;
   if (!text.trim() || input.readOnly) return;
+  if (text.length > RELAY_TEXT_LIMIT) {
+    say("system", `This message is ${text.length} characters; the coach accepts up to ${RELAY_TEXT_LIMIT}. Shorten it and send again.`);
+    return;
+  }
   say("user", text);
   open = null;
   lastSent = { text, at: Date.now() };
