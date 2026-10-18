@@ -33,6 +33,7 @@ export const installSteps = [
   "Choose Load unpacked and select the unzipped folder that contains manifest.json.",
   "Pin GuideRail from the extensions menu.",
   "Open the Firebase console and start Create a Firestore database.",
+  "After you install: open GuideRail with Cmd+Shift+K (macOS) / Ctrl+Shift+K (Windows/Linux) or its pinned toolbar icon. Sign in with the demo login from the deck, then type or talk. Typing works without a microphone.",
 ] as const;
 
 export const citedControls = [
