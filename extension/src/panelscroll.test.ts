@@ -18,7 +18,7 @@ const line = (text = "x") => () => log.append(Object.assign(document.createEleme
 
 beforeEach(() => {
   document.body.innerHTML = `
-    <main id="scroll"><div id="log"></div><ul id="issues" hidden></ul><section id="guidance" hidden></section></main>
+    <main id="scroll" tabindex="0"><div id="log"></div><ul id="issues" hidden></ul><section id="guidance" hidden></section></main>
     <button id="newcards" type="button" hidden></button>
     <input id="text">`;
   scroll = document.getElementById("scroll")!;
@@ -39,6 +39,7 @@ beforeEach(() => {
   vi.stubGlobal("matchMedia", (q: string) => ({ matches: reduced && q.includes("reduce") }));
   panel = new PanelScroll(scroll, log, input, chip);
   for (let i = 0; i < 10; i++) line()();
+  scroll.scrollTop = logHeight() - VIEW;
 });
 
 const violate = (...messages: string[]) =>
@@ -117,6 +118,8 @@ describe("PanelScroll.update", () => {
     chip.click();
     expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
     expect(chip.hidden).toBe(true);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("how do I");
   });
 
   it("withdraws the chip when its card is cleared", () => {
@@ -148,18 +151,43 @@ describe("PanelScroll.update", () => {
     violate("Test mode lets anyone read your data");
     expect(chip.textContent).toBe("New: suggested labels");
 
+    chip.focus();
     chip.click();
     expect(guide.scrollIntoView).toHaveBeenCalledTimes(1);
     expect(chip.hidden).toBe(false);
     expect(chip.textContent).toBe("New: 1 to fix");
+    expect(document.activeElement).toBe(chip);
 
     chip.click();
     expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
     expect(chip.hidden).toBe(true);
+    expect(document.activeElement).toBe(input);
+  });
+
+  it("offers a chip without moving a person reading history, then focuses the revealed region", () => {
+    scroll.scrollTop = 20;
+    violate("Test mode lets anyone read your data");
+    expect(top).toBe(20);
+    expect(issues.scrollIntoView).not.toHaveBeenCalled();
+    expect(chip.hidden).toBe(false);
+    chip.focus();
+    chip.click();
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(chip.hidden).toBe(true);
+    expect(document.activeElement).toBe(scroll);
   });
 });
 
 describe("PanelScroll reveal while the coach streams", () => {
+  it.each(["wheel", "touchmove", "pointerdown", "keydown"])("respects %s scroll intent during a reveal", (type) => {
+    violate("Test mode lets anyone read your data");
+    scroll.dispatchEvent(type === "keydown" ? new KeyboardEvent(type, { key: "PageUp" }) : new Event(type));
+    scroll.scrollTop = 20;
+    panel.append(line());
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(top).toBe(20);
+  });
+
   it("carries a smooth reveal on through streamed text instead of cutting it short", () => {
     scroll.scrollTop = logHeight() - VIEW;
     violate("Test mode lets anyone read your data");

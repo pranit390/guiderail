@@ -2,7 +2,7 @@
 const shown = (el: HTMLElement) => (el.hidden ? "" : el.textContent ?? "");
 
 export class PanelScroll {
-  // Cards changed while the person was typing, oldest first, each with its chip label.
+  // Cards changed while the person was typing or reading history, oldest first.
   private pending = new Map<HTMLElement, () => string>();
   // The card a smooth reveal is moving to, until that scroll ends or the card is hidden or settled in view.
   private revealing: HTMLElement | null = null;
@@ -18,6 +18,13 @@ export class PanelScroll {
       if (card) this.reveal(card);
     });
     scroll.addEventListener("scrollend", () => (this.revealing = null));
+    const cancelReveal = () => (this.revealing = null);
+    scroll.addEventListener("wheel", cancelReveal, { passive: true });
+    scroll.addEventListener("touchmove", cancelReveal, { passive: true });
+    scroll.addEventListener("pointerdown", cancelReveal);
+    scroll.addEventListener("keydown", (event) => {
+      if (["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(event.key)) cancelReveal();
+    });
   }
 
   // Adds to the log. A reader at or below the end of the log keeps it where it was (following new text);
@@ -34,14 +41,15 @@ export class PanelScroll {
   }
 
   // Re-renders a card and, when it is newly shown or its content changed, brings it into view.
-  // While the person is typing, offers a chip above the composer instead of moving the page under them.
+  // While the person is typing or reading history, offers a chip instead of moving the page under them.
   update(card: HTMLElement, label: () => string, render: () => void) {
     const before = shown(card);
+    const readingHistory = this.log.getBoundingClientRect().bottom > this.scroll.getBoundingClientRect().bottom + 1;
     render();
     const now = shown(card);
     if (!now) this.pending.delete(card);
     else if (now !== before) {
-      if (document.activeElement === this.input && this.input.value.trim() !== "") this.pending.set(card, label);
+      if (readingHistory || (document.activeElement === this.input && this.input.value.trim() !== "")) this.pending.set(card, label);
       else this.reveal(card);
     }
     this.showChip();
@@ -66,7 +74,9 @@ export class PanelScroll {
 
   private showChip() {
     const [label] = this.pending.values();
+    const restoreFocus = !label && document.activeElement === this.chip;
     this.chip.hidden = !label;
     if (label) this.chip.textContent = label();
+    if (restoreFocus) (this.input.value ? this.input : this.scroll).focus({ preventScroll: true });
   }
 }

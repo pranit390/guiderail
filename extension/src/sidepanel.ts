@@ -340,6 +340,7 @@ async function setTeach(on: boolean) {
   }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teachbar").hidden = !on;
+  if (on) panel.reveal($("#teachbar"));
   connect();
 }
 
@@ -404,17 +405,20 @@ async function stopAndDraft() {
   } catch {
     say("system", "Couldn't reach the GuideRail server on localhost:8787. Press \"Stop and draft Playbook\" to try again.");
     $("#teachbar").hidden = false;
+    panel.reveal($("#teachbar"));
     return;
   }
   if (!res.ok) {
     say("system", `Couldn't draft the Playbook: ${await errorText(res)}. Press "Stop and draft Playbook" to try again.`);
     $("#teachbar").hidden = false;
+    panel.reveal($("#teachbar"));
     return;
   }
   let body: any;
   try { body = await res.json(); } catch {
     say("system", `Couldn't draft the Playbook: ${res.statusText || "bad response"}. Press "Stop and draft Playbook" to try again.`);
     $("#teachbar").hidden = false;
+    panel.reveal($("#teachbar"));
     return;
   }
   teach = null;
