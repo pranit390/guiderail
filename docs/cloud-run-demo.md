@@ -42,7 +42,7 @@ Attach only
 Set `DISABLE_DRAFT=true` to allow only cached documentation Journeys (an uncached compile returns 503 without calling Gemini), disable the billable Playbook draft endpoint and
 Playbook publishing (which would otherwise let anyone change the hosted Guide
 instructions and rules), and `DEMO_END_AT=2026-11-07T00:00:00Z` to end new demo
-admission after judging. Set `PUBLIC_ORIGIN` to the deployed bare HTTPS origin
+admission after judging (after that time compiles are also cached-only). Set `PUBLIC_ORIGIN` to the deployed bare HTTPS origin
 (for example `https://guiderail-coach-q7tihot5sq-uc.a.run.app`, no trailing
 slash) to enable same-origin token issuance and Approver links. Extension origins
 are also accepted; unrelated browser origins are not. On Cloud Run (`K_SERVICE`
