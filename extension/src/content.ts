@@ -1,5 +1,6 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
-// It never clicks, types or submits for the user (ADR 0001).
+// Only approved Database ID text assistance is supported; never clicks or submits.
+import { fillDatabaseId } from "./assist-field.ts";
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
 import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isSensitivePage, isVisible, nameOf, norm, roleOf, sectionOf, textOf, safeValueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
@@ -433,6 +434,12 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
     case "highlight": reply(highlightRequest(msg)); break;
     case "clear_highlight": clearHighlight(); reply({ ok: true }); break;
     case "read_form": reply(readForm()); break;
+    case "fill_field":
+      try {
+        if (msg.fieldName !== "Database ID" || msg.generation !== generation) throw new Error("The approved page read is stale. Review a new plan.");
+        reply(fillDatabaseId(indexed.get(msg.index), msg.value, msg.retry));
+      } catch (error) { reply({ error: error instanceof Error ? error.message : "Fill refused." }); }
+      break;
     case "show_violations": reply({ shown: showViolations(msg.violations) }); break;
     case "show_field": showField(msg.field); reply({ ok: true }); break;
     case "clear": highlighted = null; ring.hidden = true; cue.hidden = true; showViolations([]); reply({ ok: true }); break;

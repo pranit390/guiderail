@@ -16,6 +16,7 @@ import { SessionLog, type Entry } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
 import { isSensitiveUrl } from "./privacy.ts";
 import { fitToolResult } from "./toolresult.ts";
+import { mountAssist } from "./assist.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 import { AuthError, authFetch, authRequired, currentUser, onAuthLost, signIn, signOut, wsProtocols } from "./auth.ts";
@@ -48,7 +49,7 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
   changed: appEvent,
   clear: clearJourneyPointer,
   currentRegion: $("#current-step"),
-  reset() { binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
+  reset() { assist.stop("Journey ended. Assist stopped."); binding.clear(); compiledGoal = false; docsTabId = undefined; bound = null; },
   compiled() {
     compiledGoal = true;
     restartPending = true;
@@ -110,6 +111,35 @@ let rules: Rule[] = [];
 let firstName: string | undefined;
 let violations: Violation[] = [];
 let mode: "guide" | "teach" = "guide";
+const assist = mountAssist($("#assist"), {
+  async context() {
+    if (mode !== "guide") throw new Error("Leave Teach mode before using Assist.");
+    const tab = await binding.tab();
+    const bindingGeneration = binding.generation;
+    const snapshot = await readSnapshot(tab);
+    return { tabId: tab.id!, url: tab.url!, bindingGeneration, snapshot };
+  },
+  async current() {
+    const tab = await binding.tab();
+    return { tabId: tab.id!, url: tab.url!, bindingGeneration: binding.generation };
+  },
+  readForm: () => toPage<FormState>({ kind: "read_form" }),
+  async fill({ context, fieldIndex, value, retry }) {
+    const tab = await binding.tab();
+    if (tab.id !== context.tabId || tab.url !== context.url || binding.generation !== context.bindingGeneration) throw new Error("Journey changed. Review a new plan.");
+    const result: unknown = await chrome.tabs.sendMessage(context.tabId, { kind: "fill_field", fieldName: "Database ID", value, generation: context.snapshot.generation, index: fieldIndex, retry, expectedUrl: context.url } satisfies ToPage);
+    if (!result || typeof result !== "object" || !("filled" in result) || result.filled !== true) throw new Error("Database ID changed or the fill could not be confirmed. Re-read this step, or copy and type your value manually.");
+  },
+  rules: () => rules,
+  checked: updateViolations,
+  receipt(event) {
+    // Receipt seam for the persistence consumer. No values or raw page content.
+    $("#assist").dispatchEvent(new CustomEvent("guiderail-receipt", { detail: event, bubbles: true }));
+    appEvent(`Assist ${event.kind}: ${event.outcome}. You click Create.`);
+  },
+});
+assist.stopControl.className = "assist-stop";
+$(".page-look").before(assist.stopControl);
 let teach: TeachSession | null = null;
 let draft: any = null;
 const mic = new Mic();
@@ -335,6 +365,7 @@ function onReady() {
 
 // Closes the Live connection without opening another; the next typed message or Talk press reconnects.
 function disconnect(text: string, state: "off" | "idle" = "off") {
+  assist.stop("Connection ended. Assist stopped.");
   connectionAttempt++;
   const sock = ws;
   ws = undefined;
@@ -388,6 +419,7 @@ async function onServer(msg: any) {
       break;
     case "interrupted": speaker.interrupt(); speaker.turnEnded(); held.audio = []; break;
     case "transcript":
+      if (msg.role === "user" && /\bstop\b/i.test(msg.text)) assist.stop();
       teach?.heard(msg.role, msg.text);
       if (msg.role === "user" || mode !== "teach") turnText[msg.role as "user" | "model"] += msg.text;
       if (mode === "teach" && msg.role === "model") held.text += msg.text;
@@ -473,6 +505,7 @@ async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
 
 async function runTool(name: string, args: Record<string, any>): Promise<Record<string, unknown>> {
   switch (name) {
+    case "fill_field": return assist.fill(args);
     case "open_page":
       parseCompileRequest(args);
       await journeyPanel.openJourney();
@@ -749,6 +782,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       break;
     case "tab_changed":
       $("#firestore-guidance").hidden = true;
+      assist.invalidate("The tab or page changed. Review a new plan.");
       boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
         if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -762,6 +796,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       }
       break;
     case "page_event":
+      if (msg.generation !== undefined) assist.invalidate("The page changed. Review a new plan.");
       if (binding.tabId !== undefined) {
         if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control. Choose I did this · Next step, or re-read this Step.");
         else journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -828,6 +863,7 @@ async function followTab(tabId: number) {
 }
 
 async function setTeach(on: boolean) {
+  assist.setEnabled(!on);
   if (on && binding.tabId !== undefined) journeyPanel.endJourney();
   mode = on ? "teach" : "guide";
   docsTabId = undefined;
@@ -978,6 +1014,7 @@ $("#form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value;
   if (!text.trim() || input.readOnly) return;
+  if (/\bstop\b/i.test(text)) assist.stop();
   if (text.length > RELAY_TEXT_LIMIT) {
     say("system", `This message is ${text.length} characters; the coach accepts up to ${RELAY_TEXT_LIMIT}. Shorten it and send again.`);
     return;

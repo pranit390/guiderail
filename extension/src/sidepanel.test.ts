@@ -468,6 +468,33 @@ describe("bound Journey tool and event routing", () => {
     expect(await tool("open_page", { goalId: FIRESTORE_GOAL.id, url: "https://evil.example" })).toHaveProperty("error");
     expect(chrome.tabs.create).not.toHaveBeenCalled();
   });
+  it("refuses model fill/click requests in default Guide without touching the page", async () => {
+    expect(await tool("fill_field", { fieldName: "Database ID", value: "customer-db" })).toHaveProperty("error");
+    for (const name of ["click", "submit", "send"]) expect(await tool(name, { text: "Create" })).toHaveProperty("error");
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
+  it("routes an approved Assist fill only to the bound page, verifies readback, and rechecks Rules", async () => {
+    await start();
+    let value = "(default)";
+    sendMessage.mockImplementation(async (_id, message) => {
+      if (message.kind === "read_page") return { url: boundUrl, title: "Fixture", generation: 9, elements: [{ i: 1, name: "Database ID", role: "textbox", value }] };
+      if (message.kind === "read_form") return { url: boundUrl.replace("https://", ""), fields: { "Database ID": value }, labels: {}, sections: [] };
+      if (message.kind === "fill_field") { value = message.value; return { filled: true }; }
+      return { ok: true };
+    });
+    $<HTMLSelectElement>("#assist-level").value = "assist";
+    $("#assist-level").dispatchEvent(new Event("change"));
+    $<HTMLInputElement>("#assist-id").value = "customer-db";
+    $("#assist-questions").dispatchEvent(new Event("submit", { cancelable: true }));
+    await vi.waitFor(() => expect($<HTMLButtonElement>("[data-approve]").disabled).toBe(false));
+    expect(sendMessage.mock.calls.some(([, msg]) => msg.kind === "fill_field")).toBe(false);
+    expect(await tool("fill_field", { fieldName: "Database ID", value: "customer-db" })).toHaveProperty("error");
+    $<HTMLButtonElement>("[data-approve]").click();
+    await vi.waitFor(() => expect($("[data-assist-status]").textContent).toContain("Read back Database ID: customer-db"));
+    expect(sendMessage).toHaveBeenCalledWith(7, { kind: "fill_field", fieldName: "Database ID", value: "customer-db", generation: 9, index: 1, retry: false, expectedUrl: boundUrl });
+    expect(sendMessage).toHaveBeenCalledWith(7, { kind: "show_violations", violations: [], expectedUrl: boundUrl });
+    expect(document.querySelector(".assist-stop")?.closest("#scroll")).toBeNull();
+  });
   it("routes reads and highlights only to the bound tab; tab switching pauses them", async () => {
     await start();
     expect(chrome.tabs.create).toHaveBeenCalledExactlyOnceWith({ url: FIRESTORE_GOAL.consoleUrl });
