@@ -16,13 +16,13 @@ npm run build:site
 
 `npm run build:site` does three things:
 
-1. Builds the extension with `GUIDERAIL_SERVER_URL=https://guiderail-coach-q7tihot5sq-uc.a.run.app` and `GUIDERAIL_BUILD_REVISION` set to the current commit.
+1. Clears `extension/dist`, then builds the extension with `GUIDERAIL_SERVER_URL` set to the hosted coach origin in `src/content/coach.json` and `GUIDERAIL_BUILD_REVISION` set to the current commit.
 2. Builds this Astro site into `landing/dist/`.
 3. Zips the contents of `extension/dist` as `guiderail-extension/` and writes `landing/dist/download/guiderail-extension.zip`.
 
 Unzip the archive and load the `guiderail-extension` folder, which contains `manifest.json`, with Chrome's Load unpacked. `dist/` is gitignored, so the zip is not committed. Run the same command again to rebuild it.
 
-Node 22.22 or newer.
+Node 22.22 or newer, and `python3` on PATH for the zip step.
 
 ## Preview
 

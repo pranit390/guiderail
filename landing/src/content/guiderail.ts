@@ -1,9 +1,10 @@
 import type { LandingContent } from "../kit/types";
+import coach from "./coach.json";
 
 /** Same-origin file produced by `npm run build:site`. Firebase Hosting serves it from the site root. */
 export const downloadHref = "/download/guiderail-extension.zip";
 
-export const coachOrigin = "https://guiderail-coach-q7tihot5sq-uc.a.run.app";
+export const coachOrigin = coach.origin;
 
 export const practiceHref = `${coachOrigin}/sandbox/`;
 
@@ -98,7 +99,7 @@ export const content: LandingContent = {
         tone: "go",
         paragraphs: [
           "Create a Firestore database. You choose the Firebase project. GuideRail opens the databases catalog and walks that wizard.",
-          "Guide speaks or writes one Step at a time. Assist proposes a text value and waits for your approval. Neither mode clicks Create.",
+          "Guide speaks or writes one Step at a time. Assist proposes a Database ID and types it into that one field only after you approve, then reads it back. Neither mode clicks Create.",
         ],
       },
       {
@@ -122,7 +123,7 @@ export const content: LandingContent = {
         title: "Done",
         tone: "done",
         paragraphs: [
-          "You click Create. The extension has no tool that clicks, types, or sends. On the illustration below, Assist fills demo-guide only after you approve it, and only in that text field.",
+          "You click Create. The extension never clicks or sends. In Assist it types into one field, Database ID, only after you approve, then reads it back. On the illustration below, Assist fills demo-guide the same way.",
         ],
       },
     ],
@@ -135,7 +136,7 @@ export const content: LandingContent = {
       {
         question: "Who clicks Create?",
         answer:
-          "You do. Guide highlights the Step and cites the doc. Assist fills an approved text field on this illustrated form, then reads it back. The extension has no click, type, or send tool.",
+          "You do. Guide highlights the Step and cites the doc. In Assist, the extension types into the Database ID field only after you approve, then reads it back. It never clicks or sends. You always click Create.",
       },
       {
         question: "What is a Violation?",

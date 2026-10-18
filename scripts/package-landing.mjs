@@ -1,10 +1,11 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import coach from "../landing/src/content/coach.json" with { type: "json" };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const coachOrigin = "https://guiderail-coach-q7tihot5sq-uc.a.run.app";
+const coachOrigin = coach.origin;
 const zipPath = join(root, "landing/dist/download/guiderail-extension.zip");
 
 function run(command, args, options) {
@@ -21,6 +22,7 @@ const revision = spawnSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: 
 if (revision.status !== 0) process.exit(revision.status ?? 1);
 const head = revision.stdout.trim();
 
+rmSync(join(root, "extension/dist"), { recursive: true, force: true });
 run("npm", ["run", "build", "-w", "extension"], {
   env: {
     ...process.env,
