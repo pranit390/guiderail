@@ -330,6 +330,7 @@ function clearGuidance() {
   $("#firestore-guidance").hidden = true;
   issues.hidden = true;
   violations = [];
+  $("#policy-override").hidden = true;
   $("#issues-list").replaceChildren();
   $("#issues-summary").textContent = "";
 }
@@ -969,8 +970,6 @@ async function setTeach(on: boolean) {
   disconnect(IDLE_STATUS, "idle");
   if (on) {
     clearGuidance();
-    $("#policy-override").hidden = true;
-
     await toPage({ kind: "show_violations", violations: [] }).catch(() => {});
   }
   await toPage({ kind: "teach", on }).catch(() => {});
