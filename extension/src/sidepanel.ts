@@ -1,9 +1,10 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
 import { STATES, stateGlyph, violationState } from "./states.ts";
 import { Mic, Speaker } from "./audio.ts";
-import type { FormState, FromPage, ToPage } from "./messages.ts";
+import type { FormState, FromPage, HighlightResult, PageSnapshot, ToPage } from "./messages.ts";
 import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
 import { violationFieldLabel } from "./page.ts";
+import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, type BoundSnapshot } from "./resolve.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
 import { SessionLog } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
@@ -20,6 +21,9 @@ const input = $<HTMLInputElement>("#text");
 const talk = $<HTMLButtonElement>("#talk");
 
 let ws: WebSocket | undefined;
+// Latest read of the tab this session is coaching. Highlight and Assist fill may use only these names.
+let bound: BoundSnapshot | null = null;
+let boundStale = false;
 // Teach mode holds each spoken reply until the turn ends, then plays it only if it is worth hearing.
 let held = { audio: [] as string[], text: "", expertSpoke: false };
 // Memory for this side-panel session, given to every new Live connection (e.g. after Teach ↔ Guide).
@@ -206,10 +210,15 @@ async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
 
 async function runTool(name: string, args: Record<string, any>): Promise<Record<string, unknown>> {
   switch (name) {
-    case "read_page":
-      return toPage({ kind: "read_page" });
+    case "read_page": {
+      const tab = await activeTab();
+      const snap = await toPage<PageSnapshot>({ kind: "read_page" }, tab.id);
+      bound = { tabId: tab.id!, url: snap.url, generation: snap.generation, elements: snap.elements };
+      boundStale = false;
+      return snap;
+    }
     case "highlight":
-      return toPage({ kind: "highlight", text: String(args.text ?? ""), role: args.role });
+      return runHighlight(args);
     case "customize":
       return toPage({ kind: "customize", preset: parseCalmPreset(args.preset) });
     case "get_guidance": {
@@ -241,6 +250,47 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     default:
       return { error: `Unknown tool ${name}` };
   }
+}
+
+async function runHighlight(args: Record<string, unknown>): Promise<HighlightResult> {
+  const text = String(args.text ?? "");
+  const role = args.role == null || args.role === "" ? undefined : String(args.role);
+  const section = args.section == null || args.section === "" ? undefined : String(args.section);
+  const citation = args.citation == null || args.citation === "" ? undefined : String(args.citation);
+  let tabId: number | null = null;
+  try {
+    tabId = (await activeTab()).id ?? null;
+  } catch {
+    tabId = null;
+  }
+  const snap = bound;
+  const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
+  if (!actionAuthorized(decision)) {
+    say("system", highlightOutcome(decision));
+    await clearBoundHighlight();
+    return highlightResult(decision);
+  }
+  const live = await toPage<HighlightResult>({
+    kind: "highlight",
+    text,
+    ...(role ? { role } : {}),
+    ...(section ? { section } : {}),
+    generation: snap!.generation,
+    index: decision.i,
+    name: decision.name,
+  }, snap!.tabId);
+  if (!live.found) {
+    if (live.reason === "stale") boundStale = true;
+    say("system", highlightOutcome(live));
+    await clearBoundHighlight();
+    return live;
+  }
+  return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
+}
+
+async function clearBoundHighlight() {
+  if (!bound) return;
+  await toPage({ kind: "clear_highlight" }, bound.tabId).catch(() => {});
 }
 
 // ---------- Guide: suggested values before the user types ----------
@@ -307,7 +357,7 @@ async function updateViolations(form: FormState) {
 
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
 
-chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply) => {
+chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply) => {
   switch (msg.kind) {
     case "toggle_voice": toggleVoice(); break;
     case "customize_event":
@@ -319,8 +369,17 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply
       break;
     case "tab_changed":
       if (mode === "teach") void followTab(msg.tabId);
+      // A reload of the coached tab drops the content script's generation counter, so the old snapshot cannot authorize a target.
+      if (bound && msg.tabId === bound.tabId && msg.url) {
+        boundStale = true;
+        void clearBoundHighlight();
+      }
       break;
     case "page_event":
+      if (bound && sender.tab?.id === bound.tabId && msg.generation !== undefined && msg.generation !== bound.generation) {
+        boundStale = true;
+        void clearBoundHighlight();
+      }
       say("system", msg.text);
       sendServer({ type: "event", text: msg.text });
       break;

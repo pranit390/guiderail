@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import seed from "../../seed/rules/org-labeling-rules.json";
-import type { FormState, ToPage } from "./messages.ts";
+import type { FormState, PageSnapshot, ToPage } from "./messages.ts";
 import { evaluate, type Rule } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
@@ -12,6 +12,13 @@ function request(msg: ToPage | { kind: "customize"; preset: unknown }): unknown 
   const reply = vi.fn();
   listener(msg, {}, reply);
   return reply.mock.calls[0][0];
+}
+
+// The side panel always pins a highlight to the latest read; an unpinned one is refused.
+function highlightPinned(text: string, role: string): unknown {
+  const snap = request({ kind: "read_page" }) as PageSnapshot;
+  const el = snap.elements.find((e) => e.role === role && e.name === text)!;
+  return request({ kind: "highlight", text, role, generation: snap.generation, index: el.i, name: el.name });
 }
 
 function form(): FormState {
@@ -53,7 +60,7 @@ describe("calmer content messages", () => {
     const before = form();
     const violations = evaluate(rules, before);
     expect(violations.length).toBeGreaterThan(0);
-    expect(request({ kind: "highlight", text: "Labels", role: "heading" })).toMatchObject({ found: true });
+    expect(highlightPinned("Labels", "heading")).toMatchObject({ found: true });
     request({ kind: "customize", preset: "calm" });
     request({ kind: "show_violations", violations });
     vi.advanceTimersByTime(20);
@@ -75,7 +82,7 @@ describe("calmer content messages", () => {
 
   it("clears the spotlight when a Step finishes without turning off the kept preset", () => {
     request({ kind: "customize", preset: "calm" });
-    request({ kind: "highlight", text: "Labels", role: "heading" });
+    highlightPinned("Labels", "heading");
     request({ kind: "clear" });
     vi.advanceTimersByTime(20);
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
@@ -103,7 +110,7 @@ describe("calmer content messages", () => {
   it("themes the Step ring and each Violation box from their own surroundings", () => {
     document.querySelector<HTMLElement>('section[aria-label="Labels"]')!.style.backgroundColor = "rgb(22, 29, 40)";
     request({ kind: "show_violations", violations: evaluate(rules, form()) });
-    expect(request({ kind: "highlight", text: "Create", role: "button" })).toMatchObject({ found: true });
+    expect(highlightPinned("Create", "button")).toMatchObject({ found: true });
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
     expect(shadow.querySelector<HTMLElement>(".ring")!.dataset.theme).toBe("light");
     expect(shadow.querySelector<HTMLElement>(".bad")!.dataset.theme).toBe("dark");
@@ -192,5 +199,63 @@ describe("Rule state mapping", () => {
     expect(shadow.querySelector(".bad.stop")).not.toBeNull();
     expect(shadow.querySelector(".chip:not(.step-chip)")!.textContent).toContain("Rule ·");
     expect(shadow.querySelector(".chip:not(.step-chip) .state-glyph.stop")).not.toBeNull();
+  });
+});
+
+describe("highlight freshness", () => {
+  function ring() {
+    return document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".ring")!;
+  }
+
+  function layOut(root: ParentNode = document) {
+    for (const el of root.querySelectorAll<HTMLElement>("*")) {
+      if (el.style.display === "none") continue;
+      el.getBoundingClientRect = () => new DOMRect(40, 100, 200, 60);
+    }
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = `<section aria-label="Labels"><h2>Labels</h2>
+      <input aria-label="Key 1" value="environment"><input aria-label="Value 1" value="production">
+      </section><section aria-label="Billing"><button type="button">Save</button></section>
+      <label for="db">Database ID</label><input id="db">`;
+    layOut();
+  });
+
+  it("hides the ring when a second Save appears after a successful highlight", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    expect(ring().hidden).toBe(false);
+
+    document.querySelector("section")!.insertAdjacentHTML("beforeend", `<button type="button">Save</button>`);
+    layOut();
+    const save = snap.elements.find((el) => el.name === "Save")!;
+    expect(request({ kind: "highlight", text: "Save", role: "button", generation: snap.generation, index: save.i, name: "Save" })).toMatchObject({ found: false, reason: "stale" });
+    expect(ring().hidden).toBe(true);
+  });
+
+  it("hides the ring when the pinned target is no longer visible, and keeps Violation marks", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    expect(shadow.querySelectorAll(".bad").length).toBeGreaterThan(0);
+
+    (document.getElementById("db") as HTMLElement).style.display = "none";
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: false, reason: "stale" });
+    expect(ring().hidden).toBe(true);
+    expect(shadow.querySelectorAll(".bad").length).toBeGreaterThan(0);
+  });
+
+  it("hides the ring when the page moves, without waiting for the next highlight", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    history.pushState(null, "", "/moved");
+    vi.advanceTimersByTime(500);
+    expect(ring().hidden).toBe(true);
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: false, reason: "stale" });
   });
 });

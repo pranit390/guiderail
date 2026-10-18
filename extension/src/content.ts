@@ -1,8 +1,9 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
-import { allElements, BAD_DARK, BAD_LIGHT, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
+import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
+import { liveHighlight } from "./resolve.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
@@ -11,6 +12,8 @@ const MAX_ELEMENTS = 150;
 const SUBMIT_WORDS = /^(create|deploy|save|grant|submit|confirm)\b/i;
 
 let indexed = new Map<number, Element>();
+let snapshotRoles = new Map<number, string>();
+let generation = 0;
 let highlighted: Element | null = null;
 let violationSummary = summarizeViolations([]);
 let warnedSubmitAt = 0;
@@ -21,49 +24,34 @@ const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)"
 
 
 function readPage(): PageSnapshot {
+  generation += 1;
   indexed = new Map();
+  snapshotRoles = new Map();
   const elements: PageElement[] = [];
-  for (const el of allElements()) {
-    if (elements.length >= MAX_ELEMENTS) break;
-    if (isSecret(el) || !isVisible(el)) continue;
-    const name = nameOf(el);
-    if (!name) continue;
-    const i = elements.length + 1;
-    indexed.set(i, el);
-    const item: PageElement = { i, role: roleOf(el), name };
-    const value = valueOf(el);
-    if (value) item.value = value.slice(0, 60);
-    const section = sectionOf(el);
-    if (section && section !== name) item.section = section;
+  for (const control of collectControls(MAX_ELEMENTS)) {
+    indexed.set(control.i, control.el);
+    snapshotRoles.set(control.i, control.role);
+    const item: PageElement = { i: control.i, role: control.role, name: control.name };
+    if (control.value) item.value = control.value;
+    if (control.section) item.section = control.section;
     elements.push(item);
   }
-  return { url: effectiveUrl(), title: document.title, elements };
+  return { url: effectiveUrl(), title: document.title, elements, generation };
 }
 
-// ---------- Finding an element by its text ----------
+// ---------- Pointing at a pinned element ----------
 
-function score(target: string, name: string): number {
-  const t = norm(target), n = norm(name);
-  if (!t || !n) return 0;
-  if (t === n) return 1;
-  if (n.startsWith(t) || t.startsWith(n)) return 0.85;
-  if (n.includes(t) || t.includes(n)) return 0.7;
-  const tw = new Set(t.split(" ")), nw = new Set(n.split(" "));
-  const shared = [...tw].filter((w) => nw.has(w)).length;
-  return (shared / Math.max(tw.size, nw.size)) * 0.6;
+function clearHighlight() {
+  highlighted = null;
+  ring.hidden = true;
+  cue.hidden = true;
 }
 
-function findElement(text: string, role?: string): HighlightResult {
-  const snap = readPage();
-  const ranked = snap.elements
-    .map((e) => ({ e, s: score(text, e.name) + (role && e.role === role ? 0.05 : 0) }))
-    .sort((a, b) => b.s - a.s);
-  const best = ranked[0];
-  if (best && best.s >= 0.6) {
-    pointAt(indexed.get(best.e.i)!, { scroll: !interacting() });
-    return { found: true, i: best.e.i, name: best.e.name };
-  }
-  return { found: false, alternatives: ranked.slice(0, 5).filter((r) => r.s > 0).map((r) => r.e.name) };
+function highlightRequest(msg: Extract<ToPage, { kind: "highlight" }>): HighlightResult {
+  const { result, el } = liveHighlight(msg, generation, indexed, snapshotRoles);
+  if (el) pointAt(el, { scroll: !interacting() });
+  else clearHighlight();
+  return result;
 }
 
 // ---------- Overlay (Shadow DOM so the page's styles can't reach it) ----------
@@ -367,7 +355,9 @@ let lastUrl = location.href;
 const urlTimer = setInterval(() => {
   if (location.href !== lastUrl) {
     lastUrl = location.href;
-    send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).` });
+    generation += 1;
+    clearHighlight();
+    send({ kind: "page_event", text: `Page changed to ${effectiveUrl()} (${document.title}).`, generation });
   }
 }, 500);
 
@@ -380,7 +370,8 @@ chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
       catch (err) { reply({ error: err instanceof Error ? err.message : "Invalid preset." }); }
       break;
     case "read_page": reply(readPage()); break;
-    case "highlight": reply(findElement(msg.text, msg.role)); break;
+    case "highlight": reply(highlightRequest(msg)); break;
+    case "clear_highlight": clearHighlight(); reply({ ok: true }); break;
     case "read_form": reply(readForm()); break;
     case "show_violations": reply({ shown: showViolations(msg.violations) }); break;
     case "show_field": showField(msg.field); reply({ ok: true }); break;

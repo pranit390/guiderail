@@ -83,6 +83,34 @@ export function isSecret(el: Element): boolean {
   return el instanceof HTMLInputElement && (el.type === "password" || el.autocomplete.includes("password"));
 }
 
+export type CollectedControl = {
+  el: Element;
+  i: number;
+  role: string;
+  name: string;
+  value?: string;
+  section?: string;
+};
+
+// The same named controls read_page returns, in snapshot order. Callers keep the element
+// so a later highlight can point at that index only while the snapshot is still current.
+export function collectControls(limit = 150): CollectedControl[] {
+  const out: CollectedControl[] = [];
+  for (const el of allElements()) {
+    if (out.length >= limit) break;
+    if (isSecret(el) || !isVisible(el)) continue;
+    const name = nameOf(el);
+    if (!name) continue;
+    const item: CollectedControl = { el, i: out.length + 1, role: roleOf(el), name };
+    const value = valueOf(el);
+    if (value) item.value = value.slice(0, 60);
+    const section = sectionOf(el);
+    if (section && section !== name) item.section = section;
+    out.push(item);
+  }
+  return out;
+}
+
 export const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
 
 export function findSection(title: string): Element | null {
