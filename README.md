@@ -27,6 +27,8 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 
 Use the **Spoken replies** speaker icon beside the input (or **Alt+Shift+V**) to toggle spoken replies. Spoken replies are on by default and your choice survives panel reloads. Turning them off fades current playback; chat captions keep arriving and microphone input remains independent. Turning them back on during a reply takes effect on the next reply. The microphone icon starts listening and becomes a stop icon while listening; the paper plane sends typed text, as does Enter.
 
+The relay and local probe use Google's prebuilt **Erinome** voice by default. Google describes it as “clear.” Set `LIVE_VOICE` on the server (for example, `LIVE_VOICE=Kore`) to select another [supported Live API voice](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/live-api/configure-language-voice#voices-supported); an empty value keeps Erinome. Language detection is unchanged.
+
 Ask in chat to “make the page calmer” or “put it back” to apply or remove the calm page appearance preset.
 
 Green means Here / Done, yellow means Check / Suggested / Recording, and red marks only blocking Rule Violations. Shapes, line patterns and labels carry the same meaning without colour. Reduced motion keeps these states static. See [the design contract](DESIGN.md) for tokens and motion.

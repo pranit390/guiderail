@@ -6,6 +6,7 @@ import { guideJourneyInstruction } from "./journeys/compile.ts";
 import { loadPlaybooks, loadRuleLines } from "./playbooks/load.ts";
 import { untrustedData, untrustedToolResult, UNTRUSTED_DATA_INSTRUCTION } from "./untrusted.ts";
 import { IDLE_MS, SESSION_MS } from "./live-limits.ts";
+import { liveSpeechConfig } from "./live-voice.ts";
 
 export { IDLE_MS } from "./live-limits.ts";
 
@@ -91,6 +92,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         model,
         config: {
           responseModalities: [Modality.AUDIO],
+          speechConfig: liveSpeechConfig(),
           maxOutputTokens: 512,
           systemInstruction: `${await buildInstruction(mode, goal, goalId)}\n\n${UNTRUSTED_DATA_INSTRUCTION}`,
           tools: mode === "teach" ? [] : [{ functionDeclarations: tools }],
