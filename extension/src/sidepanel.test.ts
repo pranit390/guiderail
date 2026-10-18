@@ -872,7 +872,7 @@ describe("page activity across idle disconnects", () => {
 
   it("sends create-form values for Goal and Playbook checks even when deterministic Rules pass", async () => {
     const socket = await connected();
-    page({ kind: "submit_intent", label: "Create", form: { ...form, fields: { Region: "us-central1", "Service name": "invoices" } } });
+    page({ kind: "submit_intent", label: "Create", form: { ...form, fields: { Region: "us-central1", Description: "", "Service name": "invoices" } } });
     await vi.waitFor(() => expect(sent(socket)).toEqual([{
       type: "event",
       text: expect.stringContaining('User clicked "Create" with no rule Violations. Form: Region=us-central1, Service name=invoices.'),

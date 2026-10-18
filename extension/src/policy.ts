@@ -111,7 +111,7 @@ function suggest(source: string | null, form: FormState, ctx: Context): string |
   switch (source) {
     case "user.firstName": return ctx.firstName ? slug(ctx.firstName) : null;
     case "form.serviceName": {
-      const name = form.fields["Service name"] ?? Object.entries(form.fields).find(([k]) => /name/i.test(k))?.[1];
+      const name = form.fields["Service name"] || Object.entries(form.fields).find(([k, v]) => v && /name/i.test(k))?.[1];
       return name ? slug(name) : null;
     }
     case "resource.type": return /\/run\//.test(form.url) ? "api" : null;

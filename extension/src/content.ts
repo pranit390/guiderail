@@ -306,7 +306,7 @@ function readForm(): FormState {
     if (labelInputs.has(el) || isSecret(el)) continue;
     const name = maskValue(nameOf(el));
     const value = safeValueOf(el);
-    if (name && value) fields[name] = value;
+    if (name) fields[name] = value || fields[name] || "";
   }
   const sections = section ? ["Labels"] : [];
   if (findSection("Grant access")) sections.push("Grant access");
