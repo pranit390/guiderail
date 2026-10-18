@@ -25,7 +25,7 @@ describe("SessionLog", () => {
     );
   });
 
-  it("keeps every app event but only the most recent other entries", () => {
+  it("keeps app events but only the most recent other entries", () => {
     const log = new SessionLog();
     log.add("app", "Teach mode started");
     for (let i = 0; i < 10; i++) log.add("step", `step ${i}`);
@@ -42,5 +42,14 @@ describe("SessionLog", () => {
     log.add("model", "x".repeat(300));
     expect(log.size).toBe(1);
     expect(log.summary()).toMatch(/x{197}…/);
+  });
+
+  it("stays within one relay message however many events are queued", () => {
+    const log = new SessionLog();
+    for (let i = 0; i < 1000; i++) log.add(i % 2 ? "page" : "app", `event ${i} ${"x".repeat(190)}`);
+    const s = log.summary();
+    expect(s.length).toBeLessThan(4000);
+    expect(s).toContain("Page event: event 999");
+    expect(s).not.toContain("event 0 ");
   });
 });

@@ -240,10 +240,9 @@ wss.on("connection", (client, req) => {
   let end: ReturnType<typeof relay> | undefined;
   const slot = admission.admit(() => end?.("demo allowance reached", "This demo session reached its session or daily voice limit."));
   if (!slot.allowed) { reject(slot.message); return; }
-  client.on("close", slot.release);
   const mode = params.get("mode") === "teach" ? "teach" : "guide";
   const goal = params.get("goal")?.slice(0, 200) || undefined;
-  end = relay(client, params.get("resume") ?? undefined, mode, goal);
+  end = relay(client, params.get("resume") ?? undefined, mode, goal, slot.release);
 });
 
 server.listen(PORT, () => console.log(`GuideRail server on http://localhost:${PORT}  (ws /live, /rules, /approvals, /a/, /role, /sandbox/)`));

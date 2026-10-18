@@ -22,6 +22,7 @@ header strong { font-size: 16px; } header strong span { color: var(--accent); }
 .msg.user { align-self: flex-end; background: var(--accent-soft); }
 .msg.model { align-self: flex-start; background: var(--surface); border: 1px solid var(--line); }
 .msg.system { align-self: center; color: var(--muted); font-size: 12px; text-align: center; }
+.msg.alert { align-self: stretch; max-width: none; color: var(--bad); border: 2px solid var(--bad); font-weight: 600; }
 .card { flex-shrink: 0; max-height: 55vh; overflow-y: auto; margin: 0 12px 10px; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .card h2 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .sugg { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-top: 1px solid var(--line); }
