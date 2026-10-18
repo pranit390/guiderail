@@ -51,7 +51,7 @@ Attach only
 
 Set `DISABLE_DRAFT=true` to allow only cached documentation Journeys (an uncached compile returns 503 without calling Gemini), disable the billable Playbook draft endpoint and
 Playbook publishing (which would otherwise let anyone change the hosted Guide
-instructions and rules), and `DEMO_END_AT=2026-11-07T00:00:00Z` to end new demo
+instructions and rules), and `DEMO_END_AT=2026-12-05T18:29:59Z` (5 December 2026, 23:59:59 IST) to end new demo
 admission after judging (after that time compiles are also cached-only). Set `PUBLIC_ORIGIN` to the deployed bare HTTPS origin
 (for example `https://guiderail-coach-q7tihot5sq-uc.a.run.app`, no trailing
 slash) to enable same-origin token issuance and Approver links. Extension origins
@@ -106,18 +106,27 @@ Google host permission. Names, labels, ordinary visible values and page/Teach
 context from other supported pages may leave the browser for the hosted coach
 and Vertex; this is heuristic secret masking, not a claim to detect every secret.
 
-## Expected cost commitment through 6 November 2026
+## Expected cost through 5 December 2026
 
-This is an **expected spend of USD 5.69 under single-instance assumptions**, as clarified by firstmate;
-it is not a mathematical guarantee. Use a conservative 21 UTC-date allowance
-covering deployment on 17 October UTC through 6 November: 21 × 5 = 105 aggregate
-connected Live minutes. Do not assume Cloud Run's shared billing-account free tier remains
+The organisers did not publish a judging end date; the Ask the Expert session says to keep the
+app live until results are announced (see `docs/hackathon.md`). The demo therefore runs until
+`DEMO_END_AT`, 5 December 2026.
+
+The original commitment was **USD 5.69 through 6 November** (21 UTC dates). Extending to
+5 December raises the **worst case under the same single-instance model to about USD 12.43**:
+50 UTC dates × 5 = 250 aggregate connected Live minutes; 250 × $0.045 = $11.25 for Live audio and
+context, 15,000 s × $0.00002525 = $0.38 of active compute, plus the same $0.80 build and traffic
+reserve. That is a ceiling, not a forecast: since #58 only allowlisted demo accounts can start a
+session, so real use is expected to be far below the daily allowance on most days. The table below
+keeps the original 21-day breakdown for reference; it is not a mathematical guarantee. The original
+window used a conservative 21 UTC-date allowance covering deployment on 17 October UTC through
+6 November: 21 × 5 = 105 aggregate connected Live minutes. Do not assume Cloud Run's shared billing-account free tier remains
 available.
 
 | Component | Planning assumption | Expected USD |
 |---|---|---:|
 | Live audio | 25 tokens/second in each direction, continuous audio: 1,500 × $3/M + 1,500 × $12/M = $0.0225/min; 105 × $0.0225 | 2.3625 |
-| Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; short eight-reply sessions | 2.3625 |
+| Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; sessions were also capped at eight replies then (that cap was removed in #58) | 2.3625 |
 | Cloud Run active compute | 6,300 s at $0.000024/vCPU-s + 0.5 × $0.0000025/GiB-s = $0.00002525/s; no free-tier discount | 0.159075 |
 | Startup, HTTP, network and logs | Small judge traffic, short requests, bounded payloads; reserve | 0.30 |
 | Four source builds and retained task images | Initial failed startup, corrected serving build, post-validation redeploy and security-fix redeploy; task image sets held through judging; reserve | 0.50 |
