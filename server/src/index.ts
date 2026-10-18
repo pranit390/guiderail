@@ -17,6 +17,21 @@ export const playbookStore = new FilePlaybookStore(join(ROOT, "data", "playbooks
 export const ruleStore = new FileRuleStore(join(ROOT, "data", "rules"));
 const TYPES: Record<string, string> = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json" };
 
+const LANDING = `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>GuideRail</title>
+<style>body{font:16px/1.55 system-ui,sans-serif;max-width:680px;margin:0 auto;padding:24px 16px;color:#18212f;background:#fff}
+a.btn{display:inline-block;background:#e0a100;color:#1b1300;font-weight:600;padding:10px 18px;border-radius:8px;text-decoration:none}
+code{background:#f1f3f6;padding:1px 5px;border-radius:4px}li{margin:6px 0}small{color:#5a6578}
+@media (prefers-color-scheme:dark){body{background:#0f141c;color:#e6ebf2}code{background:#1d2633}small{color:#9aa6b8}}</style>
+<h1>GuideRail</h1><p>Guide first, guard second. A voice coach for Google tools: your experts teach a task once, and every new hire is guided through it and guarded by your rules. You keep every click.</p>
+<p><a class="btn" href="/download/guiderail-extension.zip" download>Download the Chrome extension</a></p>
+<h2>Install (1 minute)</h2><ol>
+<li>Unzip <code>guiderail-extension.zip</code>.</li>
+<li>Open <code>chrome://extensions</code> and turn on <b>Developer mode</b> (top right).</li>
+<li>Click <b>Load unpacked</b> and pick the unzipped folder.</li>
+<li>Allow the microphone on the welcome page that opens, or just type instead.</li>
+<li>Open the <a href="/sandbox/index.html">practice Cloud Run console</a>, press <code>Cmd/Ctrl+Shift+K</code>, and say or type your goal, e.g. "Deploy a Cloud Run service for a customer in Germany".</li></ol>
+<p><small>This limited demo shares five connected Live minutes per UTC day per server instance. The panel connects when you first type or press Talk and disconnects after one minute without activity. At most three sessions can connect; each session ends within ten minutes. Voice, typed questions and supported page context are sent to Gemini on Vertex AI.</small></p></html>`;
+
 const json = (res: ServerResponse, status: number, body: unknown) =>
   void res.writeHead(status, { "Content-Type": "application/json" }).end(JSON.stringify(body));
 
@@ -61,7 +76,17 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   if (url.pathname === "/health") return void res.end("ok");
 
   if (url.pathname === "/" && req.method === "GET") {
-    return void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>GuideRail coach</title><h1>GuideRail coach</h1><p>The relay is online. Install the packaged extension, open a supported Google page, and type a question or press Talk.</p><p>This limited demo shares five connected Live minutes per UTC day per server instance. The panel connects when you first type or press Talk and disconnects after one minute without activity. At most three sessions can connect; each session ends within ten minutes. Instance replacement can reset the daily allowance. Voice, typed questions and supported page context are sent to Gemini on Vertex AI. No Firebase sign-in or durable receipts are provided by this relay.</p></html>`);
+    return void res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }).end(LANDING);
+  }
+
+  // The extension, prebuilt for this server's origin (see Dockerfile).
+  if (url.pathname === "/download/guiderail-extension.zip" && req.method === "GET") {
+    try {
+      const zip = await readFile(join(ROOT, "download", "guiderail-extension.zip"));
+      return void res.writeHead(200, { "Content-Type": "application/zip", "Content-Disposition": 'attachment; filename="guiderail-extension.zip"' }).end(zip);
+    } catch {
+      return void res.writeHead(404).end("The extension package isn't built on this server.");
+    }
   }
 
   if (req.method === "POST" && WRITE_ROUTES.has(url.pathname) && !isAllowedOrigin(req.headers.origin)) {
