@@ -1,64 +1,45 @@
 # GuideRail landing page
 
-Static site for the GuideRail public page. It is the first page on a small kit the team can reuse for other products. This directory has its own `package.json` and is not in the root npm workspaces, so installing or building it leaves the server and the extension alone.
+Static site for the public GuideRail page. Firebase Hosting can serve the built files. This directory has its own `package.json` and is not in the root npm workspaces, so installing or building the page alone leaves the server and the extension alone.
 
-## Run
+The page is the Follow the rail concept with the Rail check logo. The primary button downloads the Chrome extension from the hosted coach:
+
+`https://guiderail-coach-q7tihot5sq-uc.a.run.app/download/guiderail-extension.zip`
+
+That zip is produced by the coach deploy, which includes the Firebase sign-in key. This landing build does not produce it. Judges sign in with the demo login from the deck. Install is still Load unpacked: unzip, `chrome://extensions`, Developer mode, Load unpacked, pin GuideRail, open the Firebase console.
+
+## One command
+
+From the repository root, with dependencies installed:
+
+```sh
+npm ci
+npm ci --prefix landing
+npm run build:site
+```
+
+`npm run build:site` builds this Astro site into `landing/dist/`. It does not build or zip the extension.
+
+`npm run package:extension-zip` is an opt-in local script. It writes `dist/guiderail-extension.zip` at the repository root, outside the Hosting public directory, and is not what the page links to. A zip from that script does not include the Firebase sign-in key. It needs `python3` on PATH.
 
 Node 22.22 or newer.
 
-```sh
-cd landing
-npm install
-npm run dev
-```
-
-`npm run dev` serves the site on 127.0.0.1. The terminal prints the port.
+## Preview
 
 ```sh
-npm run build
-npm run preview
+npm run preview --prefix landing
 ```
 
-`npm run build` writes the static files to `dist/`. `npm run preview` serves that folder.
+`npm run dev --prefix landing` serves the page on 127.0.0.1. The download button targets the hosted coach zip.
 
-## Placeholder link
+## Hosting config
 
-`src/content/guiderail.ts` exports `cta`. Every button reads `cta.label` and `cta.href`. The URL is a placeholder until the install or demo address exists. While `cta.placeholder` is true, the page shows `cta.note` under the hero button and the closing section says the link is a placeholder. Set it to false only after you replace `cta.href`; that hides the note and switches the closing section to install copy.
-
-## Deploy later
-
-Do not deploy from this change. When you choose to publish, use the files in `dist/` after `npm run build`.
-
-### Firebase Hosting
-
-From this directory, point Hosting at the build output:
-
-```json
-{
-  "hosting": {
-    "public": "dist",
-    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"]
-  }
-}
-```
-
-`firebase deploy --only hosting` publishes that folder. Run it only when you mean to publish.
-
-### Cloud Run
-
-Build `dist/` and serve those files from a static server in a container. One approach is an nginx image that copies `dist/` into the default html directory and listens on the port Cloud Run sets. `gcloud run deploy` publishes that image. Run it only when you mean to publish. This directory has no container and no deploy script.
-
-## Kit
-
-- `src/styles/global.css` holds color, type, space, and motion tokens on `:root`.
-- `src/kit/types.ts` is the content shape. Name, audience, positioning, one call to action, rail stops, and FAQ.
-- `src/components/RailList.astro` and `src/components/FaqList.astro` render that content.
-- `src/scripts/hero.ts` is the one Motion interaction. It draws an SVG rail when the visitor asks to see the Step. If `prefers-reduced-motion` is set, the rail appears in place and the captions still read in full.
-
-A later product adds a content module and a page. Skip a 3D scene unless a flat diagram cannot explain that product. Put only claims the product can actually do in the content module.
+`firebase.json` and `.firebaserc` at the repository root target site `guiderail` in project `zoop-innovation`, with `landing/dist` as the public directory. Do not deploy. The captain reviews the page before anything is published to https://guiderail.web.app.
 
 ## What the page shows
 
-The plate is a drawing of the Cloud Run Services list. The visitor asks to see a Step, opens Labels, reads the Org Labeling Policy, enters a value, and sees a Violation resolved by a corrective Step. The caption list under the plate tells the same story with JavaScript off. The page does not ask for a microphone or a Google account, and it does not type into the field by itself.
+The flagship story is Create a Firestore database on the Firebase console: Goal, cited Steps, a Rules check, then Done. Green is the way forward, yellow asks for a check, and red is a Violation.
 
-The first Save during a Violation is held and named. A second click continues anyway. An Approver status is a record on the request. It does not assign an IAM role. Labels in the story are on the Services list, after the service exists.
+The form under that story is an illustration. It does not call the coach, and it does not create a database. Guide outlines Database ID. Assist proposes `demo-guide` and fills it only after approval. Test mode is a Violation. You click Create.
+
+The install list under the download button is Load unpacked: unzip, `chrome://extensions`, Developer mode, Load unpacked, pin GuideRail, open the Firebase console. A link beside it opens the labelled practice pages on the hosted coach.

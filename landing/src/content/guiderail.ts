@@ -1,200 +1,176 @@
 import type { LandingContent } from "../kit/types";
+import coach from "./coach.json";
 
-/**
- * Replace cta.href when the install or sandbox URL exists.
- * Every button on the page reads this object.
- */
+/** Hosted coach build. It includes the Firebase sign-in key. The landing build does not produce this file. */
+export const downloadHref = `${coach.origin}/download/guiderail-extension.zip`;
+
+export const coachOrigin = coach.origin;
+
+export const practiceHref = `${coachOrigin}/sandbox/index.html`;
+
+export const consoleHref = "https://console.firebase.google.com/project/_/firestore/databases";
+
+export const docsHref = "https://firebase.google.com/docs/firestore/manage-databases";
+
+export const locationsHref = "https://firebase.google.com/docs/firestore/locations";
+
 export const cta = {
-  label: "Start guided demo",
-  href: "https://example.invalid/guiderail/demo",
-  placeholder: true,
-  note: "Placeholder. The install address is not published yet.",
+  label: "Download the Chrome extension",
+  href: downloadHref,
 } as const;
 
-export const pageTitle = "GuideRail, your experts teach it once";
+export const pageTitle = "GuideRail. Your next step, in view.";
+
 export const pageDescription =
-  "GuideRail coaches people through Google tools one Step at a time, explains company Policy, and names a Violation before they save. You keep every click.";
+  "GuideRail walks Create a Firestore database on the Firebase console. Cited Steps, Guide and Assist, and a Rules check. You click Create.";
+
+export const judgeNote = "Judges sign in with the demo login from the deck.";
+
+export const installSteps = [
+  "Unzip the download.",
+  "Open chrome://extensions in Chrome.",
+  "Turn on Developer mode.",
+  "Choose Load unpacked and select the unzipped folder that contains manifest.json.",
+  "Pin GuideRail from the extensions menu.",
+  "Open the Firebase console and start Create a Firestore database.",
+] as const;
+
+export const citedControls = [
+  "Databases & Storage",
+  "Firestore",
+  "Add database",
+  "Standard edition",
+  "Next",
+  "Database ID",
+  "Location",
+  "Next",
+  "Production mode",
+  "Create",
+] as const;
 
 export const hero = {
-  title: "Your experts teach it once.",
-  dek: "Every new hire is guided by it, and guarded by your rules. You keep every click.",
-  lede: "GuideRail is a voice coach for Google tools. It highlights one Step on the live page, explains the Policy behind a field, and names a Violation before you save.",
-  demoHeading: "Try one Step",
-  figureCaption:
-    "Illustration of the Cloud Run Services list. Synthetic data. Not a Google account.",
-  goal: "Deploy a Cloud Run service our way",
-  service: "ocr-service",
-  region: "us-central1",
-  details:
-    "ocr-service is ready in us-central1. Labels are not on this tab. Your team adds them on the Services list, after the service exists.",
-  policy:
-    "Org Labeling Policy. Rule owner-format. Owner is a team or a first name. Use lowercase letters, numbers, and hyphens. No @ sign and no dots. Example, owner=pranit.",
-  emptyOwner: "Empty",
-  badOwner: "pranit@example.com",
-  goodOwner: "pranit",
-  violation:
-    "Violation. Label values can't contain @ or dots. Corrective Step: change owner to pranit.",
-  matched: "Matches the Rule. owner=pranit is a first name, with no @ and no dots.",
-  captions: {
-    ready:
-      "Goal, deploy a Cloud Run service our way. Step, open Labels for ocr-service. Your team saves labels on the Services list, after the service exists.",
-    shown: "Labels is highlighted. Open that tab yourself.",
-    labels: "The owner field is empty. Open the Policy, or enter a value yourself.",
-    policy:
-      "Org Labeling Policy, Rule owner-format. Owner is a team or a first name. Use lowercase letters, numbers, and hyphens. No @ sign and no dots. Example, owner=pranit.",
-    violation:
-      "Violation of owner-format. Label values can't contain @ or dots. Corrective Step, change owner to pranit.",
-    corrected:
-      "owner=pranit matches the Rule. You click Save. The first Save with a Violation is held and named. A second click continues anyway.",
-  },
-  save: {
-    held: "Held. 1 policy issue to fix first. Click Save again to continue anyway. This page does not submit the form.",
-    second:
-      "That second click would continue in the real console. Nothing was sent from this page.",
-    ok: "You clicked Save. In the product, that click is yours. This page does not submit the form.",
-  },
-  actions: {
-    show: "Show the Step",
-    shown: "Step is on screen",
-    policy: "Open the Policy",
-    policyOpen: "Policy is open",
-    bad: "Enter owner=pranit@example.com",
-    fix: "Change owner to pranit",
-    save: "Save",
-    reset: "Start again",
-  },
-  beatsHeading: "What happens",
-  beats: [
-    "The Goal is to deploy a Cloud Run service our way. The Step on screen is to open Labels for ocr-service. Labels are saved on the Services list, after the service exists. The create form has no Labels field.",
-    "Show the Step highlights Labels. You open the tab. The owner field stays empty until you enter a value.",
-    "The Org Labeling Policy says owner is a team or a first name. Rule owner-format allows lowercase letters, numbers, and hyphens, and rejects an @ sign or a dot.",
-    "If you enter owner=pranit@example.com, the check fails. That failure is a Violation. The corrective Step is to change the value to owner=pranit.",
-    "The first Save while a Violation remains is held. GuideRail names the policy issue and says a second click continues anyway. You click Save. GuideRail never does.",
-  ],
-};
+  titleLead: "Your next step.",
+  titleRest: "In view.",
+  intro: "A route from the official docs to the field in front of you. Guide first. Guard always. You set the dial.",
+  note: "The flagship Journey creates a Firestore database on the Firebase console. Guide and Assist. A Rules guard. You click Create.",
+  journeyLink: "See the Firestore Journey",
+  figureCaption: "Illustrative Firebase form. Synthetic values. No account connected.",
+  staticStory:
+    "Guide outlines Database ID and keeps the Firebase docs citation beside the Step. Assist proposes demo-guide, and an approval fills only that field on this page. Test mode is a Violation because anyone could read and overwrite the data. Production mode clears it. You press Create. The first click during a Violation is held and named. A second click continues anyway. This page sends nothing.",
+} as const;
 
 export const content: LandingContent = {
   name: "GuideRail",
-  audience: "New hires, and people working in Google cloud consoles and admin tools.",
+  audience: "People creating a Firestore database in the Firebase console.",
   positioning: pageDescription,
   cta,
   route: {
     id: "route",
-    heading: "Guide, then you, then the guard",
-    lede: "A Journey is one attempt to reach a Goal. GuideRail keeps the same order every time.",
+    heading: "Follow the rail",
+    lede: "Goal, cited Steps, a Rules check, then Done.",
     stops: [
       {
-        title: "Guide",
-        paragraphs: [
-          "An expert teaches the task once in the real tool and says why. GuideRail drafts a Playbook with Gemini, and the expert publishes it before anyone else is guided by it.",
-          "You name a Goal. GuideRail highlights one Step and puts the reason in the caption. In this example, us-central1 is the default unless the service is for an EU customer. The five labels are explained before Create, and they are entered later on the Services list.",
-        ],
+        title: "Goal",
+        tone: "go",
+        paragraphs: ["Create a Firestore database."],
       },
       {
-        title: "You act",
-        paragraphs: [
-          "You open the tab, type the value, and click Save or Send. This page waits for those controls. The owner field is empty until you choose a value.",
-        ],
+        title: "Cited Steps",
+        tone: "step",
+        paragraphs: ["The docs name the control. The open page confirms it."],
       },
       {
-        title: "Guard",
-        paragraphs: [
-          "Each Rule has a guide and a check. When the check fails, that Rule is a Violation, and GuideRail shows a corrective Step.",
-          "The first Save is held and named. A second click continues anyway. The console stays unlocked, and the click is still yours.",
-        ],
+        title: "Rules check",
+        tone: "check",
+        paragraphs: ["Test mode is a Violation. Production mode clears it."],
+      },
+      {
+        title: "Done",
+        tone: "done",
+        paragraphs: ["You click Create."],
       },
     ],
   },
-  detour: {
-    id: "detour",
-    heading: "A Blocker opens a Detour",
-    lede: "A Blocker is something on the screen that stops the Journey. A Detour is the side Journey that clears it, then returns to the main one.",
+  journey: {
+    id: "journey",
+    heading: "The Firestore Journey",
+    lede: "Green is the way forward. Yellow asks you to check. Red is a Violation, and only a Violation.",
     stops: [
       {
-        title: "Blocker",
+        title: "Goal",
+        tone: "go",
         paragraphs: [
-          "The Requester tries to deploy and the console says permission denied. The main Journey waits on that screen.",
+          "Create a Firestore database. You choose the Firebase project. GuideRail opens the databases catalog and walks that wizard.",
+          "Guide speaks or writes one Step at a time. Assist proposes a Database ID and types it into that one field only after you approve, then reads it back. Neither mode clicks Create.",
         ],
       },
       {
-        title: "Detour",
+        title: "Cited Steps",
+        tone: "step",
         paragraphs: [
-          "GuideRail reads the permission in that message and names a least-privilege role. A denial for run.services.create maps to roles/run.developer. A later denial can name a different role, such as roles/iam.serviceAccountUser for iam.serviceAccounts.actAs.",
-          "A Cloud Run deploy can raise more than one permission. Each denial maps to its own role.",
+          "The Journey is compiled from the Firebase manage-databases and locations docs before the voice session. Each Step names one control, in the order below.",
+          "Database ID uses 4 to 63 lowercase letters, numbers, and hyphens. It starts with a letter, ends with a letter or number, and is not shaped like a UUID. Leave it blank and Standard edition uses (default). A deleted ID waits about five minutes before reuse. A project can hold 100 databases. The location cannot be changed after creation. Creating a database needs roles/datastore.owner, permission datastore.databases.create.",
+          "If the doc names a control and the page does not show it, the coach says so and keeps the citation.",
         ],
       },
       {
-        title: "Requester",
+        title: "Rules check",
+        tone: "check",
         paragraphs: [
-          "GuideRail opens a Gmail draft with the request and the approval link. The Requester reads the draft and clicks Send.",
+          "Test mode allows anyone to read and overwrite your data. That choice is a Violation. The control gets a red outline and the Rule text stays on screen. Production mode clears it.",
+          "The first Create click during a Violation is held and named. A second click continues anyway. The guard is a warning in the extension. It does not replace Cloud IAM.",
         ],
       },
       {
-        title: "Approver",
+        title: "Done",
+        tone: "done",
         paragraphs: [
-          "The Approver opens the request and records a status: pending, granted, or rejected. A granted status is a record on the request. A person assigns the IAM role in IAM. The Requester returns to the console and retries the Step.",
+          "You click Create. The extension never clicks or sends. In Assist it types into one field, Database ID, only after you approve, then reads it back. On the illustration below, Assist fills demo-guide the same way.",
         ],
       },
     ],
   },
   faq: {
     id: "trust",
-    heading: "Permissions and trust",
-    lede: "The demonstration needs no microphone, no camera, and no account. These are the same limits as the product.",
+    heading: "Your control is part of the product",
+    lede: "This website does not ask for a microphone, a camera, or a Google account.",
     items: [
       {
-        question: "Does this page use a microphone or a Google account?",
+        question: "Who clicks Create?",
         answer:
-          "No. The captions carry the story. The Chrome extension can coach by voice on a live page. This website never asks for a microphone, a camera, or a sign-in.",
-      },
-      {
-        question: "Who clicks?",
-        answer:
-          "You do. GuideRail highlights the Step and explains the Rule. The product has no tool that clicks, types, or sends for you. A Gmail draft waits for your Send.",
+          "You do. Guide highlights the Step and cites the doc. In Assist, the extension types into the Database ID field only after you approve, then reads it back. It never clicks or sends. You always click Create.",
       },
       {
         question: "What is a Violation?",
         answer:
-          "A Rule whose check fails against what is on screen. In the demonstration, owner=pranit@example.com fails Rule owner-format. The corrective Step is owner=pranit.",
+          "A Rule whose check fails against what is on screen. In this Journey, Test mode is a Violation because anyone could read and overwrite the data. Production mode clears it. Red is reserved for that state.",
       },
       {
-        question: "Does a failed check lock Save?",
+        question: "Does a failed check lock Create?",
         answer:
-          "The first Save is held. GuideRail names the policy issue and says a second click continues anyway. The console is not locked.",
+          "The first Create click is held and named. A second click continues anyway. The console stays available, and the click is still yours.",
       },
       {
-        question: "What does the Approver's status change?",
+        question: "Where do I practice before a real project?",
         answer:
-          "It stores pending, granted, or rejected on the request. A granted status does not assign an IAM role. The Requester retries the Step after access exists.",
+          "The hosted coach serves labelled practice pages. They are copies for the extension, not the Firebase console, and they are not this illustration.",
       },
       {
-        question: "Where are Cloud Run labels saved?",
+        question: "Is the form on this page the Firebase console?",
         answer:
-          "On the Services list, after the service exists. Select the service, open the info panel, and use the Labels tab. The create form has no Labels field.",
-      },
-      {
-        question: "Is this console real?",
-        answer:
-          "It is a drawing. The service name ocr-service and the value owner=pranit are synthetic. Nothing on this page is sent to Google.",
+          "No. It is an illustration with synthetic values. Nothing you type here is sent. The extension Journey runs on the real Firebase console after you load it.",
       },
     ],
   },
-  close: cta.placeholder
-    ? {
-        heading: "The demo link is a placeholder",
-        lede: "When the install or sandbox URL is published, this button will go there. Until then the address is a placeholder, and the note under the button says so.",
-      }
-    : {
-        heading: "Try GuideRail on your own console",
-        lede: "Install the extension and walk one Goal with the coach. You keep every click.",
-      },
-  footer:
-    "GuideRail. A Chrome extension for the Hack2skill AI Builder Cup 2026, Future of Work and Enterprise Productivity. Guide first. Guard second.",
+  close: {
+    heading: "A route you can understand. A decision that stays yours.",
+    lede: "Guide first. Guard always. You set the dial.",
+  },
+  footer: "GuideRail. A Chrome extension. Guide first. Guard always. You set the dial.",
 };
 
 export const nav = [
-  { href: "#demo", label: "Demo" },
-  { href: "#route", label: "Route" },
-  { href: "#detour", label: "Detour" },
-  { href: "#trust", label: "Trust" },
+  { href: "#journey", label: "Journey" },
+  { href: "#install", label: "Install" },
+  { href: "#trust", label: "Your control" },
 ];

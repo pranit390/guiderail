@@ -2,32 +2,105 @@
 import Base from "../layouts/Base.astro";
 import Header from "../components/Header.astro";
 import Footer from "../components/Footer.astro";
-import HeroDemo from "../components/HeroDemo.astro";
 import RailList from "../components/RailList.astro";
+import FirestoreExample from "../components/FirestoreExample.astro";
 import FaqList from "../components/FaqList.astro";
-import { content, nav, pageDescription, pageTitle } from "../content/guiderail";
+import {
+  citedControls,
+  consoleHref,
+  content,
+  docsHref,
+  hero,
+  installSteps,
+  judgeNote,
+  locationsHref,
+  nav,
+  pageDescription,
+  pageTitle,
+  practiceHref,
+} from "../content/guiderail";
 ---
 
 <Base title={pageTitle} description={pageDescription}>
   <Header name={content.name} nav={nav} cta={content.cta} />
-  <main id="top">
-    <div class="wrap">
-      <HeroDemo cta={content.cta} />
+  <main id="main">
+    <div class="wrap" id="top">
+      <section class="hero" aria-labelledby="page-title">
+        <div>
+          <h1 id="page-title">{hero.titleLead}<br />{hero.titleRest}</h1>
+          <p class="intro">{hero.intro}</p>
+          <div class="actions">
+            <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
+            <a class="button" href="#install">Install steps</a>
+          </div>
+          <p class="subtle">{hero.note}</p>
+        </div>
+        <RailList label={content.route.heading} stops={content.route.stops} />
+      </section>
     </div>
 
-    <section class="band" id={content.route.id} aria-labelledby="route-heading">
+    <section class="install-band" id="install" aria-labelledby="install-heading">
       <div class="wrap">
-        <h2 id="route-heading">{content.route.heading}</h2>
-        <p class="section-lede">{content.route.lede}</p>
-        <RailList label={content.route.heading} stops={content.route.stops} />
+        <h2 id="install-heading">{content.cta.label}</h2>
+        <p>Desktop Chrome. Unzip the file, then load the folder that contains manifest.json.</p>
+        <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
+        <ol class="install-steps">
+          {installSteps.map((step) => <li>{step}</li>)}
+        </ol>
+        <p class="hint">{judgeNote}</p>
+        <p class="hint">
+          Open <a href={consoleHref}>the Firebase console</a> for the real Journey. For a labelled copy first, open
+          <a href={practiceHref}>the practice pages on the hosted coach</a>.
+        </p>
       </div>
     </section>
 
-    <section class="band" id={content.detour.id} aria-labelledby="detour-heading">
+    <section class="band" id={content.journey.id} aria-labelledby="journey-heading">
       <div class="wrap">
-        <h2 id="detour-heading">{content.detour.heading}</h2>
-        <p class="section-lede">{content.detour.lede}</p>
-        <RailList label={content.detour.heading} stops={content.detour.stops} />
+        <h2 id="journey-heading">{content.journey.heading}</h2>
+        <p class="section-lede">{content.journey.lede}</p>
+        <ol class="journey-list">
+          {
+            content.journey.stops.map((stop) => (
+              <li>
+                <span class:list={["rail-mark", `tone-${stop.tone}`]} aria-hidden="true">
+                  {stop.tone === "check" ? (
+                    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="m16 3 13 13-13 13L3 16Z" />
+                      <path d="M16 10v7m0 4v1" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <circle cx="16" cy="16" r="11" />
+                      <path d="m11 16 3 3 7-7" />
+                    </svg>
+                  )}
+                </span>
+                <div>
+                  <h3>{stop.title}</h3>
+                  {stop.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+                  {stop.title === "Cited Steps" && (
+                    <>
+                      <ol class="controls">
+                        {citedControls.map((control) => <li>{control}</li>)}
+                      </ol>
+                      <div class="source-row">
+                        <a href={docsHref}>Manage databases</a>
+                        <a href={locationsHref}>Cloud Firestore locations</a>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </li>
+            ))
+          }
+        </ol>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="proof-title">
+      <div class="wrap">
+        <FirestoreExample />
       </div>
     </section>
 
@@ -40,12 +113,12 @@ import { content, nav, pageDescription, pageTitle } from "../content/guiderail";
     </section>
 
     <section class="band" aria-labelledby="close-heading">
-      <div class="wrap close">
-        <h2 id="close-heading">{content.close.heading}</h2>
-        <p class="section-lede">{content.close.lede}</p>
-        <div class="cta-row">
-          <a class="button" href={content.cta.href} aria-describedby={content.cta.placeholder ? "cta-note" : undefined}>{content.cta.label}</a>
+      <div class="wrap close-row">
+        <div>
+          <h2 id="close-heading">{content.close.heading}</h2>
+          <p class="section-lede">{content.close.lede}</p>
         </div>
+        <a class="button primary" href={content.cta.href}>{content.cta.label}</a>
       </div>
     </section>
   </main>

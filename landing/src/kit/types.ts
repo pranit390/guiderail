@@ -1,6 +1,9 @@
+export type RailTone = "go" | "step" | "check" | "done" | "stop";
+
 export interface RailStop {
   title: string;
   paragraphs: string[];
+  tone: RailTone;
 }
 
 export interface FaqItem {
@@ -11,8 +14,6 @@ export interface FaqItem {
 export interface CallToAction {
   label: string;
   href: string;
-  placeholder: boolean;
-  note: string;
 }
 
 /** Content contract for a product page in this kit. Claims stay in the product module. */
@@ -22,7 +23,7 @@ export interface LandingContent {
   positioning: string;
   cta: CallToAction;
   route: { id: string; heading: string; lede: string; stops: RailStop[] };
-  detour: { id: string; heading: string; lede: string; stops: RailStop[] };
+  journey: { id: string; heading: string; lede: string; stops: RailStop[] };
   faq: { id: string; heading: string; lede: string; items: FaqItem[] };
   close: { heading: string; lede: string };
   footer: string;
