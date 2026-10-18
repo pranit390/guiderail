@@ -20,7 +20,7 @@ npm run build:site
 
 `npm run build:site` builds this Astro site into `landing/dist/`. It does not build or zip the extension.
 
-`npm run package:extension-zip` is an opt-in local script. It writes `landing/dist/download/guiderail-extension.zip` and is not what the page links to. A zip from that script does not include the Firebase sign-in key. It needs `python3` on PATH.
+`npm run package:extension-zip` is an opt-in local script. It writes `dist/guiderail-extension.zip` at the repository root, outside the Hosting public directory, and is not what the page links to. A zip from that script does not include the Firebase sign-in key. It needs `python3` on PATH.
 
 Node 22.22 or newer.
 

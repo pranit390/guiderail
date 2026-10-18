@@ -27,10 +27,10 @@ export const pageDescription =
 export const judgeNote = "Judges sign in with the demo login from the deck.";
 
 export const installSteps = [
-  "Unzip the download. The folder is named guiderail-extension and contains manifest.json.",
+  "Unzip the download.",
   "Open chrome://extensions in Chrome.",
   "Turn on Developer mode.",
-  "Choose Load unpacked and select the guiderail-extension folder.",
+  "Choose Load unpacked and select the unzipped folder that contains manifest.json.",
   "Pin GuideRail from the extensions menu.",
   "Open the Firebase console and start Create a Firestore database.",
 ] as const;

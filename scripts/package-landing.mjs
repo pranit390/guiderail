@@ -7,7 +7,7 @@ import coach from "../landing/src/content/coach.json" with { type: "json" };
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const coachOrigin = coach.origin;
-const zipPath = join(root, "landing/dist/download/guiderail-extension.zip");
+const zipPath = join(root, "dist/guiderail-extension.zip");
 
 function run(command, args, options) {
   const result = spawnSync(command, args, { cwd: root, stdio: "inherit", ...options });
