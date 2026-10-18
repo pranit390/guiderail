@@ -71,6 +71,21 @@ describe("approved Database ID assistance on a wizard fixture", () => {
     selectAssist();
     expect(receipts).toEqual([]); expect(status()).toBe("Assist selected. Answer both questions, then review your plan.");
   });
+  it("idle cleanup after selecting Assist records no Stop and claims no fill, even when repeated", () => {
+    selectAssist();
+    for (let i = 0; i < 2; i++) { assist.stop("Connection ended. Assist stopped."); assist.stop("Journey ended. Assist stopped."); assist.setEnabled(false); assist.setEnabled(true); }
+    expect(receipts).toEqual([]); expect(status()).toBe("Assist selected. Answer both questions, then review your plan.");
+  });
+  it("cleanup cancels a reviewed plan once", async () => {
+    await plan();
+    assist.stop("Connection ended. Assist stopped."); assist.stop("Connection ended. Assist stopped.");
+    expect(receipts.filter((r) => r.kind === "stop")).toHaveLength(1);
+    expect(get<HTMLButtonElement>("[data-approve]").disabled).toBe(true); expect(status()).toContain("Connection ended");
+  });
+  it("the explicit Stop Assist button records a Stop", () => {
+    selectAssist(); assist.stopControl.click();
+    expect(receipts.map((r) => r.kind)).toEqual(["stop"]); expect(status()).toContain("Assist stopped");
+  });
   it("keeps the planned element pinned across later page reads", async () => {
     await plan();
     await context();

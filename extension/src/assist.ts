@@ -64,12 +64,9 @@ export function mountAssist(container: HTMLElement, options: Options) {
     get("[data-plan]").hidden = true;
     if (!quiet) status.textContent = `${message} Already filled values remain; correct them manually.`;
   }
-  function cancel(message = "Assist stopped. Queued fills cancelled.") {
-    const wasActive = level.value === "assist" || !!plan || busy;
-    if (!wasActive) return;
-    invalidate(message); emit("stop", "cancelled; already filled values remain");
-  }
-  stop.onclick = () => cancel();
+  function halt(message: string) { invalidate(message); emit("stop", "cancelled; already filled values remain"); }
+  function cancel(message = "Assist stopped. Queued fills cancelled.") { if (plan || busy) halt(message); }
+  stop.onclick = () => halt("Assist stopped. Queued fills cancelled.");
   level.onchange = () => {
     if (level.value === "assist") { invalidate(""); status.textContent = "Assist selected. Answer both questions, then review your plan."; }
     else { cancel("Guide selected. Guide cannot fill."); invalidate("Guide selected. Guide cannot fill."); status.textContent = "Guide selected. Guide cannot fill. Already filled values remain; correct them manually."; }

@@ -129,6 +129,16 @@ describe("lazy Live connection", () => {
     expect(sent(sockets[0])).toEqual([{ type: "audio", data: "AAAA" }, { type: "audio", data: "BBBB" }]);
   });
 
+  it("toggling Teach with Assist merely selected sends no Assist Stop", async () => {
+    const socket = await connected();
+    $<HTMLSelectElement>("#assist-level").value = "assist";
+    $("#assist-level").dispatchEvent(new Event("change"));
+    $<HTMLButtonElement>("#teach").click();
+    await vi.waitFor(() => expect(socket.close).toHaveBeenCalled());
+    $<HTMLButtonElement>("#teach").click();
+    expect(sent(socket).some((m) => m.type === "app" && /Assist stop/.test(m.text))).toBe(false);
+    expect($("[data-assist-status]").textContent).not.toMatch(/stopped|Already filled/);
+  });
   it("switches between Teach and Guide without connecting", async () => {
     const socket = await connected();
     $<HTMLButtonElement>("#teach").click();
