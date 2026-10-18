@@ -30,8 +30,9 @@ source links with an accessible heading, ink text, line border and 6px radius.
 Step controls: Read and point, Re-read, Skip explicitly, and Next step.
 The current heading names the cited Step being pointed to, with its Journey
 index and total (distinct from the console wizard's own three sections). A
-successful unique pointer may move guidance to that Step; earlier Steps remain
-unreviewed. Only the person's Next or Skip records progress. Duplicate Next
+pointed control moves guidance only when it uniquely equals a Step control or
+ends with it as a whole phrase, never by fuzzy match and never onto Create;
+earlier Steps remain unreviewed. Only the person's Next or Skip records progress. Duplicate Next
 names never choose a Step by guesswork; Create never enables Next.
 Next spans the card width with a 36px minimum height. Skip stays secondary.
 Model replies and Playbook drafts share safe bold/italic/code and list
@@ -40,7 +41,8 @@ interpreted. Streaming reparses the current reply so split emphasis works.
 One amber, 12px working line sits outside the chat live region. It names the
 pending tool; aria-busy covers chat while it runs and clears on every exit.
 Page telemetry remains model/session context, without repeated chat rows.
-Page changes, Teach entry and draft review clear stale suggestion/Rule cards;
+Page changes, Teach entry and draft review clear stale suggestion/Rule cards
+and discard form reads begun before them;
 in Guide, page changes then re-check Rules against the current form.
 Journey citations and mismatch messages retain their separate owner.
 Status is live text: unverified, visible, missing, ambiguous, skipped or paused.
