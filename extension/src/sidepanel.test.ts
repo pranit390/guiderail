@@ -174,3 +174,57 @@ describe("highlight wiring", () => {
     expect(highlights()).toHaveLength(0);
   });
 });
+
+describe("duplicate-Save sandbox end to end", () => {
+  const ring = () => document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".ring")!;
+
+  beforeEach(async () => {
+    const sandbox = readFileSync("../sandbox/duplicate-save.html", "utf8").match(/<main>[\s\S]*<\/main>/)![0];
+    document.body.insertAdjacentHTML("beforeend", sandbox);
+    let top = 0;
+    for (const el of document.querySelectorAll<HTMLElement>("*")) {
+      const rect = new DOMRect(40, (top += 50), 200, 40);
+      el.getBoundingClientRect = () => rect;
+      el.getClientRects = () => [rect] as unknown as DOMRectList;
+      el.scrollIntoView = () => {};
+      el.style.opacity = "1";
+    }
+    const chrome = (globalThis as any).chrome;
+    Object.assign(chrome.runtime, { id: "test-extension", sendMessage: vi.fn().mockResolvedValue({}) });
+    await import("./content.ts");
+    const page = chrome.runtime.onMessage.addListener.mock.calls[1][0];
+    sendMessage.mockImplementation((_tab: number, msg: unknown) => new Promise((resolve) => page(msg, {}, resolve)));
+  });
+
+  afterEach(() => { (globalThis as any).chrome.runtime.id = ""; });
+
+  async function call(id: string, name: string, args: Record<string, unknown>) {
+    sockets[0].onmessage?.({ data: JSON.stringify({ type: "tool_call", id, name, args }) });
+    let result: any;
+    await vi.waitFor(() => {
+      result = sockets[0].send.mock.calls.map(([raw]) => JSON.parse(raw)).find((m) => m.id === id);
+      expect(result).toBeDefined();
+    });
+    return result.response;
+  }
+
+  it.each([
+    { text: "Save", role: "button", section: "Billing" },
+    { text: "Billing: Save", role: "button" },
+  ])("asks which Save, then rings the Billing Save once the person answers Billing (%o)", async (answer) => {
+    const snap = await call("read", "read_page", {});
+    const saves = snap.elements.filter((e: { name: string }) => e.name === "Save");
+    expect(saves.map((e: { section: string }) => e.section)).toEqual(["Billing", "Security"]);
+
+    const ask = await call("ask", "highlight", { text: "Save", role: "button" });
+    expect(ask).toMatchObject({ found: false, reason: "ambiguous", alternatives: ["Billing: Save", "Security: Save"] });
+    expect(document.querySelector("#log")!.textContent).toContain('Which "Save" should I point at? I see Billing: Save or Security: Save.');
+    expect(ring().hidden).toBe(true);
+
+    const billing = document.querySelector('section[aria-label="Billing"] button')!;
+    const chosen = await call("answer", "highlight", answer);
+    expect(chosen).toMatchObject({ found: true, i: saves[0].i, name: "Save", confidence: 1 });
+    expect(ring().hidden).toBe(false);
+    expect(ring().style.top).toBe(`${billing.getBoundingClientRect().top - 4}px`);
+  });
+});

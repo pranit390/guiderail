@@ -8,7 +8,6 @@ import {
   highlightOutcome,
   highlightResult,
   liveHighlight,
-  liveTargetOk,
   MIN_CONFIDENCE,
   resolveName,
   type BoundSnapshot,
@@ -60,6 +59,26 @@ describe("duplicate-Save fixture", () => {
     expect(highlightResult(decision)).toMatchObject({ found: false, reason: "ambiguous" });
     expect(highlightResult(decision)).not.toHaveProperty("i");
     expect(highlightOutcome(decision)).toBe('Which "Save" should I point at? I see Billing: Save or Security: Save.');
+  });
+});
+
+describe("section qualifier", () => {
+  it("resolves the person's answer by section argument or by the Section: Name label the ask lists", () => {
+    const elements = elementsOf();
+    const [billing, security] = elements.filter((e) => e.name === "Save");
+    expect(resolveName("Save", elements, "button", "Billing")).toMatchObject({ status: "found", i: billing.i, confidence: 1 });
+    expect(resolveName("Save", elements, "button", "security")).toMatchObject({ status: "found", i: security.i });
+    expect(resolveName("Billing: Save", elements, "button")).toMatchObject({ status: "found", i: billing.i, name: "Save", confidence: 1 });
+    expect(resolveName("Save", elements, "button", "Shipping").status).toBe("missing");
+    expect(resolveName("Database ID", elements, undefined, "Billing").status).toBe("missing");
+  });
+
+  it("keeps the section when the live page re-resolves the pinned Save", () => {
+    const indexed = new Map(collectControls().map(({ i, el }) => [i, el] as const));
+    const [billing] = elementsOf().filter((e) => e.name === "Save");
+    const live = liveHighlight({ text: "Save", role: "button", section: "Billing", generation: 3, index: billing.i, name: "Save" }, 3, indexed);
+    expect(live.result).toMatchObject({ found: true, i: billing.i, name: "Save" });
+    expect(live.el).toBe(indexed.get(billing.i));
   });
 });
 
@@ -148,11 +167,15 @@ describe("snapshot eligibility", () => {
     }
   });
 
-  it("accepts a live element only when the snapshot generation and name still match", () => {
-    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 4, name: "Database ID", liveName: "Database ID", connected: true })).toBe(true);
-    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 4, index: 4, name: "Database ID", liveName: "Database ID", connected: true })).toBe(false);
-    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 2, name: "Database ID", liveName: "Save", connected: true })).toBe(false);
-    expect(liveTargetOk({ requestedGeneration: 3, liveGeneration: 3, index: 4, name: "Database ID", liveName: "Database ID", connected: false })).toBe(false);
+  it("refuses a pinned highlight once the generation, name or node no longer match the read", () => {
+    const indexed = new Map(collectControls().map(({ i, el }) => [i, el] as const));
+    const db = elementsOf().find((e) => e.name === "Database ID")!;
+    const [save] = elementsOf().filter((e) => e.name === "Save");
+    const stale = { found: false, reason: "stale", alternatives: [] };
+    expect(liveHighlight({ text: "Database ID", generation: 3, index: db.i, name: "Database ID" }, 4, indexed)).toEqual({ result: stale });
+    expect(liveHighlight({ text: "Database ID", generation: 3, index: save.i, name: "Database ID" }, 3, indexed)).toEqual({ result: stale });
+    indexed.get(db.i)!.remove();
+    expect(liveHighlight({ text: "Database ID", generation: 3, index: db.i, name: "Database ID" }, 3, indexed)).toEqual({ result: stale });
   });
 
   it("refuses an unpinned highlight as unbound without pointing at anything", () => {

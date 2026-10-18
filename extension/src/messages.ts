@@ -17,7 +17,7 @@ export type ViolationDetail = { field: string; message: string; severity: "block
 
 export type ToPage =
   | { kind: "read_page" }
-  | { kind: "highlight"; text: string; role?: string; generation?: number; index?: number; name?: string }
+  | { kind: "highlight"; text: string; role?: string; section?: string; generation?: number; index?: number; name?: string }
   | { kind: "clear_highlight" }
   | { kind: "customize"; preset: CalmPreset }
   | { kind: "read_form" }

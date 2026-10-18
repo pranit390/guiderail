@@ -255,6 +255,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
 async function runHighlight(args: Record<string, unknown>): Promise<HighlightResult> {
   const text = String(args.text ?? "");
   const role = args.role == null || args.role === "" ? undefined : String(args.role);
+  const section = args.section == null || args.section === "" ? undefined : String(args.section);
   const citation = args.citation == null || args.citation === "" ? undefined : String(args.citation);
   let tabId: number | null = null;
   try {
@@ -263,7 +264,7 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     tabId = null;
   }
   const snap = bound;
-  const decision = authorizeTarget({ text, role, citation, snapshot: snap, stale: boundStale, tabId });
+  const decision = authorizeTarget({ text, role, section, citation, snapshot: snap, stale: boundStale, tabId });
   if (!actionAuthorized(decision)) {
     say("system", highlightOutcome(decision));
     await clearBoundHighlight();
@@ -273,13 +274,14 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
     kind: "highlight",
     text,
     ...(role ? { role } : {}),
+    ...(section ? { section } : {}),
     generation: snap!.generation,
     index: decision.i,
     name: decision.name,
   }, snap!.tabId);
   if (!live.found) {
     if (live.reason === "stale") boundStale = true;
-    say("system", live.reason === "ambiguous" ? live.ask : live.reason === "missing" ? live.mismatch : highlightOutcome({ authorized: false, reason: live.reason }));
+    say("system", highlightOutcome(live));
     await clearBoundHighlight();
     return live;
   }

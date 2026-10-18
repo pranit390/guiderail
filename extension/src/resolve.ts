@@ -14,11 +14,11 @@ export type BoundSnapshot = {
   elements: PageElement[];
 };
 
+type Refusal = Extract<HighlightResult, { found: false }>;
+
 export type TargetDecision =
   | { authorized: true; i: number; name: string; confidence: number }
-  | { authorized: false; reason: "ambiguous"; alternatives: string[]; ask: string }
-  | { authorized: false; reason: "missing"; alternatives: string[]; mismatch: string; citation?: string }
-  | { authorized: false; reason: "stale" | "wrong_tab" | "unbound" };
+  | ({ authorized: false } & Refusal);
 
 type Ranked = { e: PageElement; s: number };
 
@@ -72,11 +72,15 @@ export type NameResolution =
   | { status: "ambiguous"; alternatives: string[] }
   | { status: "missing"; alternatives: string[] };
 
-// Exact normalized names first. Fuzzy candidates are only considered when no exact name exists.
-export function resolveName(text: string, elements: PageElement[], role?: string): NameResolution {
+// Exact normalized names first, then an exact "Section: Name" label. Fuzzy candidates are only
+// considered when neither exists. A section keeps only the controls inside that labelled region.
+export function resolveName(text: string, elements: PageElement[], role?: string, section?: string): NameResolution {
   const query = norm(text);
   if (!query) return { status: "missing", alternatives: [] };
-  const exact = elements.filter((e) => norm(e.name) === query);
+  const area = norm(section ?? "");
+  if (area) elements = elements.filter((e) => e.section !== undefined && norm(e.section) === area);
+  const named = elements.filter((e) => norm(e.name) === query);
+  const exact = named.length ? named : elements.filter((e) => e.section !== undefined && norm(labelOf(e)) === query);
   if (exact.length) {
     const winners = tied(rank(exact, text, role, true));
     if (winners.length > 1) return { status: "ambiguous", alternatives: winners.map((r) => labelOf(r.e)) };
@@ -95,30 +99,19 @@ export function resolveName(text: string, elements: PageElement[], role?: string
 export function authorizeTarget(input: {
   text: string;
   role?: string;
+  section?: string;
   citation?: string;
   snapshot: BoundSnapshot | null;
   stale: boolean;
   tabId: number | null;
 }): TargetDecision {
   const { snapshot, tabId } = input;
-  if (!snapshot || tabId == null) return { authorized: false, reason: "unbound" };
-  if (tabId !== snapshot.tabId) return { authorized: false, reason: "wrong_tab" };
-  if (input.stale) return { authorized: false, reason: "stale" };
-  const resolved = resolveName(input.text, snapshot.elements, input.role);
-  if (resolved.status === "ambiguous") {
-    return { authorized: false, reason: "ambiguous", alternatives: resolved.alternatives, ask: ambiguousAsk(input.text, resolved.alternatives) };
-  }
-  if (resolved.status === "missing") {
-    const citation = input.citation?.trim() || undefined;
-    return {
-      authorized: false,
-      reason: "missing",
-      alternatives: resolved.alternatives,
-      citation,
-      mismatch: mismatchLine(input.text, citation),
-    };
-  }
-  return { authorized: true, i: resolved.i, name: resolved.name, confidence: resolved.confidence };
+  if (!snapshot || tabId == null) return { authorized: false, found: false, reason: "unbound", alternatives: [] };
+  if (tabId !== snapshot.tabId) return { authorized: false, found: false, reason: "wrong_tab", alternatives: [] };
+  if (input.stale) return { authorized: false, found: false, reason: "stale", alternatives: [] };
+  const result = resolutionResult(input.text, resolveName(input.text, snapshot.elements, input.role, input.section), input.citation);
+  if (result.found) return { authorized: true, i: result.i, name: result.name, confidence: result.confidence };
+  return { authorized: false, ...result };
 }
 
 export function resolutionResult(text: string, resolved: NameResolution, citation?: string): HighlightResult {
@@ -132,34 +125,16 @@ export function resolutionResult(text: string, resolved: NameResolution, citatio
 
 export function highlightResult(decision: TargetDecision): HighlightResult {
   if (decision.authorized) return { found: true, i: decision.i, name: decision.name, confidence: decision.confidence };
-  if (decision.reason === "ambiguous") return { found: false, reason: "ambiguous", alternatives: decision.alternatives, ask: decision.ask };
-  if (decision.reason === "missing") {
-    return { found: false, reason: "missing", alternatives: decision.alternatives, mismatch: decision.mismatch, citation: decision.citation };
-  }
-  return { found: false, reason: decision.reason, alternatives: [] };
+  const { authorized: _, ...refusal } = decision;
+  return refusal;
 }
 
-export function highlightOutcome(decision: Exclude<TargetDecision, { authorized: true }>): string {
+export function highlightOutcome(decision: Refusal): string {
   if (decision.reason === "ambiguous") return decision.ask;
   if (decision.reason === "missing") return decision.mismatch;
   if (decision.reason === "stale") return "This screen changed since I last read it, so I won't point at or fill anything.";
   if (decision.reason === "wrong_tab") return "That screen is a different tab from the one I last read, so I won't point at or fill anything.";
   return "I haven't read this screen yet, so I won't point at or fill anything.";
-}
-
-// The live page still has to be the snapshot we authorized. A recycled node is not a target.
-export function liveTargetOk(input: {
-  requestedGeneration: number | undefined;
-  liveGeneration: number;
-  index: number | undefined;
-  name: string | undefined;
-  liveName: string | undefined;
-  connected: boolean;
-}): boolean {
-  if (input.requestedGeneration === undefined || input.index === undefined || !input.name) return false;
-  if (input.requestedGeneration !== input.liveGeneration) return false;
-  if (!input.connected || input.liveName === undefined) return false;
-  return norm(input.liveName) === norm(input.name);
 }
 
 function pageElementsOf(controls: ReturnType<typeof collectControls>): PageElement[] {
@@ -175,7 +150,7 @@ function pageElementsOf(controls: ReturnType<typeof collectControls>): PageEleme
 // A control that was hidden, changed role, or gained a competitor since that read is stale:
 // the old index is not reused and the request is not authorized again.
 export function liveHighlight(
-  msg: { text: string; role?: string; generation?: number; index?: number; name?: string },
+  msg: { text: string; role?: string; section?: string; generation?: number; index?: number; name?: string },
   liveGeneration: number,
   indexed: Map<number, Element>,
   snapshotRoles?: Map<number, string>,
@@ -193,7 +168,7 @@ export function liveHighlight(
   const roleOk = snapRole === undefined || roleOf(el!) === snapRole;
   if (!nameOk || !roleOk || !eligible) return { result: stale };
 
-  const resolved = resolveName(msg.text, pageElementsOf(current), msg.role);
+  const resolved = resolveName(msg.text, pageElementsOf(current), msg.role, msg.section);
   if (resolved.status === "found") {
     const match = current.find((control) => control.i === resolved.i);
     if (match?.el !== el) return { result: stale };
