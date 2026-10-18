@@ -22,8 +22,9 @@ run after each write. A rejected value gets one change/blur retry, then a
 manual handoff. There is no transport replay of a failed mutation.
 
 Planned or observed Test mode blocks Assist before filling. The planned end
-state is also evaluated against loaded Rules. The production seed Rule and
-ADR 0007 are owned by issue #30; this slice does not duplicate that work.
+state is also evaluated against loaded Rules. The production seed Rule is
+owned by issue #30; the Assist boundary is recorded in
+[ADR 0007](adr/0007-autonomy-dial.md).
 Missing mode/location controls are not evidence that those choices were
 verified. The user selects them and clicks Create themselves.
 

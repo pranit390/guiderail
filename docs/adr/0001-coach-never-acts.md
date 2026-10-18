@@ -1,6 +1,6 @@
 # GuideRail never takes consequential actions for the user
 
-Amended by [ADR 0007: Autonomy dial](0007-autonomy-dial.md).
+Amended by [ADR 0007: Autonomy dial](0007-autonomy-dial.md): in Assist, the panel may fill the Database ID after the person's explicit Approve click; the model has no fill tool.
 
 Guide is the default: GuideRail shows and explains, and the user performs every
 click and keystroke. The approved Assist level may fill non-secret text only

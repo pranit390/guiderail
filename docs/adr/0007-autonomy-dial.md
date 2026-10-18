@@ -10,7 +10,7 @@ and performs every click. Guide never fills.
 Assist is the approved text-assistance level. It asks for Database ID and desired
 mode together, previews numbered values and their sources (your answer, Rule or
 doc), checks the proposed end state against deterministic Rules, and waits for
-explicit approval. For this Journey it may fill only Database ID in an ordinary
+the person's explicit Approve click in the panel; the model has no fill tool. For this Journey it may fill only Database ID in an ordinary
 text input, then verify readback and rerun Rules. A proposed Test mode blocks
 before approval or any fill. Production/Test mode and location stay manual;
 custom controls are not supported. The person clicks Create.
