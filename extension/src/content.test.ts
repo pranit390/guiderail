@@ -430,7 +430,8 @@ describe("Firestore Configure practice copy", () => {
   it("blocks Test mode at its exact radio, holds the first Create and permits the human override", () => {
     configure();
     document.querySelector<HTMLInputElement>("#test")!.click();
-    expect(form().fields["Start in test mode"]).toBe("checked");
+    expect(form().fields).toMatchObject({ "Start in test mode": "checked", "Start in Production mode": "" });
+    expect(form().sections).toContain("Create a database");
     const violations = evaluate(rules, form());
     expect(violations).toEqual([expect.objectContaining({ ruleId: "firestore-no-test-mode", field: "Start in test mode", severity: "block" })]);
     expect(request({ kind: "show_violations", violations })).toEqual({ shown: ["Start in test mode"] });
@@ -449,6 +450,13 @@ describe("Firestore Configure practice copy", () => {
     request({ kind: "show_violations", violations: [] });
     expect(shadow.querySelectorAll(".bad")).toHaveLength(0);
     expect(click().defaultPrevented).toBe(false);
+  });
+
+  it("reports the create dialog only while it is visible", () => {
+    configure();
+    expect(form().sections).toContain("Create a database");
+    document.querySelector<HTMLElement>("dialog")!.style.display = "none";
+    expect(form().sections).not.toContain("Create a database");
   });
 
   it("does not check hidden wizard controls", () => {

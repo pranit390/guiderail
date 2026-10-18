@@ -9,11 +9,11 @@ import { FIRESTORE_LOCATIONS_DOC, firestoreGuardStatus, renderFirestoreGuidance 
 const seedRules: unknown[] = seed.rules;
 // The server validates the JSON boundary; its broad Check type needs narrowing for the extension evaluator.
 const rules = seedRules.filter(isRule) as Rule[];
-const form = (fields: FormState["fields"] = {}): FormState => ({
-  url: "console.firebase.google.com/project/practice-only/firestore", labels: {}, sections: [], fields,
+const form = (fields: FormState["fields"] = {}, sections = ["Create a database"]): FormState => ({
+  url: "console.firebase.google.com/project/practice-only/firestore", labels: {}, sections, fields,
 });
-const test = { "Start in test mode": "checked", "Start in production mode": "" };
-const production = { "Start in test mode": "", "Start in production mode": "checked" };
+const test = { "Start in test mode": "checked", "Start in Production mode": "" };
+const production = { "Start in test mode": "", "Start in Production mode": "checked" };
 
 describe("Firestore deterministic Rule and guidance", () => {
   it("loads one valid Firebase seed Rule, scoped to the exact host", () => {
@@ -26,13 +26,34 @@ describe("Firestore deterministic Rule and guidance", () => {
     expect(evaluate(rules, form(production))).toEqual([]);
   });
 
-  it.each<FormState["fields"]>([{}, { "Start in test mode": "checked" }, { "Test mode": "checked" }, { ...test, "Start in production mode": "checked" }, { ...test, "Start in test mode": "" }])("reports absent, renamed or mismatched controls as unknown: %j", (fields) => {
+  it.each<FormState["fields"]>([{}, { "Start in test mode": "checked" }, { "Test mode": "checked" }, { ...test, "Start in Production mode": "checked" }, { ...test, "Start in test mode": "" }])("reports absent, renamed or mismatched controls as unknown: %j", (fields) => {
     expect(firestoreGuardStatus(form(fields))).toBe("unknown");
     const region = document.createElement("section");
     renderFirestoreGuidance(region, form(fields));
     expect(region.hidden).toBe(false);
     expect(region.textContent).toContain("Security mode not checked");
     expect(region.textContent).not.toContain("all checks passed");
+  });
+
+  it("matches the observed console labels case-insensitively with whitespace collapsed", () => {
+    const fields = { "start in  TEST mode ": "checked", " Start in production   mode": "" };
+    expect(firestoreGuardStatus(form(fields, []))).toBe("test");
+    expect(evaluate(rules, form(fields, []))).toEqual([expect.objectContaining({ ruleId: "firestore-no-test-mode", severity: "block" })]);
+    expect(firestoreGuardStatus(form({ "START IN TEST MODE": "", "start in production mode": "checked" }, []))).toBe("production");
+  });
+
+  it("shows nothing on Firestore pages without the create wizard", () => {
+    const region = document.createElement("section");
+    renderFirestoreGuidance(region, form(test));
+    expect(region.hidden).toBe(false);
+    for (const url of ["console.firebase.google.com/project/practice-only/firestore", "console.firebase.google.com/project/practice-only/firestore/databases/-default-/data", "console.firebase.google.com/project/practice-only/firestore/rules"]) {
+      const browsing = { ...form({ "Search documents": "" }, []), url };
+      expect(firestoreGuardStatus(browsing)).toBeNull();
+      renderFirestoreGuidance(region, browsing);
+      expect(region.hidden).toBe(true);
+      expect(region.childNodes).toHaveLength(0);
+    }
+    expect(firestoreGuardStatus(form({}, ["Create a database"]))).toBe("unknown");
   });
 
   it("keeps source-linked location guidance before Create across Test, Production and unknown", () => {

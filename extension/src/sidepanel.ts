@@ -1,5 +1,5 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
-import { firestoreGuardStatus, renderFirestoreGuidance } from "./firestore.ts";
+import { renderFirestoreGuidance } from "./firestore.ts";
 import { JourneyBinding } from "./journey-binding.ts";
 import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
@@ -502,7 +502,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     case "check_policy": {
       const form = await toPage<FormState>({ kind: "read_form" });
       await updateViolations(form);
-      return { violations, firestoreSecurityMode: firestoreGuardStatus(form) };
+      return { violations };
     }
     case "draft_message": {
       return confirmCompose(args);

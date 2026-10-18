@@ -1,16 +1,19 @@
 import type { FormState } from "./messages.ts";
+import { fieldValue } from "./policy.ts";
 
 export const FIRESTORE_TEST_MODE = "Start in test mode";
-export const FIRESTORE_PRODUCTION_MODE = "Start in production mode";
+export const FIRESTORE_PRODUCTION_MODE = "Start in Production mode";
+export const FIRESTORE_CREATE_DIALOG = "Create a database";
 export const FIRESTORE_LOCATION_GUIDANCE = "Choose the location carefully before Create: a database's location cannot be changed after creation.";
 export const FIRESTORE_LOCATIONS_DOC = "https://firebase.google.com/docs/firestore/locations";
 export const FIRESTORE_MODES_DOC = "https://firebase.google.com/docs/firestore/manage-databases";
 
-/** Absence or a changed control contract is unknown, never a passed security check. */
+/** Outside the create wizard there is no status; inside it, absence or a changed control contract is unknown, never a passed security check. */
 export function firestoreGuardStatus(form: FormState): "test" | "production" | "unknown" | null {
   if (!/^console\.firebase\.google\.com\/project\/[^/]+\/firestore(?:\/|$)/.test(form.url)) return null;
-  const test = form.fields[FIRESTORE_TEST_MODE];
-  const production = form.fields[FIRESTORE_PRODUCTION_MODE];
+  const test = fieldValue(form, FIRESTORE_TEST_MODE);
+  const production = fieldValue(form, FIRESTORE_PRODUCTION_MODE);
+  if (test === undefined && production === undefined && !form.sections.includes(FIRESTORE_CREATE_DIALOG)) return null;
   if (test === "checked" && production === "") return "test";
   if (production === "checked" && test === "") return "production";
   return "unknown";

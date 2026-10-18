@@ -7,17 +7,20 @@ modify https://github.com/pranit390/guiderail/pull/22.
 
 The approved seed Rule `firestore-no-test-mode` applies only to
 `console.firebase.google.com/*`. It checks the exact accessible field
-`Start in test mode` for `checked`. Its block message includes Firebase's
-warning, “allows anyone to read and overwrite your data,” and asks the person
-to choose Start in production mode. The existing red Stop marker stays at that
+`Start in test mode` for `checked`; field Rules match accessible names
+case-insensitively with whitespace collapsed. Its block message includes
+Firebase's warning, “allows anyone to read and overwrite your data,” and asks
+the person to choose Start in Production mode. The existing red Stop marker stays at that
 radio, never the wizard or Create button. Production clears this Violation.
 
 The panel separately presents neutral vendor guidance: review location before
-Create because it is permanent. Both expected security controls must be read,
-with exactly one selected, before the panel reports the observed mode. Missing,
-renamed, hidden or inconsistent controls are unknown, never a security pass.
-The check_policy result carries this mode status as well as Violations. Hidden
-wizard fields are excluded from form reads and field marker resolution.
+Create because it is permanent. It shows this card only while the create wizard
+is open (either security radio is read, or the `Create a database` dialog is
+visible); other Firestore pages show nothing. Both expected security controls
+must be read, with exactly one selected, before the panel reports the observed
+mode. Missing, renamed, hidden or inconsistent controls inside the wizard are
+unknown, never a security pass. Hidden wizard fields are excluded from form
+reads and field marker resolution.
 
 The human soft guard holds the first click when blocking Violations are already
 shown; a second click within ten seconds continues anyway. It is not a hard
@@ -32,13 +35,14 @@ Sources, checked 18 October 2026:
 
 ## Evidence boundary
 
-The checked-in `extension/src/fixtures/firestore-configure.html` is an explicitly
-labelled **practice copy** of the Configure step. Its security control names
-are fixture contracts, pending a permitted real Configure-step observation.
-The earlier real console probe in `firestore-console-probe.md` did not reach
-Configure. No signed-in console is automated by this task. Real-dialog Test
-mode Violation and actual field-name/value parity are **NOT RUN**; Firestore
-runtime acceptance is not claimed.
+A captain screenshot of the real console's Configure step (18 October 2026)
+shows the options `Start in Production mode` and `Start in test mode` under a
+`Create a database` dialog heading. The checked-in
+`extension/src/fixtures/firestore-configure.html` is an explicitly labelled
+**practice copy** of that step using those observed labels. No signed-in
+console is automated by this task. The live-console Test mode Violation run is
+**pending the captain's demo run**; Firestore runtime acceptance is not yet
+claimed.
 
 The local tests execute the real form reader, seed Rule evaluator and overlay,
 exercise Test → Production and hidden controls, and verify the existing first

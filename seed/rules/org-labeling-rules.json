@@ -178,9 +178,9 @@
       },
       "guide": {
         "explain": "Company Policy requires Production mode. Firebase warns that Test mode allows anyone to read and overwrite your data.",
-        "format": "Start in production mode",
+        "format": "Start in Production mode",
         "examples": [
-          "Start in production mode"
+          "Start in Production mode"
         ],
         "suggest": null
       },
@@ -192,7 +192,7 @@
         ]
       },
       "severity": "block",
-      "message": "Test mode allows anyone to read and overwrite your data. Choose Start in production mode before Create."
+      "message": "Test mode allows anyone to read and overwrite your data. Choose Start in Production mode before Create."
     }
   ]
 }
