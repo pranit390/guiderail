@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { beforeEach, describe, expect, it } from "vitest";
-import { findSection, isSecret, nameOf, roleOf, sectionOf, valueOf } from "./page.ts";
+import { BAD_DARK, BAD_LIGHT, contrastRatio, EDGE_DARK, EDGE_LIGHT, findSection, isSecret, labelValueInput, nameOf, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 
 beforeEach(() => {
   document.body.innerHTML = `
@@ -33,6 +33,42 @@ describe("page helpers", () => {
   it("finds a section that is a selected tab's panel", () => {
     document.querySelector("section")!.remove();
     expect(findSection("Labels")?.id).toBe("p1");
+  });
+
+  it("edge colours meet >=3:1 on light and dark surroundings", () => {
+    expect(contrastRatio(EDGE_LIGHT, "rgb(255,255,255)")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(EDGE_LIGHT, "rgb(248,250,253)")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(EDGE_DARK, "rgb(22,29,40)")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(EDGE_DARK, "rgb(15,20,28)")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(BAD_LIGHT, "rgb(255,255,255)")).toBeGreaterThanOrEqual(3);
+    expect(contrastRatio(BAD_DARK, "rgb(22,29,40)")).toBeGreaterThanOrEqual(3);
+  });
+
+  it("maps label:key to its exact value input, never the whole Labels section", () => {
+    document.body.innerHTML = `
+      <section aria-labelledby="lh"><h3 id="lh">Labels</h3>
+        <input aria-label="Key 1" value="environment"><input aria-label="Value 1" value="production">
+        <input aria-label="Key 2" value="owner"><input aria-label="Value 2" value="bad@example.com">
+      </section>
+      <label for="role">Role</label><select id="role"><option>Owner</option></select>
+      <div role="radio" aria-label="Test mode">Test mode</div>`;
+    const ownerValue = document.querySelector('input[aria-label="Value 2"]')!;
+    expect(labelValueInput("owner")).toBe(ownerValue);
+    expect(violationFieldElement("label:owner")).toBe(ownerValue);
+    expect(violationFieldElement("label:environment")).toBe(document.querySelector('input[aria-label="Value 1"]'));
+    // A missing key has no value input: nothing is marked, and several missing keys never stack on one empty pair.
+    (document.querySelector('input[aria-label="Key 1"]') as HTMLInputElement).value = "";
+    expect(labelValueInput("component")).toBeNull();
+    expect(violationFieldElement("label:environment")).toBeNull();
+    // Generic fields resolve the real observed control by accessible name.
+    expect(violationFieldElement("Role")).toBe(document.getElementById("role"));
+    expect(violationFieldElement("Test mode")?.getAttribute("role")).toBe("radio");
+    // A field whose real control is gone is not mapped to a heading or button with the same name.
+    document.body.insertAdjacentHTML("beforeend", `<h3>Database ID</h3><button>Save</button>`);
+    expect(violationFieldElement("Database ID")).toBeNull();
+    expect(violationFieldElement("Save")).toBeNull();
+    expect(violationFieldLabel("label:owner")).toBe("owner value");
+    expect(violationFieldLabel("Role")).toBe("Role");
   });
 
   it("reads values a person can see, including custom controls", () => {

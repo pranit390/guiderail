@@ -55,21 +55,22 @@ describe("calmer content messages", () => {
     expect(violations.length).toBeGreaterThan(0);
     expect(request({ kind: "highlight", text: "Labels", role: "heading" })).toMatchObject({ found: true });
     request({ kind: "customize", preset: "calm" });
-    request({ kind: "show_violations", fields: violations.map((v) => v.field), submitLabel: "Create" });
+    request({ kind: "show_violations", violations });
     vi.advanceTimersByTime(20);
     expect(form()).toEqual(before);
     expect(evaluate(rules, form())).toEqual(violations);
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
     const shade = shadow.querySelector<HTMLElement>(".gr-shade")!;
     expect(shade.hidden).toBe(false);
-    expect(shadow.querySelectorAll(".bad")).toHaveLength(2);
+    // Exact-field marking: only environment has a value input on this page; missing keys mark nothing, and Save is never boxed.
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(1);
     expect(shade.parentElement?.firstElementChild).toBe(shade);
     expect(shadow.querySelector<HTMLElement>(".ring")?.hidden).toBe(false);
     request({ kind: "customize", preset: null });
     expect(shade.hidden).toBe(true);
     expect(form()).toEqual(before);
     expect(evaluate(rules, form())).toEqual(violations);
-    expect(shadow.querySelectorAll(".bad")).toHaveLength(2);
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(1);
   });
 
   it("clears the spotlight when a Step finishes without turning off the kept preset", () => {
@@ -88,5 +89,89 @@ describe("calmer content messages", () => {
     vi.advanceTimersByTime(20);
     expect(document.querySelector("#guiderail-customize")).toBeNull();
     expect(document.querySelector("guiderail-overlay")).toBeNull();
+  });
+
+  it("lets a submit through once the extension context is gone, even with blocking Violations", () => {
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    runtime.id = "";
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    document.querySelector("button")!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
+    expect(document.querySelector("guiderail-overlay")).toBeNull();
+  });
+
+  it("themes the Step ring and each Violation box from their own surroundings", () => {
+    document.querySelector<HTMLElement>('section[aria-label="Labels"]')!.style.backgroundColor = "rgb(22, 29, 40)";
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    expect(request({ kind: "highlight", text: "Create", role: "button" })).toMatchObject({ found: true });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    expect(shadow.querySelector<HTMLElement>(".ring")!.dataset.theme).toBe("light");
+    expect(shadow.querySelector<HTMLElement>(".bad")!.dataset.theme).toBe("dark");
+  });
+
+  it("hides a Violation's Rule chip once its field scrolls out of view, and shows it again on return", () => {
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    const chip = shadow.querySelector<HTMLElement>(".chip")!;
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, -400, 200, 60));
+    document.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(true);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 200, 60));
+    document.dispatchEvent(new Event("scroll"));
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+  });
+
+  it("places a Rule chip beside its field, then below, and never over another form control", () => {
+    const value = document.querySelector('[aria-label="Value 1"]')!;
+    const blockers: Record<string, DOMRect> = {};
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      return blockers[this.getAttribute("aria-label") ?? ""] ?? new DOMRect(40, 100, 200, 60);
+    });
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip")!;
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+    expect(chip.style.left).toBe("248px");
+    expect(parseFloat(chip.style.top)).toBeCloseTo(100 + (60 - chip.offsetHeight) / 2);
+
+    const right = document.createElement("input");
+    right.setAttribute("aria-label", "Right");
+    value.after(right);
+    blockers.Right = new DOMRect(244, 100, 200, 60);
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+    expect(chip.style.top).toBe("166px");
+
+    const under = document.createElement("input");
+    under.setAttribute("aria-label", "Under");
+    right.after(under);
+    blockers.Under = new DOMRect(40, 162, 400, 60);
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(true);
+    (value as HTMLInputElement).focus();
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(false);
+    expect(parseFloat(chip.style.top)).toBeCloseTo(94 - chip.offsetHeight);
+
+    const over = document.createElement("input");
+    over.setAttribute("aria-label", "Over");
+    under.after(over);
+    blockers.Over = new DOMRect(40, 40, 400, 60);
+    vi.advanceTimersByTime(20);
+    expect(chip.hidden).toBe(true);
+  });
+
+  it("narrows a Rule chip to the room beside its field so it can sit there", () => {
+    vi.stubGlobal("innerWidth", 520);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 280, 60));
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip")!;
+    vi.advanceTimersByTime(20);
+    expect(chip.style.maxWidth).toBe("174px");
+    expect(chip.style.left).toBe("328px");
   });
 });

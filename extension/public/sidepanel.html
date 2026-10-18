@@ -15,7 +15,10 @@
     <p class="msg system">Open a Google page, press Talk (or type), and say what you want to do.</p>
   </main>
   <section id="guidance" class="card" hidden></section>
-  <ul id="issues" class="card" hidden></ul>
+  <section id="issues" class="card" hidden aria-label="Policy issues">
+    <h2 id="issues-summary" role="status" aria-live="polite"></h2>
+    <ul id="issues-list"></ul>
+  </section>
   <section id="teachbar" class="card" hidden>
     <p><span class="rec" aria-hidden="true"></span> Recording: <span id="teachcount">0</span> steps. Do the task and explain why as you go.</p>
     <button id="teachstop" type="button">Stop and draft Playbook</button>

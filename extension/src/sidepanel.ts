@@ -1,7 +1,8 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, ToPage } from "./messages.ts";
-import { evaluate, guidance, type Rule, type Violation } from "./policy.ts";
+import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
+import { violationFieldLabel } from "./page.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
 import { SessionLog } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
@@ -240,14 +241,32 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 
 async function updateViolations(form: FormState) {
   violations = evaluate(rules, form);
-  const blocking = violations.filter((v) => v.severity === "block");
-  await toPage({ kind: "show_violations", fields: [...new Set(blocking.map((v) => v.field))], submitLabel: "Create" }).catch(() => {});
+  const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations }).catch(() => undefined))?.shown ?? [];
   issues.hidden = violations.length === 0;
-  issues.replaceChildren(
+  const heading = $("#issues-summary");
+  // The heading is the live region: only a change in the counts is announced, not every rebuild while typing.
+  const text = violations.length ? violationCountText(summarizeViolations(violations)) : "";
+  if (heading.textContent !== text) heading.textContent = text;
+  const list = $("#issues-list");
+  list.replaceChildren(
     ...violations.map((v) => {
       const li = document.createElement("li");
       li.dataset.severity = v.severity;
-      li.textContent = v.message;
+      const field = document.createElement("span");
+      field.className = "field";
+      field.textContent = violationFieldLabel(v.field);
+      const msg = document.createElement("span");
+      msg.className = "rule-msg";
+      msg.textContent = v.message;
+      msg.id = `issue-${v.ruleId}`;
+      li.setAttribute("aria-describedby", msg.id);
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "Show field";
+      btn.setAttribute("aria-label", `Show ${violationFieldLabel(v.field)} field: ${v.message}`);
+      btn.addEventListener("click", () => { void toPage({ kind: "show_field", field: v.field }).catch(() => {}); });
+      if (shown.includes(v.field)) li.append(field, btn, msg);
+      else li.append(field, msg);
       return li;
     }),
   );
@@ -281,7 +300,7 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, _sender, reply
       void updateViolations(msg.form).then(() => {
         const blocking = violations.filter((v) => v.severity === "block");
         const text = blocking.length
-          ? `User is about to click "${msg.label}" but ${blocking.length} policy Violation(s) remain: ${blocking.map((v) => v.message).join(" ")}`
+          ? `User is about to click "${msg.label}" but ${violationCountText(summarizeViolations(violations))} remain: ${blocking.map((v) => v.message).join(" ")}`
           : `User clicked "${msg.label}" and all policy checks pass.`;
         say("system", text);
         sendServer({ type: "event", text });
@@ -323,8 +342,9 @@ async function setTeach(on: boolean) {
   if (on) {
     violations = [];
     issues.hidden = true;
-    issues.replaceChildren();
-    await toPage({ kind: "show_violations", fields: [] }).catch(() => {});
+    $("#issues-list").replaceChildren();
+    $("#issues-summary").textContent = "";
+    await toPage({ kind: "show_violations", violations: [] }).catch(() => {});
   }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teachbar").hidden = !on;

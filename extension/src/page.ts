@@ -118,6 +118,77 @@ export function valueOf(el: Element): string | undefined {
   return undefined;
 }
 
+// --- Calm edge colours: the outline carries contrast (>=3:1), the halo is only attention. ---
+export const EDGE_LIGHT = "#805b00"; // 6.15:1 on #fff
+export const EDGE_DARK = "#f2b927"; // 9.47:1 on #161d28
+export const BAD_LIGHT = "#c43a2f";
+export const BAD_DARK = "#f07468";
+
+export function parseRgb(color: string): [number, number, number] | null {
+  const m = color.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+%?))?/);
+  if (!m) return null;
+  if (m[4] !== undefined && parseFloat(m[4]) === 0) return null;
+  return [Number(m[1]), Number(m[2]), Number(m[3])];
+}
+
+export function relativeLuminance([r, g, b]: [number, number, number]): number {
+  const f = (v: number) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; };
+  return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+}
+
+export function contrastRatio(a: string, b: string): number {
+  const ca = parseRgb(a.startsWith("#") ? hexToRgb(a) : a);
+  const cb = parseRgb(b.startsWith("#") ? hexToRgb(b) : b);
+  if (!ca || !cb) return 0;
+  const [l1, l2] = [relativeLuminance(ca), relativeLuminance(cb)].sort((x, y) => y - x);
+  return (l1 + 0.05) / (l2 + 0.05);
+}
+
+function hexToRgb(hex: string): string {
+  const h = hex.slice(1);
+  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+  return `rgb(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255})`;
+}
+
+/** Surrounding background behind an element, walking up until a non-transparent colour. */
+export function surroundingBackground(el: Element): string {
+  let cur: Element | null = el.parentElement;
+  while (cur) {
+    const bg = getComputedStyle(cur).backgroundColor;
+    if (parseRgb(bg)) return bg;
+    cur = cur.parentElement;
+  }
+  const bodyBg = getComputedStyle(document.body).backgroundColor;
+  return parseRgb(bodyBg) ? bodyBg : "rgb(255,255,255)";
+}
+
+export function isDarkSurrounding(el: Element): boolean {
+  const rgb = parseRgb(surroundingBackground(el));
+  return rgb ? relativeLuminance(rgb) < 0.18 : false;
+}
+
+/** Value input for a `label:<key>` Violation: the input paired with the key input holding <key>. Never the whole section. */
+export function labelValueInput(key: string): Element | null {
+  const section = findSection("Labels");
+  if (!section) return null;
+  const inputs = [...section.querySelectorAll("input")].filter((i) => i.type === "text" || i.type === "");
+  for (let k = 0; k + 1 < inputs.length; k += 2) {
+    if (inputs[k].value.trim() === key) return inputs[k + 1];
+  }
+  return null;
+}
+
+/** Exact element for a Violation field. Generic fields match the observed accessible name (the real control), never a guessed label. */
+export function violationFieldElement(field: string): Element | null {
+  if (field.startsWith("label:")) return labelValueInput(field.slice("label:".length));
+  const candidates = [...document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD},[role=radio],[role=checkbox],[role=switch]`)];
+  return candidates.find((e) => norm(nameOf(e)) === norm(field)) ?? null;
+}
+
+export function violationFieldLabel(field: string): string {
+  return field.startsWith("label:") ? `${field.slice("label:".length)} value` : field;
+}
+
 // The field a dropdown option belongs to: the control that owns its listbox.
 export function fieldForOption(option: Element): Element | null {
   const list = option.closest("[role=listbox]");
