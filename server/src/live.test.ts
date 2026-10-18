@@ -91,6 +91,37 @@ describe("Live idle timeout", () => {
     expect(client.close).toHaveBeenCalledWith(4000, "idle");
   });
 
+  it("pauses the minute while an email proposal awaits confirmation and restarts it once answered", async () => {
+    const { client } = await start();
+    live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "draft", name: "draft_message", args: {} }] } });
+    client.input({ type: "text", text: "still reading" });
+    vi.advanceTimersByTime(5 * IDLE_MS);
+    expect(live.session.close).not.toHaveBeenCalled();
+    client.input({ type: "tool_result", id: "draft", name: "draft_message", response: { opened: false } });
+    vi.advanceTimersByTime(IDLE_MS - 1);
+    expect(live.session.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(client.close).toHaveBeenCalledWith(4000, "idle");
+  });
+
+  it("still ends at the ten-minute cap while an email proposal awaits confirmation", async () => {
+    const { client, release } = await start();
+    live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "draft", name: "draft_message", args: {} }] } });
+    vi.advanceTimersByTime(10 * 60 * 1000 - 1);
+    expect(live.session.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(live.session.close).toHaveBeenCalledOnce();
+    expect(client.close).toHaveBeenCalledWith(4000, "session limit");
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("does not pause the minute for other outstanding tool calls", async () => {
+    const { client } = await start();
+    live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "read", name: "read_page", args: {} }] } });
+    vi.advanceTimersByTime(IDLE_MS);
+    expect(client.close).toHaveBeenCalledWith(4000, "idle");
+  });
+
   it("does not restart the minute for session summaries, tool results, unknown messages or resumption updates", async () => {
     const { client } = await start();
     vi.advanceTimersByTime(IDLE_MS / 2);

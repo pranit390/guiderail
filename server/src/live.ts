@@ -72,9 +72,10 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
     client.close(4000, reason);
   };
   // Only user input, page activity and model output keep a connection open; raw mic frames (often silence) do not.
+  // An email proposal awaiting the user's confirmation pauses the minute; the ten-minute cap still applies.
   const active = () => {
     clearTimeout(idle);
-    if (client.readyState !== client.OPEN) return;
+    if (client.readyState !== client.OPEN || [...pendingTools.values()].includes("draft_message")) return;
     idle = setTimeout(() => end("idle", "Disconnected after one minute without activity. Type or press Talk to reconnect."), IDLE_MS);
   };
   const cap = setTimeout(() => end("session limit", "This demo session reached its ten-minute limit. Type or press Talk to reconnect if today's allowance remains."), MAX_SESSION_MS);
@@ -149,7 +150,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         end("input allowance reached", "This demo session reached its input allowance.");
         return;
       }
-      if (ACTIVITY.has(msg.type)) active();
+      if (ACTIVITY.has(msg.type) || (msg.type === "tool_result" && msg.name === "draft_message")) active();
       switch (msg.type) {
         case "audio":
           session.sendRealtimeInput({ audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" } });
