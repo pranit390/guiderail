@@ -88,12 +88,14 @@ describe("calmer content messages", () => {
     request({ kind: "show_violations", violations: [{ field: "Labels", message: "Add owner", severity: "block" }] });
     const button = document.querySelector("button")!;
     const click = () => button.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    // Content scripts from earlier tests stay attached; this test's script registered last, so its intent is the last one sent.
+    const lastIntent = () => runtime.sendMessage.mock.calls.map(([msg]) => msg).filter((msg) => msg.kind === "submit_intent").at(-1);
     expect(click()).toBe(false);
+    expect(lastIntent()).toMatchObject({ continued: false });
     const notice = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector('[role="alert"]');
     expect(notice?.textContent).toContain("Click again to continue anyway");
     expect(click()).toBe(true);
-    const intents = runtime.sendMessage.mock.calls.map(([msg]) => msg).filter((msg) => msg.kind === "submit_intent");
-    expect(intents.map((msg) => msg.continued)).toEqual([false, true]);
+    expect(lastIntent()).toMatchObject({ continued: true });
   });
   it("places the pointer inside a wizard top layer and returns it to the page", () => {
     const surface = document.createElement("dialog");
