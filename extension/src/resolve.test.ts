@@ -72,7 +72,7 @@ describe("indistinguishable ties", () => {
     const decision = authorizeTarget({ text: "Save", role: "button", snapshot: snapshot(elements), stale: false, tabId: 7 });
     expect(actionAuthorized(decision)).toBe(false);
     if (decision.authorized) throw new Error("expected an ambiguous Save");
-    expect(decision).toMatchObject({ reason: "ambiguous" });
+    expect(decision).toMatchObject({ reason: "ambiguous", alternatives: [] });
     expect(highlightOutcome(decision)).toBe(apart("Save"));
   });
 
@@ -83,7 +83,7 @@ describe("indistinguishable ties", () => {
     ];
     const decision = authorizeTarget({ text: "Database", snapshot: snapshot(elements), stale: false, tabId: 7 });
     if (decision.authorized) throw new Error("expected an ambiguous Database");
-    expect(decision).toMatchObject({ reason: "ambiguous", alternatives: ["Database: Database ID", "Database: Database ID"] });
+    expect(decision).toMatchObject({ reason: "ambiguous", alternatives: [] });
     expect(highlightOutcome(decision)).toBe(apart("Database"));
   });
 });

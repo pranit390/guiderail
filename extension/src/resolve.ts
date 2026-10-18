@@ -55,7 +55,7 @@ function tied(ranked: Ranked[]): Ranked[] {
 }
 
 export function ambiguousAsk(text: string, alternatives: string[]): string {
-  if (new Set(alternatives.map(norm)).size < alternatives.length) {
+  if (alternatives.length < 2) {
     return `I see more than one "${text.trim()}" here that I can't tell apart, so I won't point at either. Tell me what's near the one you mean.`;
   }
   const list = alternatives.length === 2
@@ -120,7 +120,9 @@ export function authorizeTarget(input: {
 export function resolutionResult(text: string, resolved: NameResolution, citation?: string): HighlightResult {
   if (resolved.status === "found") return { found: true, i: resolved.i, name: resolved.name, confidence: resolved.confidence };
   if (resolved.status === "ambiguous") {
-    return { found: false, reason: "ambiguous", alternatives: resolved.alternatives, ask: ambiguousAsk(text, resolved.alternatives) };
+    const distinct = new Set(resolved.alternatives.map(norm)).size === resolved.alternatives.length;
+    const alternatives = distinct ? resolved.alternatives : [];
+    return { found: false, reason: "ambiguous", alternatives, ask: ambiguousAsk(text, alternatives) };
   }
   const cite = citation?.trim() || undefined;
   return { found: false, reason: "missing", alternatives: resolved.alternatives, citation: cite, mismatch: mismatchLine(text, cite) };

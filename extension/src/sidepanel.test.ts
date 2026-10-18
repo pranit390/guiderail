@@ -175,6 +175,30 @@ describe("highlight wiring", () => {
   });
 });
 
+describe("indistinguishable Saves", () => {
+  it("returns the can't-tell-apart ask to the model with no choosable alternatives", async () => {
+    sendMessage.mockImplementation(async (_tab: number, msg: { kind: string }) =>
+      msg.kind === "read_page"
+        ? { url: "http://127.0.0.1/same-save", title: "Same Save", generation: 3, elements: [{ i: 1, role: "button", name: "Save" }, { i: 2, role: "button", name: "Save" }] }
+        : { ok: true });
+    const call = async (id: string, name: string, args: Record<string, unknown>) => {
+      sockets[0].onmessage?.({ data: JSON.stringify({ type: "tool_call", id, name, args }) });
+      let result: any;
+      await vi.waitFor(() => {
+        result = sockets[0].send.mock.calls.map(([raw]) => JSON.parse(raw)).find((m) => m.id === id);
+        expect(result).toBeDefined();
+      });
+      return result.response;
+    };
+    await call("read", "read_page", {});
+    const save = await call("save", "highlight", { text: "Save", role: "button" });
+    const apart = `I see more than one "Save" here that I can't tell apart, so I won't point at either. Tell me what's near the one you mean.`;
+    expect(save).toEqual({ found: false, reason: "ambiguous", alternatives: [], ask: apart });
+    expect(document.querySelector("#log")!.textContent).toContain(apart);
+    expect(sendMessage.mock.calls.filter(([, msg]) => msg.kind === "highlight")).toHaveLength(0);
+  });
+});
+
 describe("duplicate-Save sandbox end to end", () => {
   const ring = () => document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".ring")!;
 
