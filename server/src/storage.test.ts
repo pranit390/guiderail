@@ -89,27 +89,57 @@ describe.each(Object.entries(factories))("%s store contract", (_name, stores) =>
 });
 
 describe("Firestore documents", () => {
-  it("records verified publisher metadata and preserves creation time on replacement", async () => {
+  it("records the verified publisher and update time on each write", async () => {
     const store = new FirestorePlaybookStore();
     await store.publish(draft, "alice");
     const ref = getDatabase().collection("playbooks").doc(draft.id);
     const first = (await ref.get()).data();
-    expect(first).toMatchObject({ ownerUid: "alice", playbook: draft, createdAt: expect.any(String), updatedAt: expect.any(String) });
+    expect(first).toMatchObject({ ownerUid: "alice", playbook: draft, updatedAt: expect.any(String) });
+    expect(first).not.toHaveProperty("createdAt");
     await store.publish(draft, "bob");
     const second = (await ref.get()).data();
-    expect(second).toMatchObject({ ownerUid: "bob", createdAt: first?.createdAt });
+    expect(second).toMatchObject({ ownerUid: "bob" });
     expect(Date.parse(second?.updatedAt)).toBeGreaterThanOrEqual(Date.parse(first?.updatedAt));
     await store.publish(draft);
     expect((await ref.get()).data()?.ownerUid).toBeNull();
   });
-  it("rejects invalid stored bodies instead of trusting database contents", async () => {
+  it("skips invalid stored bodies instead of failing every reader", async () => {
     const db = getDatabase();
-    await db.collection("playbooks").doc("broken").set({ playbook: { ...draft, id: "broken", markdown: "" } });
-    await expect(new FirestorePlaybookStore().list()).rejects.toThrow(/markdown/);
-    await db.collection("rules").doc("broken").set({ rules: [{ ...rule, check: { kind: "run_shell" } }] });
-    await expect(new FirestoreRuleStore().all()).rejects.toThrow(/valid Rules/);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      await new FirestorePlaybookStore().publish(draft);
+      await new FirestoreRuleStore().replace(draft.id, [rule]);
+      await db.collection("playbooks").doc("broken").set({ playbook: { ...draft, id: "broken", markdown: "" } });
+      await db.collection("playbooks").doc("renamed").set({ playbook: draft });
+      expect(await new FirestorePlaybookStore().list()).toEqual([expect.stringContaining("id: deploy\n")]);
+      await db.collection("rules").doc("broken").set({ rules: [{ ...rule, check: { kind: "run_shell" } }] });
+      expect(await new FirestoreRuleStore().all()).toEqual([rule]);
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("playbooks/broken"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("playbooks/renamed"));
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining("rules/broken"));
+    } finally { warn.mockRestore(); }
     await db.collection("journeys").doc(journeyCacheKey).set({ ...journey, version: "obsolete" });
     expect(await new FirestoreJourneyStore().get()).toBeUndefined();
+  });
+  it("serves repeated reads from memory until the store's next write", async () => {
+    const db = getDatabase();
+    const playbooks = new FirestorePlaybookStore(db);
+    const rules = new FirestoreRuleStore(db);
+    const reads = vi.spyOn(db, "collection");
+    try {
+      expect(await playbooks.list()).toEqual([]);
+      expect(await rules.all()).toEqual([]);
+      await db.collection("playbooks").doc(draft.id).set({ playbook: draft });
+      await db.collection("rules").doc(draft.id).set({ rules: [rule] });
+      reads.mockClear();
+      expect(await playbooks.list()).toEqual([]);
+      expect(await rules.all()).toEqual([]);
+      expect(reads).not.toHaveBeenCalled();
+      await playbooks.publish({ ...draft, markdown: "Updated steps" });
+      await rules.replace(draft.id, [{ ...rule, id: "new" }]);
+      expect(await playbooks.list()).toEqual([expect.stringContaining("Updated steps")]);
+      expect((await rules.all()).map((r) => r.id)).toEqual(["new"]);
+    } finally { reads.mockRestore(); }
   });
   it("keeps one shared Journey document rather than appending on every compile", async () => {
     const store = new FirestoreJourneyStore();

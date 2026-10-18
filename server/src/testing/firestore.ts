@@ -18,15 +18,4 @@ export const fakeFirestore = {
     doc: (id: string) => reference(`${name}/${id}`),
     get: async () => ({ docs: [...documents.keys()].filter((path) => path.startsWith(`${name}/`)).sort().map(snapshot) }),
   }),
-  runTransaction: async (work: (transaction: {
-    get: (ref: ReturnType<typeof reference>) => Promise<ReturnType<typeof snapshot>>;
-    set: (ref: ReturnType<typeof reference>, body: Body) => void;
-  }) => Promise<void>) => {
-    const pending = new Map<string, Body>();
-    await work({
-      get: async (ref) => snapshot(ref.path),
-      set: (ref, body) => { pending.set(ref.path, structuredClone(body)); },
-    });
-    for (const [path, body] of pending) documents.set(path, body);
-  },
 };

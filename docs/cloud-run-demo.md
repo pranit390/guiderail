@@ -73,13 +73,17 @@ steps; this change does not create a database, modify IAM or deploy.
 See [Admin SDK setup](https://firebase.google.com/docs/admin/setup) and
 [Firestore server IAM](https://docs.cloud.google.com/firestore/native/docs/security/iam).
 
-`playbooks/{id}` contains the validated `playbook` body, `ownerUid`, and ISO
-`createdAt` / `updatedAt` timestamps. The UID comes from the verified request;
+`playbooks/{id}` contains the validated `playbook` body, `ownerUid`, and an ISO
+`updatedAt` timestamp. The UID comes from the verified request;
 it is `null` when local sign-in is off. `rules/{playbookId}` holds the selected
 runtime Rules with the same metadata and replaces them on republish, including
 an empty selection. `journeys/{cacheKey}` holds the validated compiled Journey;
 the key hashes the pinned Goal/source/version contract. File seed Playbooks and
 Rules remain read-only and are combined with published content in API/Live reads.
+The single instance caches the Playbook and Rule collections in memory and
+re-reads one only after its next publish, so repeated public reads and Live
+session starts do not bill Firestore reads. Stored documents that no longer
+validate are skipped with a warning, matching the file stores.
 
 Visibility deliberately stays shared: all published Playbooks and Rules remain
 available to all callers, including the existing public read endpoints, and any
