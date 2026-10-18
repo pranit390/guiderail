@@ -13,8 +13,6 @@
   },
   "dependencies": {
     "@fontsource/atkinson-hyperlegible": "5.3.0",
-    "@fontsource/fraunces": "5.3.0",
-    "astro": "7.4.0",
-    "motion": "14.3.0"
+    "astro": "7.4.0"
   }
 }

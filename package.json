@@ -6,6 +6,7 @@
   "scripts": {
     "dev:server": "npm run dev -w server",
     "build:ext": "npm run build -w extension",
+    "build:site": "node scripts/package-landing.mjs",
     "watch:ext": "npm run watch -w extension",
     "typecheck": "npm run typecheck -ws",
     "test": "npm run test -ws --if-present"

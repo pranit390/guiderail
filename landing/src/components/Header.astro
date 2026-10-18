@@ -10,19 +10,16 @@ interface Props {
 const { name, nav, cta } = Astro.props;
 ---
 
-<a class="skip" href="#demo">Skip to the demonstration</a>
+<a class="skip" href="#main">Skip to content</a>
 <header class="site-header">
   <div class="wrap header-bar">
     <a class="logo" href="#top">
-      <svg viewBox="0 0 32 32" aria-hidden="true">
-        <path d="M4 22h24M9 22v5M16 22v5M23 22v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"></path>
-        <circle cx="16" cy="11" r="3.2" fill="none" stroke="currentColor" stroke-width="2"></circle>
-      </svg>
+      <img src="/logo/rail-check.svg" width="36" height="36" alt="" />
       {name}
     </a>
     <nav class="site-nav" aria-label="Page">
       {nav.map((item) => <a href={item.href}>{item.label}</a>)}
+      <a class="button primary" href={cta.href} download="guiderail-extension.zip">{cta.label}</a>
     </nav>
-    <a class="button header-cta" href={cta.href} aria-describedby={cta.placeholder ? "cta-note" : undefined}>{cta.label}</a>
   </div>
 </header>

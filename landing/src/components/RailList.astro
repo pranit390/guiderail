@@ -4,18 +4,39 @@ import type { RailStop } from "../kit/types";
 interface Props {
   label: string;
   stops: RailStop[];
+  class?: string;
 }
+
 const { label, stops } = Astro.props;
 ---
 
-<ol class="rail-list" aria-label={label}>
+<ol class:list={["route", Astro.props.class]} aria-label={label}>
   {
     stops.map((stop) => (
       <li>
-        <span class="rail-cell" aria-hidden="true"><span class="rail-dot"></span></span>
-        <div class="rail-copy">
-          <h3>{stop.title}</h3>
-          {stop.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
+        <span class:list={["rail-mark", `tone-${stop.tone}`]} aria-hidden="true">
+          {stop.tone === "check" ? (
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m16 3 13 13-13 13L3 16Z" />
+              <path d="M16 10v7m0 4v1" />
+            </svg>
+          ) : stop.tone === "stop" ? (
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M11 3h10l8 8v10l-8 8H11l-8-8V11Z" />
+              <path d="m12 12 8 8m0-8-8 8" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="16" cy="16" r="11" />
+              <path d="m11 16 3 3 7-7" />
+            </svg>
+          )}
+        </span>
+        <div>
+          <strong>{stop.title}</strong>
+          {stop.paragraphs.map((paragraph) => (
+            <span>{paragraph}</span>
+          ))}
         </div>
       </li>
     ))
