@@ -22,7 +22,7 @@ export const cta = {
 export const pageTitle = "GuideRail. A Chrome coach for cloud console tasks";
 
 export const pageDescription =
-  "A Chrome side panel that walks you through tasks on the Google Cloud and Firebase consoles, Step by Step, from the official docs and your team's Playbooks. A Rules guard warns you before an unsafe choice, and you make every Create click yourself.";
+  "A Chrome side panel that walks enterprise employees through tasks on the Google Cloud and Firebase consoles, Step by Step, from the official docs and your enterprise Playbooks. A Rules guard enforces your enterprise policy before an unsafe choice, and you make every Create click yourself.";
 
 export const judgeNote = "Judges, sign in with the demo login from the pitch deck.";
 
@@ -54,7 +54,7 @@ export const hero = {
   titleLead: "GuideRail points.",
   titleRest: "You click.",
   intro:
-    "GuideRail is a Chrome side panel for the Google Cloud and Firebase consoles. Pick a goal and it highlights the next control on the real page, one Step at a time. The Steps come from the official docs or from a Playbook your team's expert recorded. A Rules guard flags unsafe choices before you create anything.",
+    "GuideRail is a Chrome side panel for the Google Cloud and Firebase consoles. Pick a goal and it highlights the next control on the real page, one Step at a time. The Steps come from the official docs or from a Playbook an expert in your enterprise recorded. A Rules guard flags choices that break your enterprise policy before you create anything.",
   note: "Guide only points. Assist types into one field you approve and reads it back. Neither one clicks Create for you. The worked example below creates a Firestore database.",
   journeyLink: "See the Firestore Journey",
   figureCaption: "This is a mock of the Firebase form with made-up values. It isn't connected to any account.",
@@ -64,7 +64,7 @@ export const hero = {
 
 export const content: LandingContent = {
   name: "GuideRail",
-  audience: "People doing tasks on the Google Cloud and Firebase consoles, and the experts who teach them.",
+  audience: "Enterprise employees following enterprise procedures and policies in web tools.",
   positioning: pageDescription,
   cta,
   route: {
@@ -144,7 +144,7 @@ export const content: LandingContent = {
       "Guide outlines the next control and moves on by itself when you finish the Step.",
       "Assist fills one approved field, the Firestore Database ID, and reads the value back.",
       "The Rules guard flags unsafe choices, like Firestore Test mode, and holds your first Create click.",
-      "Learn mode. An expert does the task once and GuideRail drafts a Playbook with suggested Rules. The expert reviews it before anyone is guided by it.",
+      "Learn mode. An enterprise expert does the task once and GuideRail drafts a Playbook with suggested Rules. The expert reviews it before anyone is guided by it.",
       "Playbooks, Rules and compiled Journeys are stored in Firestore. The coach runs on Cloud Run, and you sign in with Firebase Auth.",
       "You click Create. Every time.",
     ],
@@ -158,20 +158,12 @@ export const content: LandingContent = {
         title: "Next",
         items: [
           {
-            title: "More Journeys and more sites",
-            text: "A docs finder picks the right official page for a goal. A compiled Journey is marked unverified until a person walks it once. Slack app setup is the first site outside Google.",
+            title: "Next steps on any site, from docs and forums",
+            text: "Ask a question on any website. GuideRail reads the official docs and the forums for that tool and turns them into Steps on the page you have open.",
           },
           {
-            title: "Sessions that survive the panel",
-            text: "The microphone and the voice connection move out of the side panel, so closing the panel no longer ends the session.",
-          },
-          {
-            title: "Zen mode",
-            text: "A small bubble on the page listens and answers by voice, with a one-line caption. Click it to open the full panel.",
-          },
-          {
-            title: "More Assist, then Auto",
-            text: "Assist fills more kinds of fields, with approval per Step and undo before submit. An Auto level moves through a wizard inside a plan you approved. No level gets a click or submit tool.",
+            title: "An MCP handoff for any agent",
+            text: "Any agent can hand browser work to GuideRail over MCP. Your enterprise Policy decides what that agent may read or fill, and a person still makes the consequential click.",
           },
         ],
       },
@@ -179,20 +171,12 @@ export const content: LandingContent = {
         title: "Later",
         items: [
           {
-            title: "On-device hybrid",
-            text: "Doc lookup with EmbeddingGemma and short field hints from Gemini Nano or Gemma run in the browser. Rules stay deterministic and Gemini Live stays the voice. It depends on Chrome's on-device model being available on your machine.",
+            title: "A tested browser agent for the enterprise",
+            text: "GuideRail grows into a tested browser agent that coordinates and guards all browser work, by people and by agents, and enforces your enterprise guides and Rules on every site.",
           },
           {
-            title: "One-click setup on Google Cloud",
-            text: "Sign in with Google, then a wizard sets the coach up in your own Google Cloud project from a Cloud Run template. Install moves to the Chrome Web Store.",
-          },
-          {
-            title: "Policy-guarded MCP for other agents",
-            text: "GuideRail's guarded tools become an MCP server, read-only first. Another agent could read the page, highlight a control and check a Rule, but never click, submit or send. Fills would come later, each one approved in the side panel.",
-          },
-          {
-            title: "Chief of staff",
-            text: "One timeline of every Journey, whether a person or an agent did the work, with the Rule checks and approvals beside each Step.",
+            title: "An on-device LLM agent",
+            text: "We want to explore a small model that runs in Chrome on your own machine, so some coaching works without sending the page to the cloud.",
           },
         ],
       },
@@ -235,7 +219,7 @@ export const content: LandingContent = {
     lede: "Use the toolbar icon or your keyboard shortcut. The welcome page shows the shortcut, or how to set one.",
   },
   footer:
-    "GuideRail is a Chrome extension that coaches you through cloud console tasks from the official docs and your team's Playbooks. You make every consequential click.",
+    "GuideRail is a Chrome extension that coaches enterprise employees through web console tasks from the official docs and your enterprise Playbooks. You make every consequential click.",
 };
 
 export const nav = [
