@@ -74,7 +74,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
   }
   compile.addEventListener("click", () => void ensureLoaded());
   async function openJourney() {
-    if (!enabled) throw new Error("Leave Teach mode before starting a Journey.");
+    if (!enabled) throw new Error("Turn off Learn mode before starting a Journey.");
     start.disabled = true;
     try {
       if (!options.open) throw new Error("Console Journeys are unavailable here.");

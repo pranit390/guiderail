@@ -60,11 +60,23 @@ input::placeholder { color:var(--muted); opacity:1; }
 
 button { padding: 6px 12px; border: 1px solid var(--control-line); border-radius: 6px; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; }
 button:disabled { opacity: .5; cursor: default; }
-#talk { font-weight:600; }
-#talk[data-on], #voice[aria-pressed="true"] { background:var(--gr-go-tint); border-color:var(--gr-go); color:var(--gr-go); }
-#voice { grid-column:1 / -1; justify-self:end; padding:2px 8px; font-size:12px; }
+.icon-button { display:inline-flex; align-items:center; justify-content:center; min-width:36px; min-height:36px; padding:6px; }
+.icon-button svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+.icon-button:not(:disabled):hover { background:var(--surface-2); }
+.icon-button:not(:disabled):active { background:var(--accent-soft); }
+#talk[data-on], #voice[aria-pressed="true"] { background:var(--gr-go-tint); color:var(--gr-go); }
+#talk .mic-listening { fill:currentColor; }
+#talk[aria-pressed="false"] .mic-listening, #talk[aria-pressed="true"] .mic-idle,
+#voice[aria-pressed="false"] .speaker-on, #voice[aria-pressed="true"] .speaker-off { display:none; }
+#mic-status { color:var(--gr-go); }
 :focus-visible { outline:2px solid var(--focus); outline-offset:2px; }
-#teach[data-on] { background:var(--gr-check-tint); border:1px dashed var(--warn); color:var(--warn); font-weight:600; }
+#teach { display:inline-flex; align-items:center; gap:6px; min-height:36px; padding:6px 8px; font-size:12px; }
+#teach[aria-checked="true"] { background:var(--gr-check-tint); color:var(--warn); }
+#learn-state { font-weight:600; }
+.switch-track { display:inline-flex; align-items:center; flex:none; width:28px; height:16px; padding:2px; border:1px solid currentColor; border-radius:999px; color:var(--muted); }
+.switch-track::after { content:""; width:10px; height:10px; border-radius:50%; background:currentColor; }
+#teach[aria-checked="true"] .switch-track { color:var(--warn); }
+#teach[aria-checked="true"] .switch-track::after { transform:translateX(12px); }
 .rec { color:var(--warn); font-weight:700; }
 .voice-status { margin:0; padding:0 12px; color:var(--muted); font-size:12px; }
 .voice-status:empty { display:none; }
@@ -81,8 +93,6 @@ button:disabled { opacity: .5; cursor: default; }
 #compose-confirmation dd { margin-inline-start: 0; }
 #compose-confirmation pre { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; margin: 4px 0 12px; }
 #draftrules label { display: block; font-size: 13px; padding: 2px 0; }
-.page-look { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px; }
-.page-look span { flex: 1; color: var(--muted); font-size: 12px; }
 
 /* The docs card shares the existing surface, typography and focus tokens. */
 #journey { margin: 0; max-height: none; flex-shrink: 0; }
@@ -98,7 +108,7 @@ button:disabled { opacity: .5; cursor: default; }
 
 /* The current Journey Step stays outside the conversation live region, in the shared content scroller. */
 header { flex-wrap: wrap; gap: 6px; }
-#form { flex-wrap: wrap; }
+#form { grid-template-columns:auto minmax(0,1fr) auto auto; }
 #form label { flex: 1 0 100%; font-size: 12px; color: var(--muted); }
 #form input { width:100%; }
 #current-step { padding: 8px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }

@@ -16,7 +16,7 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 
 ## What GuideRail does
 
-0. **Learns from your experts (Teach mode):** an expert does the task once in the real tool and says why. GuideRail records the steps by meaning (never passwords or screenshots), asks "why?" at key choices, and drafts a Playbook and suggested Rules for the expert to publish.
+0. **Learns from your experts (Learn mode):** turn on Learn mode, do the task once in the real tool and say why. GuideRail records the steps by meaning (never passwords or screenshots), asks "why?" at key choices, and drafts a Playbook and suggested Rules when you turn Learn mode off.
 1. **Guides:** you say the Goal ("deploy my app to Cloud Run"). GuideRail speaks each Step and highlights the exact button or field.
 2. **Explains policy up front:** at a form section with Rules, it explains what's required and suggests values, e.g. `owner=pranit`, `managed-by=manual`.
 3. **Guards:** it checks every field change against company Rules and flags Create until the form is compliant.
@@ -25,7 +25,9 @@ Built for the Hack2skill **AI Builder Cup 2026**, track *Future of Work & Enterp
 
 ## Spoken replies and guiding colours
 
-Use **Voice on / Voice off** beside the input (or **Alt+Shift+V**) to toggle spoken replies. Voice is on by default and your choice survives panel reloads. Turning it off fades current playback; chat captions keep arriving and microphone input remains independent. Turning it back on during a reply takes effect on the next reply.
+Use the **Spoken replies** speaker icon beside the input (or **Alt+Shift+V**) to toggle spoken replies. Spoken replies are on by default and your choice survives panel reloads. Turning them off fades current playback; chat captions keep arriving and microphone input remains independent. Turning them back on during a reply takes effect on the next reply. The microphone icon starts listening and becomes a stop icon while listening; the paper plane sends typed text, as does Enter.
+
+Ask in chat to “make the page calmer” or “put it back” to apply or remove the calm page appearance preset.
 
 Green means Here / Done, yellow means Check / Suggested / Recording, and red marks only blocking Rule Violations. Shapes, line patterns and labels carry the same meaning without colour. Reduced motion keeps these states static. See [the design contract](DESIGN.md) for tokens and motion.
 

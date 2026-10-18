@@ -114,7 +114,7 @@ let violations: Violation[] = [];
 let mode: "guide" | "teach" = "guide";
 const assist = mountAssist($("#assist"), {
   async context() {
-    if (mode !== "guide") throw new Error("Leave Teach mode before using Assist.");
+    if (mode !== "guide") throw new Error("Turn off Learn mode before using Assist.");
     const tab = await binding.tab();
     const bindingGeneration = binding.generation;
     const snapshot = await readSnapshot(tab);
@@ -144,7 +144,7 @@ const assist = mountAssist($("#assist"), {
   },
 });
 assist.stopControl.className = "assist-stop";
-$(".page-look").before(assist.stopControl);
+$("#mic-status").before(assist.stopControl);
 let teach: TeachSession | null = null;
 let draft: any = null;
 const mic = new Mic();
@@ -156,7 +156,6 @@ voice.disabled = true;
 function renderVoice() {
   speaker.setMuted(!voiceOn);
   voice.setAttribute("aria-pressed", String(voiceOn));
-  voice.textContent = voiceOn ? "Voice on" : "Voice off";
   voice.title = `Spoken replies ${voiceOn ? "on" : "off"} (Alt+Shift+V)`;
 }
 function toggleVoice() {
@@ -978,13 +977,14 @@ async function setTeach(on: boolean) {
   $("#teachbar").hidden = !on;
 }
 
-// The Teach button is a toggle and shows its state at once, before the mode switch finishes.
+// Learn mode shows its state at once, before the recording mode switch finishes.
 function showTeachButton(on: boolean) {
   const button = $<HTMLButtonElement>("#teach");
-  button.toggleAttribute("data-on", on);
-  button.setAttribute("aria-pressed", String(on));
-  button.replaceChildren(...(on ? [stateGlyph("check"), document.createTextNode("Teaching")] : [document.createTextNode("Teach")]));
-  button.title = on ? "Stop teaching and draft a Playbook" : "Show GuideRail how your team does a task";
+  button.setAttribute("aria-checked", String(on));
+  $("#learn-state").textContent = on ? "On" : "Off";
+  button.title = on
+    ? "Learn mode on. Turn off to stop recording and draft a Playbook."
+    : "Learn mode off. Turn on to show GuideRail how your team does a task.";
 }
 
 $("#teach").addEventListener("click", async () => {
@@ -999,7 +999,7 @@ $("#teach").addEventListener("click", async () => {
   input.value = "";
   teach = new TeachSession(goal);
   pendingPayload = null;
-  say("system", `Teach mode: showing "${goal}". Do the task normally and say why as you go.`);
+  say("system", `Learn mode: showing "${goal}". Do the task normally and say why as you go.`);
   memory.add("app", `Teach mode started. Task being taught: "${goal}"`);
   await setTeach(true);
 });
@@ -1026,7 +1026,7 @@ function draftFailed(message: string) {
   const count = pendingPayload?.events.length ?? 0;
   $("#teach-error").textContent = count
     ? `Recording stopped. Your ${count} steps are saved here. ${message}`
-    : "No steps recorded. Start a new recording with Teach.";
+    : "No steps recorded. Start a new recording with Learn mode.";
   $<HTMLButtonElement>("#teach-retry").hidden = count === 0;
   scroll.scrollTop = scroll.scrollHeight;
 }
@@ -1110,14 +1110,6 @@ $("#publish").addEventListener("click", async () => {
 
 // ---------- Input ----------
 
-for (const [id, preset] of [["#calmer", "calm"], ["#restore", null]] as const) {
-  $(id).addEventListener("click", () => {
-    void runTool("customize", { preset }).then((result) => {
-      if (result.error) say("system", String(result.error));
-    }).catch((err: Error) => say("system", err.message));
-  });
-}
-
 $("#form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value;
@@ -1146,7 +1138,9 @@ async function startTalking() {
     await mic.start((data) => sendInput({ type: "audio", data }));
     talking = true;
     talk.setAttribute("aria-pressed", "true");
-    talk.textContent = "Stop";
+    talk.setAttribute("aria-label", "Stop listening");
+    talk.title = "Stop listening";
+    $("#mic-status").textContent = "Listening · press the microphone to stop";
     talk.dataset.on = "true";
   } catch {
     say("system", "Microphone is blocked. Allow it on the setup page; typing still works.");
@@ -1158,7 +1152,9 @@ function stopTalking() {
   mic.stop();
   talking = false;
   talk.setAttribute("aria-pressed", "false");
-  talk.textContent = "Talk";
+  talk.setAttribute("aria-label", "Talk");
+  talk.title = "Talk";
+  $("#mic-status").textContent = "";
   delete talk.dataset.on;
   if (ready || connecting) sendInput({ type: "audio_end" });
 }
