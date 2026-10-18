@@ -67,6 +67,10 @@ session after 60 seconds without activity: typed text, end of speech, page
 events, Teach context, app events, transcribed speech or model output. Raw
 microphone frames do not count, so an open mic sending silence still times out;
 session summaries, tool results and resumption updates do not count either.
+The exception is a proposed email: while its confirmation card awaits the user,
+the idle minute is paused (the ten-minute upper limit still applies), and the
+`draft_message` result counts as activity. If the session ends anyway, the card
+stays open and the user can still open or dismiss the draft locally.
 Disconnected clients stop consuming time. Every limit closes the Vertex Live
 session immediately and frees the concurrency slot then, before the client's
 WebSocket close handshake. Each session also has
