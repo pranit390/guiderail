@@ -27,6 +27,7 @@ ${p.events.map((e) => JSON.stringify(e)).join("\n")}`;
 }
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
+export const isSafeId = (id: unknown): id is string => typeof id === "string" && /^[a-z0-9][a-z0-9-]{0,59}$/.test(id);
 
 const isStr = (v: unknown): v is string => typeof v === "string";
 const isStrArray = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr);
@@ -53,7 +54,7 @@ export function isRule(r: unknown): r is Rule {
   if (!isStr(x.scope.url) || !x.scope.url || !isStr(x.scope.section)) return false;
   // The extension only reads labels inside the Labels section, so a label Rule anywhere else could never fire.
   if (x.check && isStr(x.check.kind) && x.check.kind.startsWith("label_") && x.scope.section !== "Labels") return false;
-  if (!x.guide || !isStr(x.guide.explain) || !isStr(x.guide.format) || !Array.isArray(x.guide.examples)) return false;
+  if (!x.guide || !isStr(x.guide.explain) || !isStr(x.guide.format) || !isStrArray(x.guide.examples)) return false;
   if (!x.check || typeof x.check !== "object" || !RUNNABLE_CHECKS.has(x.check.kind) || !validCheck(x.check)) return false;
   if (!(x.severity === "block" || x.severity === "warn") || !isStr(x.message)) return false;
   if (!isStr(x.guide.suggest)) x.guide.suggest = null;
@@ -83,6 +84,25 @@ export function parseDraft(raw: string): PlaybookDraft {
     markdown: d.markdown,
     suggestedRules: (Array.isArray(d.suggestedRules) ? d.suggestedRules : []).filter(isRule),
   };
+}
+
+// Publishing and storage are stricter than model drafting: never silently drop malformed Rules.
+export function parseRules(value: unknown): Rule[] {
+  if (!Array.isArray(value) || !value.every(isRule)) throw new DraftError("Rules must be an array of valid Rules.");
+  return value;
+}
+
+export function parsePlaybook(value: unknown): PlaybookDraft {
+  if (!value || typeof value !== "object" || !("id" in value) ||
+      !isSafeId(value.id)) {
+    throw new DraftError("Invalid Playbook id.");
+  }
+  if (!("appliesTo" in value) || !isStrArray(value.appliesTo) ||
+      !("goals" in value) || !isStrArray(value.goals) || !("suggestedRules" in value)) {
+    throw new DraftError("The draft needs appliesTo, goals and suggestedRules arrays.");
+  }
+  parseRules(value.suggestedRules);
+  return { ...parseDraft(JSON.stringify(value)), id: value.id };
 }
 
 const ai = new GoogleGenAI({

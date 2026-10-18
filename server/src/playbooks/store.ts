@@ -1,17 +1,17 @@
-// Local file stores for published Playbooks and Rules. Firestore can replace these behind the same interfaces.
+// Local file stores remain the default for development and tests.
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { PlaybookDraft, Rule } from "./types.ts";
+import { isSafeId, parsePlaybook, parseRules } from "./draft.ts";
+export { isSafeId } from "./draft.ts";
 
-export interface PlaybookStore { publish(d: PlaybookDraft): Promise<void>; list(): Promise<string[]> }
-export interface RuleStore { replace(playbookId: string, rules: Rule[]): Promise<void>; all(): Promise<Rule[]> }
+export interface PlaybookStore { publish(d: PlaybookDraft, ownerUid?: string): Promise<void>; list(): Promise<string[]> }
+export interface RuleStore { replace(playbookId: string, rules: Rule[], ownerUid?: string): Promise<void>; all(): Promise<Rule[]> }
 
 export const toMarkdown = (d: PlaybookDraft) =>
   `---\nid: ${d.id}\nappliesTo: ${JSON.stringify(d.appliesTo)}\ngoals: ${JSON.stringify(d.goals)}\nsource: teach\n---\n\n${d.markdown}\n`;
 
-const SAFE_ID = /^[a-z0-9][a-z0-9-]{0,59}$/;
-export const isSafeId = (id: unknown): id is string => typeof id === "string" && SAFE_ID.test(id);
-function assertSafeId(id: unknown): asserts id is string {
+export function assertSafeId(id: unknown): asserts id is string {
   if (!isSafeId(id)) throw new Error(`Invalid Playbook id: ${JSON.stringify(id)}`);
 }
 
@@ -23,26 +23,28 @@ const readAll = async (dir: string, ext: string) => (await readNamed(dir, ext)).
 
 export class FilePlaybookStore implements PlaybookStore {
   constructor(private dir: string) {}
-  async publish(d: PlaybookDraft) {
+  async publish(d: PlaybookDraft, _ownerUid?: string) {
     assertSafeId(d.id);
+    const valid = parsePlaybook(d);
     await mkdir(this.dir, { recursive: true });
-    await writeFile(join(this.dir, `${d.id}.md`), toMarkdown(d));
+    await writeFile(join(this.dir, `${valid.id}.md`), toMarkdown(valid));
   }
   list() { return readAll(this.dir, ".md"); }
 }
 
 export class FileRuleStore implements RuleStore {
   constructor(private dir: string) {}
-  async replace(playbookId: string, rules: Rule[]) {
+  async replace(playbookId: string, rules: Rule[], _ownerUid?: string) {
     assertSafeId(playbookId);
+    const valid = parseRules(rules);
     await mkdir(this.dir, { recursive: true });
-    await writeFile(join(this.dir, `${playbookId}.json`), JSON.stringify({ playbookId, rules }, null, 2));
+    await writeFile(join(this.dir, `${playbookId}.json`), JSON.stringify({ playbookId, rules: valid }, null, 2));
   }
   async all() {
     return (await readNamed(this.dir, ".json")).flatMap(({ name, text }) => {
       try {
         const parsed = JSON.parse(text) as { rules?: unknown };
-        if (parsed && Array.isArray(parsed.rules)) return parsed.rules as Rule[];
+        if (parsed) return parseRules(parsed.rules);
       } catch {}
       console.warn(`[rules] Skipping ${join(this.dir, name)}: not JSON with a rules array`);
       return [];

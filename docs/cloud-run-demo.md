@@ -52,7 +52,71 @@ Export the existing service, change only the service annotation, and apply it
 with `gcloud run services replace`; verify both levels with a fresh describe.
 Attach only
 `guiderail-coach@zoop-innovation.iam.gserviceaccount.com`, with the project binding
-`roles/aiplatform.user`. No service-account keys are needed.
+`roles/aiplatform.user` and, when `STORE=firestore`, `roles/datastore.user`.
+No service-account keys are needed.
+
+### Durable Playbooks, Rules and Journey cache
+
+For Pranit's final redeploy, set `STORE=firestore` and
+`FIREBASE_PROJECT_ID=zoop-innovation` (or use `GOOGLE_CLOUD_PROJECT` when the
+Firebase project variable is unset). Unset `STORE` keeps the existing file
+stores for local development and tests; `STORE=file` also selects them.
+Cloud Run's writable filesystem is ephemeral, so file mode does not preserve
+Teach publications or the compiled cache across instance replacement.
+
+Before that redeploy, create the project's `(default)` Firestore database once
+in **Native mode / Standard edition**, selecting its permanent location, and
+grant the runtime service account `roles/datastore.user` in that project. The
+Admin SDK uses ADC; no credential file is needed. Keep browser Firestore access
+denied: this server uses IAM, not client Security Rules. These are operator
+steps; this change does not create a database, modify IAM or deploy.
+See [Admin SDK setup](https://firebase.google.com/docs/admin/setup) and
+[Firestore server IAM](https://docs.cloud.google.com/firestore/native/docs/security/iam).
+
+`playbooks/{id}` contains the validated `playbook` body, `ownerUid`, and an ISO
+`updatedAt` timestamp. The UID comes from the verified request;
+it is `null` when local sign-in is off. `rules/{playbookId}` holds the selected
+runtime Rules with the same metadata and replaces them on republish, including
+an empty selection. `journeys/{cacheKey}` holds the validated compiled Journey;
+the key hashes the pinned Goal/source/version contract. File seed Playbooks and
+Rules remain read-only and are combined with published content in API/Live reads.
+The single instance caches the Playbook and Rule collections in memory and
+re-reads one only after its next publish, so repeated public reads and Live
+session starts do not bill Firestore reads. Stored documents that no longer
+validate are skipped with a warning, matching the file stores.
+
+Visibility deliberately stays shared: all published Playbooks and Rules remain
+available to all callers, including the existing public read endpoints, and any
+authorized publisher can replace the same ID. `ownerUid` records the latest
+publisher; it does not add private access control. This persists the compiled
+Journey cache portion of issue https://github.com/pranit390/guiderail/issues/33;
+private receipts and per-user reload/access control remain separate work.
+
+`DISABLE_DRAFT=true` still prevents both drafting and publishing. To use Teach
+on the final service, explicitly enable publishing by setting it to `false`,
+retain the sign-in allowlist, and account for model drafting costs separately.
+Existing local `data/` files are not automatically migrated to Firestore.
+
+Keep Firestore within its [free quota](https://firebase.google.com/docs/firestore/quotas):
+one eligible database per project, 1 GiB stored, 50,000 reads/day,
+20,000 writes/day, 20,000 deletes/day, and 10 GiB outbound/month. Verify that
+this project's database is eligible and has quota remaining. Do not enable TTL,
+PITR or backups for this demo. The existing $20 plan assumes $0 Firestore spend.
+Each publish uses two writes and no reads; a cached compile uses one read, and
+a new compile adds one write. The Playbook and Rule collections are read once
+after each instance start or publish, so watch the Usage tab before and
+during judging, including other project traffic. There are no listeners, polling
+jobs or per-session Journey writes. Free quota is a usage allowance, not an
+application-enforced spending cap; if usage approaches it, stop demo traffic
+before continuing. The service does not silently fall back to ephemeral files
+when Firestore fails.
+
+Store contracts run with `npm run test -w server -- src/storage.test.ts`.
+If `FIRESTORE_EMULATOR_HOST=127.0.0.1:8080` is set, those contracts use the real
+Admin SDK against the emulator and clear only their dedicated
+`demo-guiderail-stores` project's test collections. Otherwise they use an
+in-memory fake of the minimal Firestore API; this is not emulator/runtime proof.
+The HTTP persistence tests always use that fake and make no model calls.
 
 Set `DISABLE_DRAFT=true` to allow only cached documentation Journeys (an uncached compile returns 503 without calling Gemini), disable the billable Playbook draft endpoint and
 Playbook publishing (which would otherwise let anyone change the hosted Guide
@@ -161,8 +225,9 @@ Residual risks: instance replacement/scale-to-zero/redeployment resets the
 in-memory daily counter and capabilities; Cloud Run maximum instances may briefly
 be exceeded; public HTTP traffic and repeated startup still incur charges even
 when Live admission is closed; context/turn/token usage and network traffic vary.
-No project-wide budgets, billing changes, persistent ledger or extra database are
-created. Source deployment may create the explicitly authorized
+No project-wide budgets, billing changes or persistent allowance ledger are
+created. The optional Firestore setup above is a separate operator step.
+Source deployment may create the explicitly authorized
 `cloud-run-source-deploy` Artifact Registry repository and its source-build
 artifacts. Do not delete pre-existing artifacts or create a second service. No
 Firebase Hosting changes are part of this deployment.
