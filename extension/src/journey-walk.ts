@@ -18,6 +18,8 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   let enabled = true;
   let revision = 0;
   let observed = -1;
+  // The highlighted Step survives a same-tab route change so its click, validated asynchronously, can still be recorded.
+  let pointed = -1;
   let acted = -1;
   const statuses = rows.map(() => "Not checked on this screen.");
   const controls = document.createElement("div");
@@ -47,7 +49,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   async function refresh() {
     if (!enabled || busy || current >= rows.length) return;
     const reading = revision;
-    busy = true; observed = -1; render();
+    busy = true; observed = -1; pointed = -1; render();
     let snapshot: PageSnapshot | undefined;
     try {
       await clear();
@@ -60,7 +62,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
         const result = await point(observation.target, observation.role);
         if (reading !== revision) return;
         if (!result || typeof result !== "object" || !("found" in result) || result.found !== true) throw new Error("The control changed or could not be highlighted. Re-read before continuing.");
-        observed = current;
+        observed = current; pointed = current;
       }
       changed(`${observation.text} Source: ${journey.steps[current].citationHeading}.`);
     } catch (error) { if (reading !== revision) return; if (!snapshot) acted = -1; statuses[current] = error instanceof Error ? error.message : "The page could not be read."; }
@@ -80,8 +82,8 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   skip.addEventListener("click", () => advance(true));
   render();
   return {
-    setEnabled(value: boolean) { if (!value) void clear(); enabled = value; revision++; observed = -1; acted = -1; render(); },
-    acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current) acted = current; statuses[current] = message; render(); },
-    invalidate(message: string, sameTab = false) { void clear(); revision++; observed = -1; if (!sameTab) acted = -1; if (current < rows.length) statuses[current] = message; render(); },
+    setEnabled(value: boolean) { if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); },
+    acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current || pointed === current) acted = current; statuses[current] = message; render(); },
+    invalidate(message: string, sameTab = false) { void clear(); revision++; observed = -1; if (!sameTab) { pointed = -1; acted = -1; } if (current < rows.length) statuses[current] = message; render(); },
   };
 }

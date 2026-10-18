@@ -46,6 +46,22 @@ describe("cited Guide walk", () => {
     expect(next.disabled).toBe(false); expect(parent.textContent).toContain("The page changed.");
     walk.invalidate("The tab changed."); expect(next.disabled).toBe(true);
   });
+  it("records the pointed click when the same-tab route change is handled before the click event", async () => {
+    const { read, reread, next, walk } = mount(); read.mockResolvedValue(page(["Databases & Storage"])); reread.click();
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.invalidate("The page changed.", true); expect(next.disabled).toBe(true);
+    walk.acted("You clicked the highlighted control."); expect(next.disabled).toBe(false);
+    read.mockResolvedValue(page(["Firestore"])); reread.click();
+    await vi.waitFor(() => expect(reread.disabled).toBe(false)); expect(next.disabled).toBe(false);
+  });
+  it("does not record a late click after the tab changed or a new read started", async () => {
+    const { read, reread, next, walk } = mount(); read.mockResolvedValue(page(["Databases & Storage"])); reread.click();
+    await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.invalidate("The tab changed."); walk.acted("clicked"); expect(next.disabled).toBe(true);
+    reread.click(); await vi.waitFor(() => expect(next.disabled).toBe(false));
+    walk.invalidate("The page changed.", true); read.mockResolvedValue(page([])); reread.click();
+    await vi.waitFor(() => expect(reread.disabled).toBe(false)); walk.acted("clicked"); expect(next.disabled).toBe(true);
+  });
   it("keeps the recorded click through a re-read that no longer sees the control, then waits for explicit Next", async () => {
     const { read, point, reread, next, walk, parent, changed } = mount(); read.mockResolvedValue(page(["Databases & Storage"])); reread.click();
     await vi.waitFor(() => expect(next.disabled).toBe(false));
