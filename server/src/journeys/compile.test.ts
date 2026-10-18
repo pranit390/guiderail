@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -54,6 +55,23 @@ describe("compile boundary", () => {
       const second = await new JourneyCompiler(new FileJourneyStore(dir), generate).compile();
       expect(second).toEqual({ ...first, cacheHit: true });
       expect(generate).toHaveBeenCalledTimes(1);
+    } finally { await rm(dir, { recursive: true, force: true }); }
+  });
+  it("recompiles instead of serving a Journey cached under the previous source contract", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "guiderail-compile-"));
+    try {
+      const previous = { ...FIRESTORE_GOAL, version: 2 };
+      const staleKey = createHash("sha256").update(JSON.stringify(previous)).digest("hex");
+      const cite = (c: { citationHeading: string }) => c.citationHeading === "Create a database" ? { ...c, citationHeading: "Firebase console" } : c;
+      const stale = { ...fixtureDraft, steps: fixtureDraft.steps.map(cite), testModeWarning: cite(fixtureDraft.testModeWarning),
+        consoleUrl: FIRESTORE_GOAL.consoleUrl, version: 2, compiledAt: "2026-10-17T23:00:00Z", durationMs: 100,
+        retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) };
+      await writeFile(join(dir, `${staleKey}.json`), JSON.stringify(stale));
+      const generate = vi.fn<GenerateJourney>().mockResolvedValue(response());
+      const result = await new JourneyCompiler(new FileJourneyStore(dir), generate).compile();
+      expect(result.cacheHit).toBe(false);
+      expect(generate).toHaveBeenCalledTimes(1);
+      expect([...result.journey.steps, result.journey.testModeWarning].map((c) => c.citationHeading)).not.toContain("Firebase console");
     } finally { await rm(dir, { recursive: true, force: true }); }
   });
   it("coalesces simultaneous requests into one bounded provider call", async () => {

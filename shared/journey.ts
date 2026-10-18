@@ -9,7 +9,7 @@ export const FIRESTORE_GOAL = {
     "https://firebase.google.com/docs/firestore/manage-databases.md.txt",
     "https://firebase.google.com/docs/firestore/locations.md.txt",
   ],
-  version: 2,
+  version: 3,
 } as const;
 
 export const STEP_CONTROLS = ["Databases & Storage", "Firestore", "Add database", "Standard edition", "Next", "Database ID", "Location", "Next", "Production mode", "Create"] as const;
