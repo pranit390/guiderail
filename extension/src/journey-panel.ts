@@ -8,9 +8,9 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     <button type="button" data-open>Start Firestore Journey</button>
     <button type="button" data-reset hidden>End Journey binding</button>
     <button type="button" data-compile>Read the Firestore docs</button>
-    <button type="button" data-brief>Brief me from this page</button>
+    <details data-docs><summary>Docs</summary><button type="button" data-brief>Brief me from this page</button><p data-links></p></details>
     <p data-status role="status">Start with public docs. No project or microphone needed.</p>
-    <p data-links></p><div data-result></div>`;
+    <div data-result></div>`;
   let walk: ReturnType<typeof mountJourneyWalk> | undefined;
   let enabled = true;
   let pending: Promise<void> | undefined;
@@ -34,6 +34,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     walk = undefined;
     if (options.currentRegion) { options.currentRegion.replaceChildren(); options.currentRegion.hidden = true; }
     compile.disabled = true;
+    compile.toggleAttribute("data-failed", false);
     result.replaceChildren();
     status.textContent = "Reading the Firestore docs… This can take up to 90 seconds.";
     container.setAttribute("aria-busy", "true");
@@ -58,6 +59,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
       if (loading !== revision) return;
       status.textContent = `${error instanceof Error ? error.message : "Compilation failed."} Retry, or open the official docs above.`;
       compile.textContent = "Retry reading docs";
+      compile.toggleAttribute("data-failed", true);
     } finally {
       if (loading === revision) {
         compile.disabled = !enabled;
@@ -89,7 +91,7 @@ export function mountJourneyPanel(container: HTMLElement, options: { http: strin
     revision++; pending = undefined; walk?.setEnabled(false); options.reset?.(); walk = undefined;
     if (options.currentRegion) { options.currentRegion.replaceChildren(); options.currentRegion.hidden = true; }
     compile.disabled = !enabled; container.removeAttribute("aria-busy");
-    result.replaceChildren(); reset.hidden = true;
+    result.replaceChildren(); reset.hidden = true; compile.toggleAttribute("data-failed", false);
     status.textContent = "Journey ended. Start again to bind a new tab.";
   }
   reset.addEventListener("click", endJourney);

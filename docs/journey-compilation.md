@@ -39,7 +39,8 @@ five seconds within one server process.
 ## Public documentation briefing
 
 Open the pinned Firebase manage-databases or Google Cloud IAM grant-access page,
-then press **Brief me from this page** with Guide connected. Microphone access,
+then, with the **Create a Firestore database** goal running and Guide connected,
+open **Docs** in the goal header and press **Brief me from this page**. Microphone access,
 Google sign-in and a cloud project are unnecessary. The extension reads up to
 12,000 characters of rendered article text and its visible headings, excluding
 hidden content and forms. The brief and any `read_page` document result are cut
@@ -61,7 +62,8 @@ time and warm the cache before recording or judging.
 
 ## Bound console Journey
 
-Choose **Start Firestore Journey**, or ask Guide to open the Firestore Goal.
+Pick **Create a Firestore database** from the side panel's goal list, or ask
+Guide to open the Firestore Goal. **New goal** stops it and returns to the list.
 `open_page` accepts only `{"goalId":"create-firestore-database"}` and opens the
 catalog URL `https://console.firebase.google.com/project/_/firestore/databases`.
 It rejects additional URL arguments. Choose the project yourself. The Journey

@@ -1,6 +1,7 @@
 # Database ID assistance
 
-Guide remains the default. Select Assist in the Firestore assistance card,
+Guide remains the default. Select Assist in the Firestore assistance card (shown while the
+Firestore goal runs),
 answer Database ID and desired security mode together, then review **What I
 will do**. The plan cites Firebase, labels answers as yours, leaves location
 and security mode manual, and ends **You click Create**.

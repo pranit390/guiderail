@@ -4,6 +4,7 @@ import { JourneyBinding } from "./journey-binding.ts";
 import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
 import { mountJourneyPanel } from "./journey-panel.ts";
+import { GOALS, mountGoalPicker, type Goal } from "./goal-picker.ts";
 import { briefPrompt, isPublicDoc, RELAY_TEXT_LIMIT, routePageTool, type DocumentSnapshot } from "./document.ts";
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
@@ -152,6 +153,35 @@ const assist = mountAssist($("#assist"), {
 });
 assist.stopControl.className = "assist-stop";
 $("#mic-status").before(assist.stopControl);
+// Firestore runs as the compiled Journey; other goals start Guide on their Playbook in the active tab.
+const goals = mountGoalPicker($("#goals"), {
+  async start(goal: Goal) {
+    document.body.dataset.goal = goal.kind;
+    try {
+      if (goal.kind === "journey") { await journeyPanel.openJourney(); return; }
+      const tab = await activeTab();
+      if (tab.id !== undefined) await chrome.tabs.update(tab.id, { url: goal.startUrl });
+    } catch (error) {
+      if (goals.current === goal) delete document.body.dataset.goal;
+      throw error;
+    }
+    appEvent(`The user picked the goal "${goal.title}". Guide them with the matching Playbook, one Step at a time.`);
+    sendInput({ type: "text", text: goal.prompt }, ["user", goal.prompt]);
+    say("user", goal.prompt);
+    open = null;
+  },
+  stop(goal: Goal) {
+    delete document.body.dataset.goal;
+    if (goal.kind === "journey" && binding.tabId !== undefined) journeyPanel.endJourney();
+    void clearBoundHighlight();
+    disconnect(IDLE_STATUS, "idle");
+    resumeHandle = undefined;
+    void chrome.storage.session.remove("resumeHandle");
+    memory.add("app", `The user stopped the goal "${goal.title}".`);
+    say("system", "Goal stopped. Pick a new goal.");
+  },
+});
+$("#goals [data-running]").append($("#journey [data-docs]"));
 let teach: TeachSession | null = null;
 let draft: any = null;
 const mic = new Mic();
@@ -305,6 +335,8 @@ let open: { role: string; el: HTMLElement; text: string } | null = null;
 function say(role: "user" | "model" | "system" | "step" | "alert", text: string) {
   const standalone = role === "system" || role === "step" || role === "alert";
   if (role === "system" || role === "step") $("#reply-status").textContent = text;
+  // A Goal re-announces the same status often; keep one copy in the chat.
+  if (standalone && log.lastElementChild?.classList.contains(`msg`) && log.lastElementChild.classList.contains(role) && log.lastElementChild.textContent === text) return;
   if (open && open.role === role && !standalone) {
     open.text += text;
     if (role === "model") renderMarkdown(open.el, open.text);
@@ -595,6 +627,13 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
   switch (name) {
     case "open_page":
       parseCompileRequest(args);
+      if (goals.current?.kind === "playbook") return { error: "A Playbook goal is running. Ask the user to pick New goal first." };
+      if (!goals.current) {
+        const journey = GOALS.find((g) => g.kind === "journey")!;
+        const error = await goals.pick(journey);
+        if (goals.current !== journey) return { error: error ?? "Turn off Learn mode before starting a Journey." };
+        return { opened: binding.tabId !== undefined, goalId: FIRESTORE_GOAL.id, note: "Journey bound. Choose your project yourself; Guide never clicks or fills." };
+      }
       await journeyPanel.openJourney();
       return { opened: true, goalId: FIRESTORE_GOAL.id, note: "Journey bound. Choose your project yourself; Guide never clicks or fills." };
     case "read_page":
@@ -982,6 +1021,8 @@ async function setTeach(on: boolean) {
   mode = on ? "teach" : "guide";
   docsTabId = undefined;
   journeyPanel.setEnabled(!on);
+  if (on) goals.reset();
+  goals.setEnabled(!on);
   showTeachButton(on);
   disconnect(IDLE_STATUS, "idle");
   if (on) {
