@@ -11,6 +11,7 @@ import { LiveAdmission, SessionTickets } from "./admission.ts";
 import { FilePlaybookStore, FileRuleStore, isSafeId } from "./playbooks/store.ts";
 import type { PlaybookDraft, TeachPayload } from "./playbooks/types.ts";
 import { approvals, isExpired, lookupRole, roleTitle, type Approval } from "./approvals.ts";
+import { authMode, authorize } from "./auth.ts";
 
 const PORT = Number(process.env.PORT ?? 8787);
 const ROOT = join(import.meta.dirname, "..", "..");
@@ -43,6 +44,9 @@ const WRITE_ROUTES = new Set(["/session", "/journeys/compile", "/playbooks/draft
 const tickets = new SessionTickets();
 const admission = new LiveAdmission();
 
+if (authMode() === "closed") console.error("Sign-in check is CLOSED: set ALLOWED_EMAILS to allow Firebase accounts on Cloud Run.");
+if (authMode() === "off") console.warn("Sign-in check is OFF: set ALLOWED_EMAILS to require Firebase sign-in");
+
 export const server = createServer(async (req, res) => {
   try {
     await handle(req, res);
@@ -57,7 +61,7 @@ export const server = createServer(async (req, res) => {
 async function handle(req: IncomingMessage, res: ServerResponse) {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
   if (req.method === "OPTIONS") return void res.writeHead(204).end();
 
   if (url.pathname === "/health") return void res.end("ok");
@@ -68,6 +72,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
 
   if (req.method === "POST" && WRITE_ROUTES.has(url.pathname) && !isAllowedOrigin(req.headers.origin)) {
     return json(res, 403, { error: "This origin may not write to GuideRail." });
+  }
+
+  if (req.method === "POST" && WRITE_ROUTES.has(url.pathname)) {
+    const result = await authorize(req.headers.authorization);
+    if (!result.ok) return json(res, result.status, result.body);
   }
 
   if (url.pathname === "/session" && req.method === "POST") {
