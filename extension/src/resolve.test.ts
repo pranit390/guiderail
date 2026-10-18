@@ -62,6 +62,32 @@ describe("duplicate-Save fixture", () => {
   });
 });
 
+describe("indistinguishable ties", () => {
+  const apart = (text: string) => `I see more than one "${text}" here that I can't tell apart, so I won't point at either. Tell me what's near the one you mean.`;
+
+  it.each([
+    { where: "outside any labelled region", elements: [{ i: 1, role: "button", name: "Save" }, { i: 2, role: "button", name: "Save" }] },
+    { where: "inside the same section", elements: [{ i: 1, role: "button", name: "Save", section: "Billing" }, { i: 2, role: "button", name: "Save", section: "Billing" }] },
+  ])("does not offer a choice between exact Saves $where", ({ elements }) => {
+    const decision = authorizeTarget({ text: "Save", role: "button", snapshot: snapshot(elements), stale: false, tabId: 7 });
+    expect(actionAuthorized(decision)).toBe(false);
+    if (decision.authorized) throw new Error("expected an ambiguous Save");
+    expect(decision).toMatchObject({ reason: "ambiguous" });
+    expect(highlightOutcome(decision)).toBe(apart("Save"));
+  });
+
+  it("does not offer a choice between identical fuzzy candidates", () => {
+    const elements: PageElement[] = [
+      { i: 1, role: "textbox", name: "Database ID", section: "Database" },
+      { i: 2, role: "textbox", name: "Database ID", section: "Database" },
+    ];
+    const decision = authorizeTarget({ text: "Database", snapshot: snapshot(elements), stale: false, tabId: 7 });
+    if (decision.authorized) throw new Error("expected an ambiguous Database");
+    expect(decision).toMatchObject({ reason: "ambiguous", alternatives: ["Database: Database ID", "Database: Database ID"] });
+    expect(highlightOutcome(decision)).toBe(apart("Database"));
+  });
+});
+
 describe("section qualifier", () => {
   it("resolves the person's answer by section argument or by the Section: Name label the ask lists", () => {
     const elements = elementsOf();

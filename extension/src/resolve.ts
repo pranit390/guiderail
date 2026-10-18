@@ -55,6 +55,9 @@ function tied(ranked: Ranked[]): Ranked[] {
 }
 
 export function ambiguousAsk(text: string, alternatives: string[]): string {
+  if (new Set(alternatives.map(norm)).size < alternatives.length) {
+    return `I see more than one "${text.trim()}" here that I can't tell apart, so I won't point at either. Tell me what's near the one you mean.`;
+  }
   const list = alternatives.length === 2
     ? `${alternatives[0]} or ${alternatives[1]}`
     : `${alternatives.slice(0, -1).join(", ")}, or ${alternatives[alternatives.length - 1]}`;
