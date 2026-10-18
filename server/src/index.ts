@@ -4,7 +4,7 @@ import { extname, join, normalize } from "node:path";
 import { WebSocketServer } from "ws";
 import { relay } from "./live.ts";
 import { CompileError, parseCompileRequest } from "../../shared/journey.ts";
-import { journeyCompiler, CompileBusyError } from "./journeys/compile.ts";
+import { journeyCompiler, CompileBusyError, CompileDisabledError } from "./journeys/compile.ts";
 import { draftPlaybook, DraftError, isRule } from "./playbooks/draft.ts";
 import { isAllowedOrigin } from "./origin.ts";
 import { LiveAdmission, SessionTickets } from "./admission.ts";
@@ -93,8 +93,9 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
       if (!(err instanceof CompileError)) throw err;
       return json(res, 400, { error: err.message });
     }
-    try { return json(res, 200, await journeyCompiler.compile()); }
+    try { return json(res, 200, await journeyCompiler.compile({ cachedOnly: process.env.DISABLE_DRAFT === "true" || !!(process.env.DEMO_END_AT && Date.now() >= Date.parse(process.env.DEMO_END_AT)) })); }
     catch (err) {
+      if (err instanceof CompileDisabledError) return json(res, 503, { error: err.message });
       if (err instanceof CompileBusyError) return json(res, 429, { error: err.message });
       if (err instanceof CompileError) return json(res, 502, { error: err.message });
       throw err;

@@ -30,7 +30,6 @@ let ws: WebSocket | undefined;
 // Latest read of the tab this session is coaching. Highlight and Assist fill may use only these names.
 let bound: BoundSnapshot | null = null;
 let boundStale = false;
-let liveReady = false;
 let compiledGoal = false;
 // A compile finished during a tool call: reconnect with the compiled Goal once that turn ends.
 let restartPending = false;
@@ -54,12 +53,10 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
     if (mode !== "guide") return;
     docsTabId = undefined;
     if (toolCalls) return;
-    ws?.close();
-    connect();
+    void connect();
   },
   async brief() {
     if (binding.tabId !== undefined) throw new Error("End the console Journey before briefing another tab.");
-    if (!liveReady || ws?.readyState !== WebSocket.OPEN) throw new Error("The coach is not ready. Reconnect and retry.");
     const tab = await activeTab();
     if (!tab.url || !isPublicDoc(tab.url)) throw new Error("Choose the Firestore or IAM public docs tab.");
     const doc = await toPage<DocumentSnapshot | { error: string }>({ kind: "read_document" }, tab.id);
@@ -72,7 +69,7 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
       docsTabId = undefined;
       throw new Error(`Couldn't point to “${preferred}” on this page.`);
     }
-    sendServer({ type: "text", text: briefPrompt(doc) });
+    sendInput({ type: "text", text: briefPrompt(doc) });
     say("user", "Brief me from this page.");
     open = null;
   },
@@ -190,10 +187,10 @@ const IDLE_STATUS = `Type or press Talk to connect to ${SERVER_HOST}`;
 
 async function connect() {
   restartPending = false;
-  liveReady = false;
   const attempt = ++connectionAttempt;
-  ws?.close();
+  const previous = ws;
   ws = undefined;
+  previous?.close();
   ready = false;
   connecting = true;
   setStatus("Connecting…", "busy");
@@ -228,7 +225,6 @@ async function connect() {
 }
 
 function onReady() {
-  liveReady = true;
   ready = true;
   connecting = false;
   setStatus(`Connected to ${SERVER_HOST}`, "on");
@@ -251,7 +247,6 @@ function disconnect(text: string, state: "off" | "idle" = "off") {
   connectionAttempt++;
   const sock = ws;
   ws = undefined;
-  liveReady = false;
   ready = false;
   connecting = false;
   // Undelivered composer text stays verbatim in the input, never in a reconnect summary.
@@ -325,7 +320,7 @@ async function onServer(msg: any) {
       teach?.endTurn("user");
       teach?.endTurn("model");
       speaker.turnEnded();
-      if (restartPending && !toolCalls && mode === "guide") { ws?.close(); connect(); }
+      if (restartPending && !toolCalls && mode === "guide") { void connect(); }
       break;
     case "resumption":
       if (mode === "guide" && !restartPending) { resumeHandle = msg.handle; void chrome.storage.session.set({ resumeHandle }); }
@@ -610,6 +605,9 @@ type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind:
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply) => {
   if ((sender.url && isSensitiveUrl(sender.url)) || (sender.tab?.url && isSensitiveUrl(sender.tab.url))) {
+    if (binding.tabId !== undefined && sender.tab?.id === binding.tabId) {
+      journeyPanel.invalidate("Journey paused: return the bound tab to its Firebase Firestore project.");
+    }
     if (msg.kind === "teach_status") reply({ on: false });
     return;
   }

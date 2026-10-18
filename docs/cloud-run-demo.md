@@ -39,7 +39,7 @@ Attach only
 `guiderail-coach@zoop-innovation.iam.gserviceaccount.com`, with the project binding
 `roles/aiplatform.user`. No service-account keys are needed.
 
-Set `DISABLE_DRAFT=true` to disable the billable Playbook draft endpoint and
+Set `DISABLE_DRAFT=true` to allow only cached documentation Journeys (an uncached compile returns 503 without calling Gemini), disable the billable Playbook draft endpoint and
 Playbook publishing (which would otherwise let anyone change the hosted Guide
 instructions and rules), and `DEMO_END_AT=2026-11-07T00:00:00Z` to end new demo
 admission after judging. Set `PUBLIC_ORIGIN` to the deployed bare HTTPS origin

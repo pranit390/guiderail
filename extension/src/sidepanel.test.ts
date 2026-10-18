@@ -42,9 +42,10 @@ const sendMessage = vi.fn().mockResolvedValue({ ok: true });
 const queryTabs = vi.fn();
 const getTab = vi.fn();
 const session = { set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) };
-const fetchMock = vi.fn(async (url: string): Promise<{ ok: boolean; json: () => Promise<unknown> }> => url.endsWith("/session")
+const defaultFetch = async (url: string): Promise<{ ok: boolean; json: () => Promise<unknown> }> => url.endsWith("/session")
   ? { ok: true, json: async () => ({ credential: "one-use" }) }
-  : { ok: true, json: async () => ({ rules: [] }) });
+  : { ok: true, json: async () => ({ rules: [] }) };
+const fetchMock = vi.fn(defaultFetch);
 const sessionRequests = () => fetchMock.mock.calls.filter(([url]) => url.endsWith("/session")).length;
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector<T>(sel)!;
 const status = () => $("#status").lastChild?.textContent;
@@ -71,7 +72,9 @@ beforeEach(async () => {
   sendMessage.mockReset().mockResolvedValue({ ok: true });
   storageSet.mockClear();
   Object.values(audio).forEach((mock) => mock.mockClear());
-  fetchMock.mockClear();
+  fetchMock.mockReset().mockImplementation(defaultFetch);
+  session.set.mockClear();
+  session.remove.mockClear();
   getTab.mockReset().mockResolvedValue({ id: 1 });
   queryTabs.mockReset().mockResolvedValue([{ id: 1 }]);
   document.body.innerHTML = readFileSync("public/sidepanel.html", "utf8")
@@ -342,33 +345,41 @@ describe("public docs briefing", () => {
     queryTabs.mockResolvedValue([{ id: 1, url: PUBLIC_DOCS[1] }]);
     const doc = { url: PUBLIC_DOCS[1], title: "Grant IAM access", text: "Grant a single IAM role to a principal.", headings: ["Before you begin", "Grant a single IAM role"] };
     sendMessage.mockImplementation(async (_id, message) => message.kind === "read_document" ? doc : { found });
-    await sockets[0].onmessage?.({ data: JSON.stringify({ type: "ready" }) });
+    expect(sockets).toHaveLength(0);
     document.querySelector<HTMLButtonElement>("[data-brief]")!.click();
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, { kind: "highlight_document", heading: "Grant a single IAM role" }));
     const status = document.querySelector("[data-status]")!;
     if (found) {
       await vi.waitFor(() => expect(status.textContent).toContain("Briefing requested"));
+      await vi.waitFor(() => expect(sockets).toHaveLength(1));
+      expect(sockets[0].send).not.toHaveBeenCalled();
+      sockets[0].receive({ type: "ready" });
       expect(sockets[0].send).toHaveBeenCalledWith(expect.stringContaining("Brief me from this page using only"));
     } else {
       await vi.waitFor(() => expect(status.textContent).toContain("Couldn't point to “Grant a single IAM role”"));
       expect(status.textContent).not.toContain("Briefing requested");
-      expect(sockets[0].send).not.toHaveBeenCalled();
+      expect(sockets).toHaveLength(0);
+      expect(sessionRequests()).toBe(0);
     }
   });
 });
 
 describe("compile during Teach", () => {
   it("leaves Teach connected and starts Guide fresh with the compiled Goal", async () => {
+    await connected();
     const compiled = { cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 100, compiledAt: "2026-10-17T23:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } };
     let respond!: (response: Response) => void;
     vi.mocked(fetch).mockImplementation(async (url) => String(url).endsWith("/journeys/compile")
       ? new Promise<Response>((resolve) => { respond = resolve; })
+      : String(url).endsWith("/session") ? new Response(JSON.stringify({ credential: "one-use" }))
       : new Response(JSON.stringify({ error: "offline" }), { status: 503 }));
     await sockets[0].onmessage?.({ data: JSON.stringify({ type: "resumption", handle: "pre-compile" }) });
     expect(session.set).toHaveBeenCalledWith({ resumeHandle: "pre-compile" });
 
     document.querySelector<HTMLButtonElement>("[data-compile]")!.click();
     document.querySelector<HTMLButtonElement>("#teach")!.click();
+    await vi.waitFor(() => expect(status()).toBe("Type or press Talk to connect to coach.example"));
+    type("Explain this step");
     await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("teach"));
     const teach = sockets.at(-1)!;
 
@@ -378,6 +389,8 @@ describe("compile during Teach", () => {
     expect(teach.close).not.toHaveBeenCalled();
 
     document.querySelector<HTMLButtonElement>("#teachstop")!.click();
+    await vi.waitFor(() => expect(status()).toBe("Type or press Talk to connect to coach.example"));
+    type("Continue the Journey");
     await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("guide"));
     expect(sockets.at(-1)!.params.get("goalId")).toBe(FIRESTORE_GOAL.id);
     expect(sockets.at(-1)!.params.has("resume")).toBe(false);
@@ -385,14 +398,18 @@ describe("compile during Teach", () => {
 });
 
 describe("bound Journey tool and event routing", () => {
+  beforeEach(async () => { await connected(); });
   const boundUrl = "https://console.firebase.google.com/project/zoop-innovation/firestore/databases";
   async function start() {
-    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 1, compiledAt: "2026-10-18T00:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } })));
+    vi.mocked(fetch).mockImplementation(async (url) => String(url).endsWith("/session") ? new Response(JSON.stringify({ credential: "one-use" })) : new Response(JSON.stringify({ cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 1, compiledAt: "2026-10-18T00:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } })));
     chrome.tabs.create = vi.fn().mockResolvedValue({ id: 7, url: FIRESTORE_GOAL.consoleUrl });
     getTab.mockResolvedValue({ id: 7, url: boundUrl });
     queryTabs.mockResolvedValue([{ id: 7, url: boundUrl }]);
     document.querySelector<HTMLButtonElement>("[data-open]")!.click();
     await vi.waitFor(() => expect(document.querySelectorAll("#journey li")).toHaveLength(10));
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    sockets.at(-1)!.receive({ type: "ready" });
+    sockets.at(-1)!.send.mockClear();
     sendMessage.mockClear();
   }
   async function tool(name: string, args: object = {}) {
@@ -458,14 +475,15 @@ describe("bound Journey tool and event routing", () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
   it("returns the open_page result to the issuing session and reconnects with the Goal after that turn", async () => {
-    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 1, compiledAt: "2026-10-18T00:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } })));
+    vi.mocked(fetch).mockImplementation(async (url) => String(url).endsWith("/session") ? new Response(JSON.stringify({ credential: "one-use" })) : new Response(JSON.stringify({ cacheHit: true, journey: { ...fixtureDraft, consoleUrl: FIRESTORE_GOAL.consoleUrl, version: FIRESTORE_GOAL.version, durationMs: 1, compiledAt: "2026-10-18T00:00:00Z", retrieval: FIRESTORE_GOAL.sourceUrls.map((retrievedUrl) => ({ retrievedUrl, urlRetrievalStatus: "URL_RETRIEVAL_STATUS_SUCCESS" })) } })));
     chrome.tabs.create = vi.fn().mockResolvedValue({ id: 7, url: FIRESTORE_GOAL.consoleUrl });
     const issuing = sockets[0];
     expect(await tool("open_page", { goalId: FIRESTORE_GOAL.id })).toMatchObject({ opened: true, goalId: FIRESTORE_GOAL.id });
     expect(sockets).toHaveLength(1); expect(issuing.close).not.toHaveBeenCalled();
     receive({ type: "resumption", handle: "pre-goal" });
     receive({ type: "turn_complete" });
-    expect(issuing.close).toHaveBeenCalled(); expect(sockets).toHaveLength(2);
+    expect(issuing.close).toHaveBeenCalled();
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
     expect(sockets[1].params.get("goalId")).toBe(FIRESTORE_GOAL.id); expect(sockets[1].params.has("resume")).toBe(false);
   });
   it("keeps the person's Next after they click the pointed control, but pauses on tab switch or unsupported navigation", async () => {
