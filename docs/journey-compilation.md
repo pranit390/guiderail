@@ -70,7 +70,10 @@ Cited Steps remain documentation-derived. **Read and point to Step** matches an
 exact, unique name in a fresh page read; it does not click or fill the console.
 If a control is absent, the Step retains its citation and says "The doc says X.
 I can't see it on this screen." Re-read or explicitly skip it. **I did this ·
-Next step** records the person's report, not independent verification. The
+Next step** records the person's report, not independent verification. After
+the person clicks the pointed control, Next stays available while the bound tab
+stays on the same project, even if a re-read no longer finds that control.
+Another tab, project or unsupported page revokes it. The
 final Create action remains human-only and cannot be marked done by the model.
 Prerequisite/role guidance stays in the expandable cited warnings section;
 existing Blocker/Detour tools handle permission requests without granting access.
