@@ -13,6 +13,16 @@ For local development, explicitly use `GUIDERAIL_SERVER_URL=http://localhost:878
 The generated manifest grants access to the configured origin and its practice
 pages. `extension/dist/build.json` records the origin and source revision. ZIP the
 contents of `extension/dist`, extract them, and use Chrome's **Load unpacked**.
+The Dockerfile builds and packages those same contents at
+`GET /download/guiderail-extension.zip`; the coach's `/` page links the download,
+installation steps and practice console. The route returns 404 when the package
+has not been built (for example, when running only the local server).
+For an image targeting a different coach, set the Docker build argument
+`GUIDERAIL_SERVER_URL` to that coach's origin and `GUIDERAIL_BUILD_REVISION` to
+the source revision. The default image target is
+`https://guiderail-coach-q7tihot5sq-uc.a.run.app`; it must match the runtime
+`PUBLIC_ORIGIN` for the hosted service.
+
 The panel does not connect when it opens or when switching between Teach and
 Guide. The first typed message or Talk press requests a credential and opens the
 Live session; that first message (or up to about 1.5 seconds of speech) is kept
