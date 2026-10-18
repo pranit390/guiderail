@@ -378,6 +378,41 @@ describe("page activity across idle disconnects", () => {
     expect(text).toEqual({ type: "text", text: "what next?" });
   });
 
+  it("includes page events that arrive while connecting in the summary, before the first typed input", async () => {
+    await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
+    type("what next?");
+    page({ kind: "page_event", text: 'User clicked "Labels"' });
+    page({ kind: "submit_intent", label: "Create", form });
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    page({ kind: "page_event", text: "Labels section opened" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    sockets[0].receive({ type: "ready" });
+    const messages = sent(sockets[0]);
+    expect(messages.map((m) => m.type)).toEqual(["session", "text"]);
+    expect(messages[0].text).toContain('Page event: User clicked "Labels"');
+    expect(messages[0].text).toContain('Page event: User clicked "Create" and all policy checks pass.');
+    expect(messages[0].text).toContain("Page event: Labels section opened");
+    expect(messages[0].text).not.toContain("what next?");
+    expect(messages[1]).toEqual({ type: "text", text: "what next?" });
+  });
+
+  it("remembers delivered and undelivered typed input for the next connection", async () => {
+    fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
+    type("first try");
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
+    type("second try");
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].receive({ type: "ready" });
+    sockets[0].onclose?.();
+    type("third try");
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    sockets[1].receive({ type: "ready" });
+    const [summary] = sent(sockets[1]);
+    expect(summary.text).toContain("User said: first try");
+    expect(summary.text).toContain("User said: second try");
+    expect(summary.text).not.toContain("third try");
+  });
+
   it("forwards bound-tab page events while connected and ignores other tabs", async () => {
     const socket = await connected();
     page({ kind: "page_event", text: "Background tab changed" }, 2);
