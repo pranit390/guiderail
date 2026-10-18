@@ -6,7 +6,7 @@ export const downloadHref = `${coach.origin}/download/guiderail-extension.zip`;
 
 export const coachOrigin = coach.origin;
 
-export const practiceHref = `${coachOrigin}/sandbox/`;
+export const practiceHref = `${coachOrigin}/sandbox/index.html`;
 
 export const consoleHref = "https://console.firebase.google.com/project/_/firestore/databases";
 
