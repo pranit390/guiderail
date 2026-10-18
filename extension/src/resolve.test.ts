@@ -80,6 +80,15 @@ describe("section qualifier", () => {
     expect(live.result).toMatchObject({ found: true, i: billing.i, name: "Save" });
     expect(live.el).toBe(indexed.get(billing.i));
   });
+
+  it("refuses as stale, not missing, when the pinned Save's region is relabelled after the read", () => {
+    const indexed = new Map(collectControls().map(({ i, el }) => [i, el] as const));
+    const [billing] = elementsOf().filter((e) => e.name === "Save");
+    document.querySelector('section[aria-label="Billing"]')!.setAttribute("aria-label", "Billing settings");
+    const live = liveHighlight({ text: "Save", role: "button", section: "Billing", generation: 3, index: billing.i, name: "Save" }, 3, indexed);
+    expect(live.result).toEqual({ found: false, reason: "stale", alternatives: [] });
+    expect(live.el).toBeUndefined();
+  });
 });
 
 describe("exact names before fuzzy candidates", () => {
@@ -199,7 +208,7 @@ describe("snapshot eligibility", () => {
     const draft = elements.find((e) => e.name === "Save draft")!;
 
     const tied = liveHighlight({ text: "Save", generation: 3, index: save.i, name: "Save" }, 3, indexed);
-    expect(tied.result).toMatchObject({ found: false, reason: "ambiguous" });
+    expect(tied.result).toEqual({ found: false, reason: "stale", alternatives: [] });
     expect(tied.el).toBeUndefined();
 
     indexed.get(elements.filter((e) => e.name === "Save")[1].i)!.remove();

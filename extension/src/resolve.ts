@@ -169,12 +169,8 @@ export function liveHighlight(
   if (!nameOk || !roleOk || !eligible) return { result: stale };
 
   const resolved = resolveName(msg.text, pageElementsOf(current), msg.role, msg.section);
-  if (resolved.status === "found") {
-    const match = current.find((control) => control.i === resolved.i);
-    if (match?.el !== el) return { result: stale };
-    return { result: { found: true, i: msg.index, name: msg.name, confidence: resolved.confidence }, el };
-  }
-  const known = new Set(indexed.values());
-  if (current.some((control) => !known.has(control.el))) return { result: stale };
-  return { result: resolutionResult(msg.text, resolved) };
+  if (resolved.status !== "found") return { result: stale };
+  const match = current.find((control) => control.i === resolved.i);
+  if (match?.el !== el) return { result: stale };
+  return { result: { found: true, i: msg.index, name: msg.name, confidence: resolved.confidence }, el };
 }
