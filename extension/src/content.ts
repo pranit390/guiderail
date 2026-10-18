@@ -294,7 +294,7 @@ function follow() {
 }
 function onViewportChange() { placementDirty = true; if (highlighted || badBoxes.length || calm.active) startFollow(); }
 const layoutObserver = new ResizeObserver(onViewportChange);
-document.fonts.addEventListener("loadingdone", onViewportChange);
+document.fonts?.addEventListener("loadingdone", onViewportChange);
 window.addEventListener("resize", onViewportChange);
 document.addEventListener("scroll", onViewportChange, true);
 
@@ -496,7 +496,7 @@ function shutdown() {
   overlayStopped = true;
   surfaceObserver.disconnect();
   layoutObserver.disconnect();
-  document.fonts.removeEventListener("loadingdone", onViewportChange);
+  document.fonts?.removeEventListener("loadingdone", onViewportChange);
   document.removeEventListener("toggle", onSurfaceToggle, true);
   calm.restore();
   document.removeEventListener("input", onInput, true);
