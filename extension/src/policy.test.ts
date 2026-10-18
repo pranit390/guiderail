@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import seed from "../../seed/rules/org-labeling-rules.json";
 import type { FormState } from "./messages.ts";
-import { evaluate, guidance, rulesFor, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
+import { evaluate, guidance, rulesFor, sectionOnScreen, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
 
@@ -126,6 +126,44 @@ describe("summarizeViolations", () => {
     const vs = evaluate(rules, cloudRun({ ...validLabels, component: "foo", owner: "" }));
     expect(vs.map((v) => v.severity).sort()).toEqual(["block", "warn"]);
     expect(violationCountText(summarizeViolations(vs))).toBe("1 to fix · 1 to check (2 Rules)");
+  });
+});
+
+describe("field rules on a create form", () => {
+  const rule = (id: string, check: Rule["check"]): Rule => ({
+    id, check, severity: "block", message: id,
+    scope: { url: "console.cloud.google.com/run/create*", section: "Authentication" },
+    guide: { explain: "", format: "", examples: [], suggest: null },
+  });
+  const taught = [
+    rule("require-auth", { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] }),
+    rule("name-pattern", { kind: "field_value_regex", field: "Service name", pattern: "^[a-z]+-[a-z0-9-]+-service$" }),
+  ];
+  const form = (fields: Record<string, string>): FormState => ({ url: "console.cloud.google.com/run/create", labels: {}, fields, sections: [] });
+
+  it("fires without a Labels or Grant access section on screen", () => {
+    expect(ids(evaluate(taught, form({ "Allow unauthenticated": "checked", "Service name": "invoices" }))).sort()).toEqual(["name-pattern", "require-auth"]);
+  });
+  it("passes a form that follows the playbook", () => {
+    expect(evaluate(taught, form({ "Require authentication": "checked", "Service name": "payment-invoice-service" }))).toEqual([]);
+  });
+  it("skips fields absent from the form and Rules for a different page", () => {
+    expect(evaluate(taught, form({}))).toEqual([]);
+    expect(evaluate(taught, { ...form({ "Allow unauthenticated": "checked" }), url: "console.cloud.google.com/iam-admin/iam" })).toEqual([]);
+  });
+});
+
+describe("sectionOnScreen", () => {
+  const authRule = { ...(rules[0] as Rule), id: "require-auth", check: { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] }, scope: { url: "console.cloud.google.com/run/create*", section: "Authentication" } } as Rule;
+  const form = (fields: Record<string, string>, sections: string[] = []): FormState => ({ url: "console.cloud.google.com/run/create", labels: {}, fields, sections });
+
+  it("treats a field Rule's section as on screen when its field is on the form", () => {
+    expect(sectionOnScreen([authRule], form({ "Allow unauthenticated": "checked" }), "Authentication")).toBe(true);
+    expect(sectionOnScreen([authRule], form({}), "Authentication")).toBe(false);
+  });
+  it("keeps Labels on screen only when the page shows the section", () => {
+    expect(sectionOnScreen(rules, form({}, ["Labels"]), "Labels")).toBe(true);
+    expect(sectionOnScreen(rules, form({ "Service name": "ocr" }), "Labels")).toBe(false);
   });
 });
 

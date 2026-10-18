@@ -5,7 +5,7 @@ import { fixtureDraft } from "../../server/src/journeys/fixture.ts";
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import seed from "../../seed/rules/org-labeling-rules.json";
 import type { FormState, PageSnapshot, ToPage } from "./messages.ts";
-import { evaluate, type Rule } from "./policy.ts";
+import { evaluate, sectionOnScreen, type Rule } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
 const runtime = { id: "test-extension", sendMessage: vi.fn().mockResolvedValue({}), onMessage: { addListener: vi.fn() } };
@@ -180,6 +180,21 @@ describe("calmer content messages", () => {
       expect(output).toContain("ocr-service");
       expect(output).toContain("«masked»");
     }
+  });
+
+  it("reports visible empty and unchecked fields so their section counts as on screen", () => {
+    document.body.innerHTML = `<h2>Authentication</h2><input type="checkbox" aria-label="Allow unauthenticated">
+      <input aria-label="Database ID" value="">`;
+    const snapshot = form();
+    expect(snapshot.fields).toMatchObject({ "Allow unauthenticated": "", "Database ID": "" });
+    const scope = { url: "console.cloud.google.com/run*", section: "Authentication" };
+    const guide = { explain: "", format: "", examples: [], suggest: null };
+    const taught: Rule[] = [
+      { id: "auth", severity: "block", message: "", scope, guide, check: { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] } },
+      { id: "db", severity: "warn", message: "", scope, guide, check: { kind: "field_value_regex", field: "Database ID", pattern: "^[a-z]+$" } },
+    ];
+    expect(sectionOnScreen(taught, snapshot, "Authentication")).toBe(true);
+    expect(evaluate(taught, snapshot)).toEqual([]);
   });
 
   it("refuses reads, Teach and event forwarding on the real sign-in origin despite sandbox metadata", () => {

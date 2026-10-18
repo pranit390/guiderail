@@ -37,7 +37,7 @@ let sockets: Socket[];
 const fromPage = (msg: object, sender: { url?: string; tab?: { id: number; url?: string } }, reply: (value: unknown) => void) =>
   vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0](msg, sender as chrome.runtime.MessageSender, reply);
 const page = (msg: object, tabId = 1) => fromPage(msg, { tab: { id: tabId } }, () => {});
-const form = { sections: [], fields: [] };
+const form = { url: "console.cloud.google.com/run/create", sections: [], labels: {}, fields: {} };
 const sendMessage = vi.fn().mockResolvedValue({ ok: true });
 const queryTabs = vi.fn();
 const getTab = vi.fn();
@@ -839,7 +839,7 @@ describe("page activity across idle disconnects", () => {
     const messages = sent(sockets[0]);
     expect(messages.map((m) => m.type)).toEqual(["session", "text"]);
     expect(messages[0].text).toContain('Page event: User clicked "Labels"');
-    expect(messages[0].text).toContain('Page event: User clicked "Create" and all policy checks pass.');
+    expect(messages[0].text).toContain('Page event: User clicked "Create" with no rule Violations.');
     expect(messages[0].text).toContain("Page event: Labels section opened");
     expect(messages[0].text).not.toContain("what next?");
     expect(messages[1]).toEqual({ type: "text", text: "what next?" });
@@ -870,13 +870,31 @@ describe("page activity across idle disconnects", () => {
     expect(document.body.textContent).not.toContain("Background tab changed");
   });
 
+  it("sends create-form values for Goal and Playbook checks even when deterministic Rules pass", async () => {
+    const socket = await connected();
+    page({ kind: "submit_intent", label: "Create", form: { ...form, fields: { Region: "us-central1", Description: "", "Service name": "invoices" } } });
+    await vi.waitFor(() => expect(sent(socket)).toEqual([{
+      type: "event",
+      text: expect.stringContaining('User clicked "Create" with no rule Violations. Form: Region=us-central1, Service name=invoices.'),
+    }]));
+    expect(sent(socket)[0].text).toContain("Compare it with the Goal and the playbook");
+  });
+
+  it("keeps warning counts in submit context when no Rule blocks", async () => {
+    const socket = await connected();
+    policy.violations = [{ ruleId: "name", field: "Service name", message: "Check the service name.", severity: "warn" }];
+    page({ kind: "submit_intent", label: "Create", form });
+    await vi.waitFor(() => expect(sent(socket)[0]?.text).toContain("1 to check (1 Rule)"));
+    expect(sent(socket)[0].text).not.toContain("no rule Violations");
+  });
+
   it("reconnects for a blocking submit warning and delivers it once ready", async () => {
     await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
     policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner label.", severity: "block" }];
-    page({ kind: "submit_intent", label: "Create", form });
+    page({ kind: "submit_intent", label: "Create", form: { ...form, fields: { Region: "us-central1" } } });
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "ready" });
-    expect(sent(sockets[0])).toEqual([{ type: "event", text: expect.stringContaining("Add an owner label.") }]);
+    expect(sent(sockets[0])).toEqual([{ type: "event", text: expect.stringContaining("1 to fix (1 Rule) remain: Add an owner label. Form: Region=us-central1") }]);
     expect(document.querySelector('[role="alert"]')).toBeNull();
   });
 
