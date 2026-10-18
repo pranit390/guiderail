@@ -18,7 +18,12 @@ Guide. The first typed message or Talk press requests a credential and opens the
 Live session; that first message (or up to about 1.5 seconds of speech) is kept
 and delivered once the relay is ready. The status reads **Connected to <host>**
 only after Vertex Live acknowledges setup. Typing works without microphone
-permission.
+permission. Only pages in the active (bound) tab reach the coach. While
+disconnected, their page events, recorded Teach steps and app events are kept in
+the panel's bounded session memory (at most 200 entries; the next connection gets
+a summary under 3,500 characters). A Create click with blocking Violations
+reconnects at once so the coach can say the warning; if admission fails or the
+daily allowance is used, the panel shows the warning as a prominent alert.
 
 ## Runtime and admission
 
@@ -52,10 +57,13 @@ At most three Live sessions run per instance. The fourth receives an explicit
 **coach is busy** message. The shared allowance is five aggregate connected Live
 minutes per UTC day per instance: three simultaneous clients exhaust it in one
 minute 40 seconds. Only connected time is charged, and the relay disconnects a
-session after 60 seconds without typed or spoken input or model output (page
-context, app events and resumption updates do not keep it open). Disconnected
-clients stop consuming time. Every limit closes the Vertex Live session
-immediately, before the client's WebSocket close handshake. Each session also has
+session after 60 seconds without activity: typed text, end of speech, page
+events, Teach context, app events, transcribed speech or model output. Raw
+microphone frames do not count, so an open mic sending silence still times out;
+session summaries, tool results and resumption updates do not count either.
+Disconnected clients stop consuming time. Every limit closes the Vertex Live
+session immediately and frees the concurrency slot then, before the client's
+WebSocket close handshake. Each session also has
 a ten-minute upper limit, eight completed replies, a 512-output-token limit per response,
 24,000 input text characters, a 64 KiB WebSocket frame limit, and PCM input paced
 to real time with a two-second burst. Context compression targets 4,096 tokens

@@ -31,6 +31,7 @@ const location = process.env.GOOGLE_CLOUD_LOCATION ?? "us-central1";
 const model = process.env.LIVE_MODEL ?? "gemini-live-2.5-flash-native-audio";
 const MAX_SESSION_MS = 10 * 60 * 1000;
 export const IDLE_MS = 60 * 1000;
+const ACTIVITY = new Set<ClientMessage["type"]>(["text", "audio_end", "event", "context", "app"]);
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
 
@@ -40,8 +41,11 @@ async function buildInstruction(mode: Mode, goal?: string): Promise<string> {
   return instructionFor("teach", playbooks, { goal, rules: await loadRuleLines(), playbookTitles: playbooks.map(playbookTitle) });
 }
 
-/** Relays one client to Vertex Live. Returns `end`, which closes the billable Live session at once and then the client. */
-export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string) {
+/**
+ * Relays one client to Vertex Live. Returns `end`, which closes the billable Live session at once and then the client.
+ * `release` runs once, as soon as the Live session is shut down, without waiting for the client's close handshake.
+ */
+export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode = "guide", goal?: string, release: () => void = () => {}) {
   const send = (msg: ServerMessage) => client.readyState === client.OPEN && client.send(JSON.stringify(msg));
 
   let session: Session | undefined;
@@ -50,25 +54,28 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
   let textChars = 0;
   let turns = 0;
   let idle: ReturnType<typeof setTimeout> | undefined;
-  const end = (reason: string, message: string) => {
+  let stopped = false;
+  const shutdown = () => {
+    if (stopped) return;
+    stopped = true;
     clearTimeout(cap);
     clearTimeout(idle);
-    send({ type: "error", message });
     session?.close();
+    release();
+  };
+  const end = (reason: string, message: string) => {
+    send({ type: "error", message });
+    shutdown();
     client.close(4000, reason);
   };
-  // Only user input and model output keep a connection open.
+  // Only user input, page activity and model output keep a connection open; raw mic frames (often silence) do not.
   const active = () => {
     clearTimeout(idle);
     if (client.readyState !== client.OPEN) return;
     idle = setTimeout(() => end("idle", "Disconnected after one minute without activity. Type or press Talk to reconnect."), IDLE_MS);
   };
   const cap = setTimeout(() => end("session limit", "This demo session reached its ten-minute limit. Type or press Talk to reconnect if today's allowance remains."), MAX_SESSION_MS);
-  client.once("close", () => {
-    clearTimeout(cap);
-    clearTimeout(idle);
-    session?.close();
-  });
+  client.once("close", shutdown);
   void open();
   return end;
 
@@ -95,17 +102,17 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
             }
           },
           onerror: (e) => send({ type: "error", message: String(e.message ?? e) }),
-          onclose: () => client.close(),
+          onclose: () => { shutdown(); client.close(); },
         },
       });
     } catch (err) {
-      clearTimeout(cap);
+      shutdown();
       send({ type: "error", message: `Couldn't reach the voice model: ${(err as Error).message}` });
       client.close();
       return;
     }
 
-    if (client.readyState !== client.OPEN) { clearTimeout(cap); session.close(); return; }
+    if (stopped || client.readyState !== client.OPEN) { session.close(); shutdown(); return; }
     send({ type: "ready" });
     active();
 
@@ -126,7 +133,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         end("input allowance reached", "This demo session reached its input allowance.");
         return;
       }
-      if (msg.type === "audio" || msg.type === "audio_end" || msg.type === "text") active();
+      if (ACTIVITY.has(msg.type)) active();
       switch (msg.type) {
         case "audio":
           session.sendRealtimeInput({ audio: { data: msg.data, mimeType: "audio/pcm;rate=16000" } });

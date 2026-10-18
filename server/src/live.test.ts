@@ -28,10 +28,11 @@ class Client extends EventEmitter {
 
 async function start() {
   const client = new Client();
-  const end = relay(client as unknown as WebSocket);
+  const release = vi.fn();
+  const end = relay(client as unknown as WebSocket, undefined, "guide", undefined, release);
   for (let i = 0; i < 20 && !client.sent.length; i++) await Promise.resolve();
   expect(client.sent).toEqual([{ type: "ready" }]);
-  return { client, end };
+  return { client, end, release };
 }
 
 beforeEach(() => {
@@ -51,12 +52,26 @@ describe("Live idle timeout", () => {
     expect(client.sent.at(-1)).toMatchObject({ type: "error", message: expect.stringContaining("without activity") });
   });
 
-  it("restarts the minute on typed or spoken input and on model output", async () => {
+  it.each([
+    { type: "text", text: "where are labels?" },
+    { type: "audio_end" },
+    { type: "event", text: "User clicked the highlighted Labels" },
+    { type: "context", text: "Expert clicked Next" },
+    { type: "app", text: "Playbook draft ready" },
+  ])("restarts the minute on %j", async (msg) => {
     const { client } = await start();
     vi.advanceTimersByTime(IDLE_MS - 1);
-    client.input({ type: "text", text: "where are labels?" });
+    client.input(msg);
     vi.advanceTimersByTime(IDLE_MS - 1);
-    client.input({ type: "audio", data: "AAAA" });
+    expect(live.session.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(live.session.close).toHaveBeenCalledOnce();
+  });
+
+  it("restarts the minute on model output and transcribed speech", async () => {
+    await start();
+    vi.advanceTimersByTime(IDLE_MS - 1);
+    live.callbacks!.onmessage({ serverContent: { inputTranscription: { text: "where are labels" } } });
     vi.advanceTimersByTime(IDLE_MS - 1);
     live.callbacks!.onmessage({ serverContent: { outputTranscription: { text: "Open Labels." } } });
     vi.advanceTimersByTime(IDLE_MS - 1);
@@ -65,11 +80,22 @@ describe("Live idle timeout", () => {
     expect(live.session.close).toHaveBeenCalledOnce();
   });
 
-  it("does not restart the minute for page context, app events or resumption updates", async () => {
+  it("times out an open microphone that only sends silent frames", async () => {
+    const { client } = await start();
+    for (let t = 0; t < IDLE_MS; t += 100) {
+      client.input({ type: "audio", data: "AAAA" });
+      vi.advanceTimersByTime(100);
+    }
+    expect(live.session.close).toHaveBeenCalledOnce();
+    expect(client.close).toHaveBeenCalledWith(4000, "idle");
+  });
+
+  it("does not restart the minute for session summaries, tool results, unknown messages or resumption updates", async () => {
     const { client } = await start();
     vi.advanceTimersByTime(IDLE_MS / 2);
-    client.input({ type: "context", text: "clicked Next" });
-    client.input({ type: "app", text: "draft ready" });
+    client.input({ type: "session", text: "Session so far" });
+    client.input({ type: "tool_result", id: "1", name: "read_page", response: {} });
+    client.input({ type: "keepalive", text: "x" });
     live.callbacks!.onmessage({ sessionResumptionUpdate: { resumable: true, newHandle: "h" } });
     vi.advanceTimersByTime(IDLE_MS / 2);
     expect(live.session.close).toHaveBeenCalledOnce();
@@ -78,10 +104,28 @@ describe("Live idle timeout", () => {
 
 describe("Live limits", () => {
   it("closes the Live session immediately when the admission allowance ends", async () => {
-    const { client, end } = await start();
+    const { client, end, release } = await start();
     end("demo allowance reached", "This demo session reached its daily voice limit.");
     expect(live.session.close).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
     expect(client.close).toHaveBeenCalledWith(4000, "demo allowance reached");
+    expect(client.sent.at(-1)).toMatchObject({ type: "error", message: expect.stringContaining("daily voice limit") });
+    client.emit("close");
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("releases the slot when the idle limit stops Live, before the client answers the close", async () => {
+    const { release } = await start();
+    vi.advanceTimersByTime(IDLE_MS);
+    expect(live.session.close).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("closes Live and releases the slot when the client disconnects", async () => {
+    const { client, release } = await start();
+    client.emit("close");
+    expect(live.session.close).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
   });
 
   it("closes the Live session immediately at the eighth reply", async () => {

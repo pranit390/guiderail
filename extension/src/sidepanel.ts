@@ -75,6 +75,10 @@ function toggleVoice() {
   });
 }
 voice.addEventListener("click", toggleVoice);
+// The tab the panel guides: the active tab. Only its pages may speak to the coach.
+let boundTab: number | undefined;
+// A blocking warning waiting for a connection; shown prominently if that connection fails.
+let pendingWarning: string | undefined;
 
 // ---------- Startup ----------
 
@@ -84,6 +88,7 @@ async function init() {
   renderVoice();
   voice.disabled = false;
   setStatus(IDLE_STATUS, "idle");
+  void chrome.tabs.query({ active: true, lastFocusedWindow: true }).then(([tab]) => { boundTab ??= tab?.id; }).catch(() => {});
   await loadRules();
   const profile = await chrome.identity.getProfileUserInfo({ accountStatus: chrome.identity.AccountStatus.ANY }).catch(() => null);
   firstName = profile?.email ? profile.email.split("@")[0].split(/[._-]/)[0] : undefined;
@@ -106,15 +111,17 @@ function setStatus(text: string, state: "on" | "off" | "busy" | "idle") {
 
 let open: { role: string; el: HTMLElement } | null = null;
 
-function say(role: "user" | "model" | "system" | "step", text: string) {
-  if (open && open.role === role && role !== "system" && role !== "step") {
+function say(role: "user" | "model" | "system" | "step" | "alert", text: string) {
+  const standalone = role === "system" || role === "step" || role === "alert";
+  if (open && open.role === role && !standalone) {
     open.el.textContent += text;
   } else {
     const el = document.createElement("p");
     el.className = `msg ${role}`;
+    if (role === "alert") el.setAttribute("role", "alert");
     el.textContent = text;
     log.append(el);
-    open = role === "system" || role === "step" ? null : { role, el };
+    open = standalone ? null : { role, el };
   }
   log.scrollTop = log.scrollHeight;
 }
@@ -168,6 +175,7 @@ function onReady(summary: string) {
   const queued = pending;
   pending = [];
   pendingAudio = 0;
+  pendingWarning = undefined;
   for (const raw of queued) ws?.send(raw);
 }
 
@@ -186,6 +194,8 @@ function disconnect(text: string, state: "off" | "idle" = "off") {
   held.audio = [];
   if (talking) stopTalking();
   setStatus(text, state);
+  if (pendingWarning) say("alert", pendingWarning);
+  pendingWarning = undefined;
 }
 
 function sendServer(msg: object) {
@@ -195,7 +205,7 @@ function sendServer(msg: object) {
 }
 
 // User input: delivered now, or kept and delivered once the connection it opens is ready.
-function sendInput(msg: { type: "text"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }) {
+function sendInput(msg: { type: "text" | "event"; text: string } | { type: "audio"; data: string } | { type: "audio_end" }) {
   if (sendServer(msg)) return;
   if (msg.type === "audio") {
     if (pendingAudio + msg.data.length > PENDING_AUDIO_LIMIT) return;
@@ -422,6 +432,7 @@ async function updateViolations(form: FormState) {
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply) => {
+  if (msg.kind !== "tab_changed" && msg.kind !== "teach_status" && msg.kind !== "toggle_voice" && (sender.tab?.id === undefined || sender.tab.id !== boundTab)) return;
   switch (msg.kind) {
     case "toggle_voice": toggleVoice(); break;
     case "customize_event":
@@ -432,6 +443,7 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
       reply({ on: mode === "teach" });
       break;
     case "tab_changed":
+      boundTab = msg.tabId;
       if (mode === "teach") void followTab(msg.tabId);
       // A reload of the coached tab drops the content script's generation counter, so the old snapshot cannot authorize a target.
       if (bound && msg.tabId === bound.tabId && msg.url) {
@@ -445,6 +457,7 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
         void clearBoundHighlight();
       }
       say("system", msg.text);
+      memory.add("page", msg.text);
       sendServer({ type: "event", text: msg.text });
       break;
     case "form_changed":
@@ -460,7 +473,12 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
           ? `User is about to click "${msg.label}" but ${violationCountText(summarizeViolations(violations))} remain: ${blocking.map((v) => v.message).join(" ")}`
           : `User clicked "${msg.label}" and all policy checks pass.`;
         say("system", text);
-        sendServer({ type: "event", text });
+        // A blocking warning is worth a connection: the coach should say it out loud.
+        if (!sendServer({ type: "event", text }) && blocking.length) {
+          pendingWarning = text;
+          sendInput({ type: "event", text });
+        }
+        memory.add("page", text);
       });
       break;
     case "teach_event":
