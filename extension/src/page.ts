@@ -1,3 +1,5 @@
+import { STATES } from "./states.ts";
+
 export const INTERACTIVE =
   'a[href],button,input,select,textarea,summary,[role=button],[role=link],[role=tab],[role=menuitem],[role=checkbox],[role=combobox],[role=option],[role=switch],[contenteditable=true],h1,h2,h3,h4,legend,[role=region][aria-label],section[aria-label]';
 
@@ -119,10 +121,10 @@ export function valueOf(el: Element): string | undefined {
 }
 
 // --- Calm edge colours: the outline carries contrast (>=3:1), the halo is only attention. ---
-export const EDGE_LIGHT = "#805b00"; // 6.15:1 on #fff
-export const EDGE_DARK = "#f2b927"; // 9.47:1 on #161d28
-export const BAD_LIGHT = "#c43a2f";
-export const BAD_DARK = "#f07468";
+export const EDGE_LIGHT = STATES.go.light; // 5.38:1 on #fff
+export const EDGE_DARK = STATES.go.dark;
+export const BAD_LIGHT = STATES.stop.light;
+export const BAD_DARK = STATES.stop.dark;
 
 export function parseRgb(color: string): [number, number, number] | null {
   const m = color.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+%?))?/);

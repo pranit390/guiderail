@@ -112,7 +112,7 @@ describe("calmer content messages", () => {
   it("hides a Violation's Rule chip once its field scrolls out of view, and shows it again on return", () => {
     request({ kind: "show_violations", violations: evaluate(rules, form()) });
     const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
-    const chip = shadow.querySelector<HTMLElement>(".chip")!;
+    const chip = shadow.querySelector<HTMLElement>(".chip:not(.step-chip)")!;
     vi.advanceTimersByTime(20);
     expect(chip.hidden).toBe(false);
     vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, -400, 200, 60));
@@ -132,7 +132,7 @@ describe("calmer content messages", () => {
       return blockers[this.getAttribute("aria-label") ?? ""] ?? new DOMRect(40, 100, 200, 60);
     });
     request({ kind: "show_violations", violations: evaluate(rules, form()) });
-    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip")!;
+    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip:not(.step-chip)")!;
     vi.advanceTimersByTime(20);
     expect(chip.hidden).toBe(false);
     expect(chip.style.left).toBe("248px");
@@ -169,9 +169,28 @@ describe("calmer content messages", () => {
     vi.stubGlobal("innerWidth", 520);
     vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 280, 60));
     request({ kind: "show_violations", violations: evaluate(rules, form()) });
-    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip")!;
+    const chip = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".chip:not(.step-chip)")!;
     vi.advanceTimersByTime(20);
     expect(chip.style.maxWidth).toBe("174px");
     expect(chip.style.left).toBe("328px");
+  });
+});
+
+
+describe("Rule state mapping", () => {
+  it("uses dashed Check for warnings and Stop only when the same field has a blocker", () => {
+    request({ kind:"show_violations", violations:[{ field:"label:environment", severity:"warn", message:"Confirm the environment." }] });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    expect(shadow.querySelector(".bad.check")).not.toBeNull();
+    expect(shadow.querySelector(".bad.stop")).toBeNull();
+    expect(shadow.querySelector(".chip:not(.step-chip)")!.textContent).toContain("Check ·");
+    request({ kind:"show_violations", violations:[
+      { field:"label:environment", severity:"warn", message:"Confirm the environment." },
+      { field:"label:environment", severity:"block", message:"Production is blocked." },
+    ] });
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(1);
+    expect(shadow.querySelector(".bad.stop")).not.toBeNull();
+    expect(shadow.querySelector(".chip:not(.step-chip)")!.textContent).toContain("Rule ·");
+    expect(shadow.querySelector(".chip:not(.step-chip) .state-glyph.stop")).not.toBeNull();
   });
 });

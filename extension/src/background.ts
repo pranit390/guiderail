@@ -15,3 +15,7 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
     chrome.runtime.sendMessage({ kind: "tab_changed", tabId, url: tab.url }).catch(() => {});
   }
 });
+
+chrome.commands.onCommand.addListener((command) => {
+  if (command === "toggle-voice") chrome.runtime.sendMessage({ kind: "toggle_voice" }).catch(() => {});
+});

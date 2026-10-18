@@ -3,7 +3,12 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./audio.ts", () => ({ Mic: class {}, Speaker: class {} }));
+const audio = vi.hoisted(() => ({ setMuted:vi.fn(), play:vi.fn(), beginTurn:vi.fn(), turnEnded:vi.fn(), interrupt:vi.fn() }));
+vi.mock("./audio.ts", () => ({ Mic: class {}, Speaker: class {
+  setMuted = audio.setMuted; play = audio.play; beginTurn = audio.beginTurn; turnEnded = audio.turnEnded; interrupt = audio.interrupt;
+} }));
+let savedVoice: boolean | undefined;
+const storageSet = vi.fn().mockImplementation(async (value: { voiceOut:boolean }) => { savedVoice = value.voiceOut; });
 
 class Socket {
   static OPEN = 1;
@@ -19,11 +24,14 @@ beforeEach(async () => {
   vi.resetModules();
   sockets = [];
   sendMessage.mockClear();
+  storageSet.mockClear();
+  Object.values(audio).forEach((mock) => mock.mockClear());
   document.body.innerHTML = readFileSync("public/sidepanel.html", "utf8")
     .replace(/<head>[\s\S]*?<\/head>/, "").replace(/<script[\s\S]*?<\/script>/g, "");
   vi.stubGlobal("WebSocket", Socket);
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ json: async () => ({ rules: [] }) }));
   vi.stubGlobal("chrome", {
+    storage: { local: { get:vi.fn().mockImplementation(async () => ({ voiceOut:savedVoice })), set:storageSet } },
     identity: { AccountStatus: { ANY: "ANY" }, getProfileUserInfo: vi.fn().mockResolvedValue({}) },
     runtime: { onMessage: { addListener: vi.fn() } },
     tabs: { query: vi.fn().mockResolvedValue([{ id: 1 }]), sendMessage },
@@ -59,5 +67,39 @@ describe("calmer panel paths", () => {
     document.querySelector<HTMLInputElement>("#text")!.value = "make it calmer";
     document.querySelector<HTMLFormElement>("#form")!.dispatchEvent(new Event("submit", { cancelable: true }));
     expect(sockets[0].send).toHaveBeenCalledWith(JSON.stringify({ type: "text", text: "make it calmer" }));
+  });
+});
+
+function receive(message: object) { sockets[0].onmessage?.({ data:JSON.stringify(message) }); }
+describe("spoken replies", () => {
+  afterEach(() => { savedVoice = undefined; });
+  it("defaults on, mutes independently of input, persists off and keeps captions", async () => {
+    const voice = document.querySelector<HTMLButtonElement>("#voice")!;
+    expect(voice.getAttribute("aria-pressed")).toBe("true");
+    voice.click();
+    expect(voice.getAttribute("aria-pressed")).toBe("false");
+    expect(audio.setMuted).toHaveBeenLastCalledWith(true);
+    await vi.waitFor(() => expect(storageSet).toHaveBeenCalledWith({ voiceOut:false }));
+    receive({ type:"transcript", role:"model", text:"Your full reply remains here." });
+    expect(document.querySelector("#log")!.textContent).toContain("Your full reply remains here.");
+    expect(document.querySelector("#talk")!.hasAttribute("data-on")).toBe(false);
+    voice.click();
+    expect(audio.setMuted).toHaveBeenLastCalledWith(false);
+    receive({ type:"turn_complete" });
+    expect(audio.turnEnded).toHaveBeenCalled();
+  });
+  it("loads a persisted off preference before connecting", async () => {
+    savedVoice = false;
+    vi.resetModules();
+    await import("./sidepanel.ts");
+    await vi.waitFor(() => expect(sockets).toHaveLength(2));
+    expect(audio.setMuted).toHaveBeenLastCalledWith(true);
+    expect(document.querySelector("#voice")!.getAttribute("aria-pressed")).toBe("false");
+  });
+  it("routes the keyboard command to the same toggle", () => {
+    const chromeListener = vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0];
+    chromeListener({ kind:"toggle_voice" }, {}, vi.fn());
+    expect(document.querySelector("#voice")!.getAttribute("aria-pressed")).toBe("false");
+    expect(audio.setMuted).toHaveBeenLastCalledWith(true);
   });
 });
