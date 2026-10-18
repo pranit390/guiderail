@@ -2,7 +2,7 @@
 
 Static site for the public GuideRail page. Firebase Hosting can serve the built files. This directory has its own `package.json` and is not in the root npm workspaces, so installing or building the page alone leaves the server and the extension alone.
 
-The page is the Follow the rail concept with the Rail check logo. The primary button downloads the Chrome extension from the hosted coach:
+The page uses the Rail check logo. The primary button downloads the Chrome extension from the hosted coach:
 
 `https://guiderail-coach-q7tihot5sq-uc.a.run.app/download/guiderail-extension.zip`
 

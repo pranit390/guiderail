@@ -51,7 +51,7 @@ export const citedControls = [
 ] as const;
 
 export const hero = {
-  titleLead: "It points.",
+  titleLead: "GuideRail points.",
   titleRest: "You click.",
   intro:
     "GuideRail is a Chrome side panel. It reads the official Firebase docs and highlights the next control on the real console, with the doc citation beside each Step.",
@@ -166,8 +166,8 @@ export const content: LandingContent = {
     ],
   },
   close: {
-    heading: "Open the Firebase console and press Cmd+Shift+K.",
-    lede: "Ctrl+Shift+K if you're not on a Mac. Judges sign in with the demo login from the pitch deck.",
+    heading: "Download it, load it, then press Cmd+Shift+K on the Firebase console.",
+    lede: "Ctrl+Shift+K if you're not on a Mac.",
   },
   footer: "GuideRail is a Chrome extension that coaches you through creating a Firestore database.",
 };
