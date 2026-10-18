@@ -126,19 +126,43 @@ describe("audit recovery and announcements", () => {
     expect($<HTMLInputElement>("#text").value).toBe("");
   });
 
-  it("backs off 2, 4, 8, 16, 30 seconds and stops after five automatic retries", async () => {
+  it("backs off 2, 4, 8, 16, 30 seconds after transport loss and stops after five automatic retries, even if each reconnects", async () => {
     await connected();
     vi.useFakeTimers();
     for (const [index, delay] of [2000, 4000, 8000, 16000, 30000].entries()) {
-      sockets[index].onclose?.();
+      sockets[index].onerror?.();
       await vi.advanceTimersByTimeAsync(delay - 1);
       expect(sockets).toHaveLength(index + 1);
       await vi.advanceTimersByTimeAsync(1);
       expect(sockets).toHaveLength(index + 2);
+      sockets[index + 1].receive({ type: "ready" });
     }
-    sockets[5].onclose?.();
+    sockets[5].onerror?.();
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sockets).toHaveLength(6);
+    expect($("#server-message").textContent).toContain("Retry when you're ready");
+    $("#server-retry").click();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(7);
+    sockets[6].onerror?.();
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(sockets).toHaveLength(8);
+  });
+
+  it.each([
+    [4000, "Disconnected after one minute without activity. Type or press Talk to reconnect."],
+    [4000, "This demo session reached its ten-minute limit."],
+    [4000, "This demo session reached its session or daily voice limit."],
+    [4001, "Missing, invalid or expired session credential. Reconnect from the extension."],
+  ])("does not reopen a session after the server's deliberate %s close: %s", async (_code, message) => {
+    const socket = await connected();
+    vi.useFakeTimers();
+    socket.receive({ type: "error", message });
+    socket.onclose?.();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sockets).toHaveLength(1);
+    expect(sessionRequests()).toBe(1);
+    expect($("#server-banner").hidden).toBe(false);
     expect($("#server-message").textContent).toContain("Retry when you're ready");
   });
 
@@ -179,6 +203,10 @@ describe("audit recovery and announcements", () => {
     expect($("#policy-override").getAttribute("role")).toBe("alert");
     expect($("#policy-override").textContent).toContain("Review before Save");
     expect($("#policy-override").textContent).toContain("second click within 10 seconds");
+    page({ kind: "submit_intent", label: "Save", form, continued: true });
+    await vi.waitFor(() => expect($("#policy-override").textContent).toContain("You continued with Save anyway"));
+    expect($("#policy-override").textContent).not.toContain("second click");
+    expect($("#policy-override").hidden).toBe(false);
     policy.violations = [];
     page({ kind: "form_changed", form });
     await vi.waitFor(() => expect($("#policy-override").hidden).toBe(true));

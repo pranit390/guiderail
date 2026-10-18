@@ -92,6 +92,8 @@ describe("calmer content messages", () => {
     const notice = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector('[role="alert"]');
     expect(notice?.textContent).toContain("Click again to continue anyway");
     expect(click()).toBe(true);
+    const intents = runtime.sendMessage.mock.calls.map(([msg]) => msg).filter((msg) => msg.kind === "submit_intent");
+    expect(intents.map((msg) => msg.continued)).toEqual([false, true]);
   });
   it("places the pointer inside a wizard top layer and returns it to the page", () => {
     const surface = document.createElement("dialog");

@@ -2,10 +2,22 @@ import { describe, expect, it } from "vitest";
 import { STATES, violationState } from "./states.ts";
 import { contrastRatio } from "./page.ts";
 import { readFileSync } from "node:fs";
+import postcss, { type Container } from "postcss";
 
-const css = readFileSync(new URL("../public/panel.css", import.meta.url), "utf8");
-function tokens(block: string) {
-  const values = new Map([...block.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [match[1], match[2].trim()]));
+const css = postcss.parse(readFileSync(new URL("../public/panel.css", import.meta.url), "utf8"));
+function rootTokens(scope: Container, values = new Map<string, string>()) {
+  scope.each((node) => {
+    if (node.type === "rule" && node.selector === ":root") node.walkDecls(/^--/, (decl) => { values.set(decl.prop.slice(2), decl.value.trim()); });
+  });
+  return values;
+}
+function tokens(theme: "light" | "dark") {
+  const values = rootTokens(css);
+  if (theme === "dark") {
+    const dark = css.nodes.filter((node) => node.type === "atrule" && node.name === "media" && node.params === "(prefers-color-scheme: dark)");
+    expect(dark).toHaveLength(1);
+    rootTokens(dark[0] as Container, values);
+  }
   function get(name: string): string {
     const value = values.get(name);
     if (!value) throw new Error(`Missing token ${name}`);
@@ -16,9 +28,8 @@ function tokens(block: string) {
 }
 
 describe("guiding state contract", () => {
-  it.each(["light", "dark"])("asserts actual %s panel text, focus, controls and active-button tokens", (theme) => {
-    const roots = [...css.matchAll(/:root\s*\{([^}]+)\}/g)];
-    const get = tokens(roots[0][1] + (theme === "dark" ? roots[1][1] : ""));
+  it.each(["light", "dark"] as const)("asserts actual %s panel text, focus, controls and active-button tokens", (theme) => {
+    const get = tokens(theme);
     for (const surface of ["bg", "surface", "surface-2"]) {
       for (const text of ["ink", "muted", "accent", "ok", "warn"]) {
         expect(contrastRatio(get(text), get(surface)), `${text} on ${surface}`).toBeGreaterThanOrEqual(4.5);

@@ -381,9 +381,10 @@ function onClick(e: MouseEvent) {
   const target = e.target as Element;
   const button = target.closest('button,[role=button],input[type=submit]');
   if (button && SUBMIT_WORDS.test(nameOf(button))) {
-    send({ kind: "submit_intent", label: nameOf(button), form: readForm() });
     // Soft guard: the first attempt with blocking Violations is held; a second click goes through.
-    if (violationSummary.fixCount && Date.now() - warnedSubmitAt > 10_000) {
+    const hold = violationSummary.fixCount > 0 && Date.now() - warnedSubmitAt > 10_000;
+    send({ kind: "submit_intent", label: nameOf(button), form: readForm(), continued: violationSummary.fixCount > 0 && !hold });
+    if (hold) {
       warnedSubmitAt = Date.now();
       e.preventDefault();
       e.stopImmediatePropagation();

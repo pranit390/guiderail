@@ -315,15 +315,16 @@ function connectionLost(text: string, retry = true) {
   $("#server-banner").hidden = false;
   const delay = retry ? RETRY_DELAYS[retries++] : undefined;
   $("#server-message").textContent = `${text}. Unsent text stays in the box; press Send after reconnecting.${delay ? ` Retrying in ${delay / 1000} seconds…` : " Retry when you're ready."}`;
-  if (delay) retryTimer = setTimeout(() => { void connect(); }, delay);
+  if (delay) retryTimer = setTimeout(() => { void connect(true); }, delay);
 }
 
-$("#server-retry").addEventListener("click", () => { retries = 0; void connect(); });
+$("#server-retry").addEventListener("click", () => { void connect(); });
 window.addEventListener("pagehide", () => disconnect(IDLE_STATUS, "idle"));
 
-async function connect() {
+async function connect(retrying = false) {
   if (signedOut) return;
   clearTimeout(retryTimer);
+  if (!retrying) retries = 0;
   if (!$("#server-banner").hidden) $("#server-message").textContent = `Connecting to ${SERVER_HOST}… Unsent text stays in the box.`;
   restartPending = false;
   const attempt = ++connectionAttempt;
@@ -366,14 +367,13 @@ async function connect() {
     if (msg.type === "ready") onReady();
     void onServer(msg);
   };
-  sock.onclose = () => { if (ws === sock) connectionLost("Disconnected. Type or press Talk to reconnect"); };
+  sock.onclose = () => { if (ws === sock) connectionLost("Disconnected. Type or press Talk to reconnect", false); };
   sock.onerror = () => { if (ws === sock) connectionLost(`Can't reach ${SERVER_HOST}`); };
 }
 
 function onReady() {
   ready = true;
   connecting = false;
-  retries = 0;
   $("#server-banner").hidden = true;
   setStatus(`Connected to ${SERVER_HOST}`, "on");
   const summary = memory.summary();
@@ -857,7 +857,9 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       void updateViolations(msg.form).then(() => {
         const blocking = violations.filter((v) => v.severity === "block");
         if (blocking.length) {
-          $("#policy-override").textContent = `${violationCountText(summarizeViolations(violations))}. Review before ${msg.label}. This is a soft guard: a second click within 10 seconds continues anyway.`;
+          $("#policy-override").textContent = msg.continued
+            ? `${violationCountText(summarizeViolations(violations))}. You continued with ${msg.label} anyway; review the issues below.`
+            : `${violationCountText(summarizeViolations(violations))}. Review before ${msg.label}. This is a soft guard: a second click within 10 seconds continues anyway.`;
           $("#policy-override").hidden = false;
         }
         // The values let the model check what rules can't, e.g. a Region that doesn't fit the customer.
