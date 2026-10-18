@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fixtureDraft } from "../../server/src/journeys/fixture.ts";
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
+import { PUBLIC_DOCS } from "./document.ts";
 
 const audio = vi.hoisted(() => ({ setMuted:vi.fn(), play:vi.fn(), beginTurn:vi.fn(), turnEnded:vi.fn(), interrupt:vi.fn() }));
 vi.mock("./audio.ts", () => ({ Mic: class {}, Speaker: class {
@@ -24,12 +25,14 @@ class Socket {
 }
 let sockets: Socket[];
 const sendMessage = vi.fn().mockResolvedValue({ ok: true });
+const queryTabs = vi.fn();
 const session = { set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().mockResolvedValue(undefined) };
 
 beforeEach(async () => {
   vi.resetModules();
   sockets = [];
-  sendMessage.mockClear();
+  sendMessage.mockReset().mockResolvedValue({ ok: true });
+  queryTabs.mockReset().mockResolvedValue([{ id: 1 }]);
   storageSet.mockClear();
   Object.values(audio).forEach((mock) => mock.mockClear());
   document.body.innerHTML = readFileSync("public/sidepanel.html", "utf8")
@@ -40,7 +43,7 @@ beforeEach(async () => {
     storage: { local: { get:vi.fn().mockImplementation(async () => ({ voiceOut:savedVoice })), set:storageSet }, session },
     identity: { AccountStatus: { ANY: "ANY" }, getProfileUserInfo: vi.fn().mockResolvedValue({}) },
     runtime: { onMessage: { addListener: vi.fn() } },
-    tabs: { query: vi.fn().mockResolvedValue([{ id: 1 }]), sendMessage },
+    tabs: { query: queryTabs, get: vi.fn().mockResolvedValue({ id: 1 }), sendMessage },
   });
   await import("./sidepanel.ts");
   await vi.waitFor(() => expect(sockets).toHaveLength(1));
@@ -49,6 +52,11 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("calmer panel paths", () => {
+  it("announces Journey changes through one conversation live region", () => {
+    const status = document.querySelector("[data-status]")!;
+    expect(status.closest('[aria-live="polite"]')?.id).toBe("log");
+    expect(document.querySelector("#journey [aria-live], #journey [role=status]")).toBeNull();
+  });
   it("applies and restores from the buttons without a microphone or model", async () => {
     document.querySelector<HTMLButtonElement>("#calmer")!.click();
     await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, { kind: "customize", preset: "calm" }));
@@ -107,6 +115,26 @@ describe("spoken replies", () => {
     chromeListener({ kind:"toggle_voice" }, {}, vi.fn());
     expect(document.querySelector("#voice")!.getAttribute("aria-pressed")).toBe("false");
     expect(audio.setMuted).toHaveBeenLastCalledWith(true);
+  });
+});
+
+describe("public docs briefing", () => {
+  it.each([true, false])("points to IAM's grant heading and reports highlight found=%s honestly", async (found) => {
+    queryTabs.mockResolvedValue([{ id: 1, url: PUBLIC_DOCS[1] }]);
+    const doc = { url: PUBLIC_DOCS[1], title: "Grant IAM access", text: "Grant a single IAM role to a principal.", headings: ["Before you begin", "Grant a single IAM role"] };
+    sendMessage.mockImplementation(async (_id, message) => message.kind === "read_document" ? doc : { found });
+    await sockets[0].onmessage?.({ data: JSON.stringify({ type: "ready" }) });
+    document.querySelector<HTMLButtonElement>("[data-brief]")!.click();
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, { kind: "highlight_document", heading: "Grant a single IAM role" }));
+    const status = document.querySelector("[data-status]")!;
+    if (found) {
+      await vi.waitFor(() => expect(status.textContent).toContain("Briefing requested"));
+      expect(sockets[0].send).toHaveBeenCalledWith(expect.stringContaining("Brief me from this page using only"));
+    } else {
+      await vi.waitFor(() => expect(status.textContent).toContain("Couldn't point to “Grant a single IAM role”"));
+      expect(status.textContent).not.toContain("Briefing requested");
+      expect(sockets[0].send).not.toHaveBeenCalled();
+    }
   });
 });
 

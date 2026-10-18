@@ -30,7 +30,8 @@ changing the source contract. No public cache-bypass or arbitrary-fetch
 endpoint exists. Durable/shared storage belongs to the later persistence slice.
 
 The existing write-origin check protects the route. This slice does not add an
-identity system; deployment must integrate the relay's identity/admission work.
+identity system. Do not expose the relay publicly until identity/admission
+protects both `/journeys/compile` and `/live`; an Origin check is not authentication.
 Compilation coalesces concurrent requests and spaces fresh attempts by at least
 five seconds within one server process.
 

@@ -45,8 +45,12 @@ const journeyPanel = mountJourneyPanel($("#journey"), {
     if ("error" in doc) throw new Error(doc.error);
     if (!doc.text || !doc.headings.length) throw new Error("No visible document section was found.");
     docsTabId = tab.id;
-    const preferred = doc.headings.find((h) => /^(Create a database|Grant access|Required roles and permissions)$/i.test(h)) ?? doc.headings[0];
-    await toPage({ kind: "highlight_document", heading: preferred }, docsTabId);
+    const preferred = doc.headings.find((h) => /^(Create a database|Grant access|Grant a single IAM role|Required roles and permissions)$/i.test(h)) ?? doc.headings[0];
+    const highlight = await toPage<unknown>({ kind: "highlight_document", heading: preferred }, docsTabId);
+    if (!highlight || typeof highlight !== "object" || !("found" in highlight) || highlight.found !== true) {
+      docsTabId = undefined;
+      throw new Error(`Couldn't point to “${preferred}” on this page.`);
+    }
     sendServer({ type: "text", text: briefPrompt(doc) });
     say("user", "Brief me from this page.");
     open = null;
