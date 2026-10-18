@@ -14,6 +14,8 @@ vi.mock("./audio.ts", () => ({
     setMuted = audio.setMuted; play = audio.play; beginTurn = audio.beginTurn; turnEnded = audio.turnEnded; interrupt = audio.interrupt;
   },
 }));
+const policy = vi.hoisted(() => ({ violations: [] as { ruleId: string; field: string; message: string; severity: string }[] }));
+vi.mock("./policy.ts", async (original) => ({ ...(await original<typeof import("./policy.ts")>()), evaluate: () => policy.violations }));
 vi.mock("./config.ts", () => ({ HTTP: "https://coach.example", SERVER: "wss://coach.example", SERVER_HOST: "coach.example" }));
 let savedVoice: boolean | undefined;
 const storageSet = vi.fn().mockImplementation(async (value: { voiceOut:boolean }) => { savedVoice = value.voiceOut; });
@@ -31,6 +33,10 @@ class Socket {
   receive(msg: object) { this.onmessage?.({ data: JSON.stringify(msg) }); }
 }
 let sockets: Socket[];
+// The side panel registers its runtime listener first; the content script (when imported) registers second.
+const page = (msg: object, tabId = 1) =>
+  vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0](msg, { tab: { id: tabId } } as chrome.runtime.MessageSender, () => {});
+const form = { sections: [], fields: [] };
 const sendMessage = vi.fn().mockResolvedValue({ ok: true });
 const queryTabs = vi.fn();
 const getTab = vi.fn();
@@ -60,6 +66,7 @@ beforeEach(async () => {
   vi.resetModules();
   sockets = [];
   mic.onChunk = undefined;
+  policy.violations = [];
   sendMessage.mockReset().mockResolvedValue({ ok: true });
   storageSet.mockClear();
   Object.values(audio).forEach((mock) => mock.mockClear());
@@ -561,5 +568,64 @@ describe("duplicate-Save sandbox end to end", () => {
     expect(chosen).toMatchObject({ found: true, i: saves[0].i, name: "Save", confidence: 1 });
     expect(ring().hidden).toBe(false);
     expect(ring().style.top).toBe(`${billing.getBoundingClientRect().top - 4}px`);
+  });
+});
+
+describe("page activity across idle disconnects", () => {
+  it("remembers bound-tab page events while disconnected and summarises them on the next connection", async () => {
+    await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
+    page({ kind: "page_event", text: "User clicked the highlighted Labels" });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sockets).toHaveLength(0);
+    type("what next?");
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].receive({ type: "ready" });
+    const [summary, text] = sent(sockets[0]);
+    expect(summary).toMatchObject({ type: "session", text: expect.stringContaining("Page event: User clicked the highlighted Labels") });
+    expect(text).toEqual({ type: "text", text: "what next?" });
+  });
+
+  it("forwards bound-tab page events while connected and ignores other tabs", async () => {
+    const socket = await connected();
+    page({ kind: "page_event", text: "Background tab changed" }, 2);
+    page({ kind: "page_event", text: "User clicked the highlighted Labels" });
+    expect(sent(socket)).toEqual([{ type: "event", text: "User clicked the highlighted Labels" }]);
+    expect(document.body.textContent).not.toContain("Background tab changed");
+  });
+
+  it("reconnects for a blocking submit warning and delivers it once ready", async () => {
+    await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner label.", severity: "block" }];
+    page({ kind: "submit_intent", label: "Create", form });
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].receive({ type: "ready" });
+    expect(sent(sockets[0])).toEqual([{ type: "event", text: expect.stringContaining("Add an owner label.") }]);
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it("shows a blocking submit warning prominently when the daily allowance is used", async () => {
+    await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner label.", severity: "block" }];
+    page({ kind: "submit_intent", label: "Create", form });
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].receive({ type: "error", message: "Today's demo voice allowance is used." });
+    sockets[0].onclose?.();
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain("Add an owner label.");
+  });
+
+  it("shows a blocking submit warning prominently when session admission fails", async () => {
+    await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
+    fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner label.", severity: "block" }];
+    page({ kind: "submit_intent", label: "Create", form });
+    await vi.waitFor(() => expect(document.querySelector('[role="alert"]')?.textContent).toContain("Add an owner label."));
+    expect(sockets).toHaveLength(0);
+  });
+
+  it("does not connect for a passing submit while disconnected", async () => {
+    await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
+    page({ kind: "submit_intent", label: "Create", form });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sessionRequests()).toBe(0);
   });
 });
