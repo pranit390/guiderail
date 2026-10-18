@@ -3,7 +3,7 @@
 // existing 0.6 confidence is a match. A stale read or another tab cannot authorize
 // a highlight or an Assist fill.
 import type { HighlightResult, PageElement } from "./messages.ts";
-import { nameOf, norm, roleOf, sectionOf } from "./page.ts";
+import { collectControls, nameOf, norm, roleOf } from "./page.ts";
 
 export const MIN_CONFIDENCE = 0.6;
 
@@ -162,43 +162,44 @@ export function liveTargetOk(input: {
   return norm(input.liveName) === norm(input.name);
 }
 
-function elementsNow(indexed: Map<number, Element>): PageElement[] {
-  const elements: PageElement[] = [];
-  for (const [i, el] of indexed) {
-    if (!el.isConnected) continue;
-    const name = nameOf(el);
-    if (!name) continue;
-    const item: PageElement = { i, role: roleOf(el), name };
-    const section = sectionOf(el);
-    if (section && section !== name) item.section = section;
-    elements.push(item);
-  }
-  return elements;
+function pageElementsOf(controls: ReturnType<typeof collectControls>): PageElement[] {
+  return controls.map(({ i, role, name, value, section }) => {
+    const item: PageElement = { i, role, name };
+    if (value) item.value = value;
+    if (section) item.section = section;
+    return item;
+  });
 }
 
 // Every highlight is pinned to the bound snapshot. An unpinned request is refused, never re-read.
+// A control that was hidden, changed role, or gained a competitor since that read is stale:
+// the old index is not reused and the request is not authorized again.
 export function liveHighlight(
   msg: { text: string; role?: string; generation?: number; index?: number; name?: string },
   liveGeneration: number,
   indexed: Map<number, Element>,
+  snapshotRoles?: Map<number, string>,
 ): { result: HighlightResult; el?: Element } {
   if (msg.generation === undefined || msg.index === undefined || !msg.name) {
     return { result: { found: false, reason: "unbound", alternatives: [] } };
   }
   const stale: HighlightResult = { found: false, reason: "stale", alternatives: [] };
+  if (msg.generation !== liveGeneration) return { result: stale };
   const el = indexed.get(msg.index);
-  const ok = liveTargetOk({
-    requestedGeneration: msg.generation,
-    liveGeneration,
-    index: msg.index,
-    name: msg.name,
-    liveName: el ? nameOf(el) : undefined,
-    connected: !!el?.isConnected,
-  });
-  if (!ok || !el) return { result: stale };
-  // A pinned index still has to be the one resolved name. Two Saves cannot be forced by index.
-  const resolved = resolveName(msg.text, elementsNow(indexed), msg.role);
-  if (resolved.status === "ambiguous" || resolved.status === "missing") return { result: resolutionResult(msg.text, resolved) };
-  if (resolved.i !== msg.index) return { result: stale };
-  return { result: resolutionResult(msg.text, resolved), el };
+  const current = collectControls();
+  const eligible = el ? current.find((control) => control.el === el) : undefined;
+  const snapRole = snapshotRoles?.get(msg.index);
+  const nameOk = !!el && el.isConnected && norm(nameOf(el)) === norm(msg.name);
+  const roleOk = snapRole === undefined || roleOf(el!) === snapRole;
+  if (!nameOk || !roleOk || !eligible) return { result: stale };
+
+  const resolved = resolveName(msg.text, pageElementsOf(current), msg.role);
+  if (resolved.status === "found") {
+    const match = current.find((control) => control.i === resolved.i);
+    if (match?.el !== el) return { result: stale };
+    return { result: { found: true, i: msg.index, name: msg.name, confidence: resolved.confidence }, el };
+  }
+  const known = new Set(indexed.values());
+  if (current.some((control) => !known.has(control.el))) return { result: stale };
+  return { result: resolutionResult(msg.text, resolved) };
 }

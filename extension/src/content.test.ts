@@ -201,3 +201,61 @@ describe("Rule state mapping", () => {
     expect(shadow.querySelector(".chip:not(.step-chip) .state-glyph.stop")).not.toBeNull();
   });
 });
+
+describe("highlight freshness", () => {
+  function ring() {
+    return document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".ring")!;
+  }
+
+  function layOut(root: ParentNode = document) {
+    for (const el of root.querySelectorAll<HTMLElement>("*")) {
+      if (el.style.display === "none") continue;
+      el.getBoundingClientRect = () => new DOMRect(40, 100, 200, 60);
+    }
+  }
+
+  beforeEach(() => {
+    document.body.innerHTML = `<section aria-label="Labels"><h2>Labels</h2>
+      <input aria-label="Key 1" value="environment"><input aria-label="Value 1" value="production">
+      </section><section aria-label="Billing"><button type="button">Save</button></section>
+      <label for="db">Database ID</label><input id="db">`;
+    layOut();
+  });
+
+  it("hides the ring when a second Save appears after a successful highlight", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    expect(ring().hidden).toBe(false);
+
+    document.querySelector("section")!.insertAdjacentHTML("beforeend", `<button type="button">Save</button>`);
+    layOut();
+    const save = snap.elements.find((el) => el.name === "Save")!;
+    expect(request({ kind: "highlight", text: "Save", role: "button", generation: snap.generation, index: save.i, name: "Save" })).toMatchObject({ found: false, reason: "stale" });
+    expect(ring().hidden).toBe(true);
+  });
+
+  it("hides the ring when the pinned target is no longer visible, and keeps Violation marks", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    expect(shadow.querySelectorAll(".bad").length).toBeGreaterThan(0);
+
+    (document.getElementById("db") as HTMLElement).style.display = "none";
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: false, reason: "stale" });
+    expect(ring().hidden).toBe(true);
+    expect(shadow.querySelectorAll(".bad").length).toBeGreaterThan(0);
+  });
+
+  it("hides the ring when the page moves, without waiting for the next highlight", () => {
+    const snap = request({ kind: "read_page" }) as PageSnapshot;
+    const db = snap.elements.find((el) => el.name === "Database ID")!;
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: true });
+    history.pushState(null, "", "/moved");
+    vi.advanceTimersByTime(500);
+    expect(ring().hidden).toBe(true);
+    expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: false, reason: "stale" });
+  });
+});

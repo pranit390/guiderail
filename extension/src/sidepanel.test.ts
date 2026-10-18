@@ -155,5 +155,22 @@ describe("highlight wiring", () => {
     expect(after).toMatchObject({ found: false, reason: "stale" });
     expect(logText()).toContain("This screen changed since I last read it, so I won't point at or fill anything.");
     expect(highlights()).toHaveLength(1);
+    expect(sendMessage).toHaveBeenCalledWith(1, { kind: "clear_highlight" });
+  });
+
+  it("clears the previous ring when a later highlight is ambiguous, and reports fuzzy confidence", async () => {
+    await call("read", "read_page", {});
+    await call("db", "highlight", { text: "Database" });
+    const db = sockets[0].send.mock.calls.map(([raw]) => JSON.parse(raw)).find((message) => message.id === "db");
+    expect(db.response.confidence).toBeGreaterThanOrEqual(0.6);
+    expect(db.response.confidence).toBeLessThan(1);
+    expect(highlights()[0][1].text).toBe("Database");
+
+    sendMessage.mockClear();
+    const save = await call("save", "highlight", { text: "Save", role: "button" });
+    expect(save).toMatchObject({ found: false, reason: "ambiguous" });
+    expect(logText()).toContain('Which "Save" should I point at?');
+    expect(sendMessage).toHaveBeenCalledWith(1, { kind: "clear_highlight" });
+    expect(highlights()).toHaveLength(0);
   });
 });

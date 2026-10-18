@@ -266,12 +266,13 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   const decision = authorizeTarget({ text, role, citation, snapshot: snap, stale: boundStale, tabId });
   if (!actionAuthorized(decision)) {
     say("system", highlightOutcome(decision));
+    await clearBoundHighlight();
     return highlightResult(decision);
   }
   const live = await toPage<HighlightResult>({
     kind: "highlight",
-    text: decision.name,
-    role,
+    text,
+    ...(role ? { role } : {}),
     generation: snap!.generation,
     index: decision.i,
     name: decision.name,
@@ -279,8 +280,15 @@ async function runHighlight(args: Record<string, unknown>): Promise<HighlightRes
   if (!live.found) {
     if (live.reason === "stale") boundStale = true;
     say("system", live.reason === "ambiguous" ? live.ask : live.reason === "missing" ? live.mismatch : highlightOutcome({ authorized: false, reason: live.reason }));
+    await clearBoundHighlight();
+    return live;
   }
-  return live;
+  return { ...live, i: decision.i, name: decision.name, confidence: decision.confidence };
+}
+
+async function clearBoundHighlight() {
+  if (!bound) return;
+  await toPage({ kind: "clear_highlight" }, bound.tabId).catch(() => {});
 }
 
 // ---------- Guide: suggested values before the user types ----------
@@ -360,10 +368,16 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
     case "tab_changed":
       if (mode === "teach") void followTab(msg.tabId);
       // A reload of the coached tab drops the content script's generation counter, so the old snapshot cannot authorize a target.
-      if (bound && msg.tabId === bound.tabId && msg.url) boundStale = true;
+      if (bound && msg.tabId === bound.tabId && msg.url) {
+        boundStale = true;
+        void clearBoundHighlight();
+      }
       break;
     case "page_event":
-      if (bound && sender.tab?.id === bound.tabId && msg.generation !== undefined && msg.generation !== bound.generation) boundStale = true;
+      if (bound && sender.tab?.id === bound.tabId && msg.generation !== undefined && msg.generation !== bound.generation) {
+        boundStale = true;
+        void clearBoundHighlight();
+      }
       say("system", msg.text);
       sendServer({ type: "event", text: msg.text });
       break;

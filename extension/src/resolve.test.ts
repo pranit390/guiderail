@@ -185,3 +185,74 @@ describe("snapshot eligibility", () => {
     expect(other.el).toBeUndefined();
   });
 });
+
+describe("live control set", () => {
+  function pinState() {
+    const controls = collectControls();
+    return {
+      controls,
+      indexed: new Map(controls.map(({ i, el }) => [i, el] as const)),
+      roles: new Map(controls.map(({ i, role }) => [i, role] as const)),
+    };
+  }
+
+  it("refuses a Save that appears after the read instead of ringing the first one", () => {
+    document.body.innerHTML = `<section aria-label="Billing"><button type="button">Save</button></section>`;
+    layOut();
+    const { indexed, roles, controls } = pinState();
+    const save = controls.find((control) => control.name === "Save")!;
+    document.querySelector("section")!.insertAdjacentHTML("beforeend", `<button type="button">Save</button>`);
+    layOut();
+    const live = liveHighlight({ text: "Save", role: "button", generation: 3, index: save.i, name: "Save" }, 3, indexed, roles);
+    expect(live.result).toEqual({ found: false, reason: "stale", alternatives: [] });
+    expect(live.el).toBeUndefined();
+  });
+
+  it("refuses when a hidden duplicate Save becomes visible", () => {
+    document.body.innerHTML = `<section aria-label="Billing"><button type="button">Save</button></section>
+      <section aria-label="Security"><button type="button" id="hidden-save">Save</button></section>`;
+    const hidden = document.getElementById("hidden-save") as HTMLElement;
+    hidden.style.display = "none";
+    layOut();
+    const { indexed, roles, controls } = pinState();
+    expect(controls.filter((control) => control.name === "Save")).toHaveLength(1);
+    const save = controls.find((control) => control.name === "Save")!;
+    hidden.style.display = "";
+    layOut();
+    const live = liveHighlight({ text: "Save", role: "button", generation: 3, index: save.i, name: "Save" }, 3, indexed, roles);
+    expect(live.result).toMatchObject({ found: false, reason: "stale" });
+    expect(live.el).toBeUndefined();
+  });
+
+  it("refuses a target that was hidden after the read", () => {
+    const { indexed, roles, controls } = pinState();
+    const db = controls.find((control) => control.name === "Database ID")!;
+    (document.getElementById("db") as HTMLElement).style.display = "none";
+    const live = liveHighlight({ text: "Database ID", generation: 3, index: db.i, name: "Database ID" }, 3, indexed, roles);
+    expect(live.result).toEqual({ found: false, reason: "stale", alternatives: [] });
+    expect(live.el).toBeUndefined();
+  });
+
+  it("refuses a control whose role changed after the read", () => {
+    const { indexed, roles, controls } = pinState();
+    const db = controls.find((control) => control.name === "Database ID")!;
+    (document.getElementById("db") as HTMLInputElement).type = "checkbox";
+    const live = liveHighlight({ text: "Database ID", generation: 3, index: db.i, name: "Database ID" }, 3, indexed, roles);
+    expect(live.result).toMatchObject({ found: false, reason: "stale" });
+    expect(live.el).toBeUndefined();
+  });
+
+  it("keeps the fuzzy confidence of the original request", () => {
+    document.body.innerHTML = `<label for="db">Database ID</label><input id="db">`;
+    layOut();
+    const { indexed, roles, controls } = pinState();
+    const db = controls.find((control) => control.name === "Database ID")!;
+    const live = liveHighlight({ text: "Database", generation: 3, index: db.i, name: "Database ID" }, 3, indexed, roles);
+    expect(live.el).toBe(db.el);
+    expect(live.result).toMatchObject({ found: true, i: db.i, name: "Database ID" });
+    if (live.result.found) {
+      expect(live.result.confidence).toBeGreaterThanOrEqual(MIN_CONFIDENCE);
+      expect(live.result.confidence).toBeLessThan(1);
+    }
+  });
+});
