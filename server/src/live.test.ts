@@ -103,6 +103,13 @@ describe("Live idle timeout", () => {
 });
 
 describe("Live limits", () => {
+  it("shuts down only this session and releases once on socket errors", async () => {
+    const { client, release } = await start();
+    client.emit("error", new RangeError("Max payload size exceeded"));
+    client.emit("close");
+    expect(live.session.close).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledOnce();
+  });
   it("closes the Live session immediately when the admission allowance ends", async () => {
     const { client, end, release } = await start();
     end("demo allowance reached", "This demo session reached its daily voice limit.");
@@ -143,5 +150,45 @@ describe("Live limits", () => {
     expect(live.session.close).toHaveBeenCalledOnce();
     expect(client.close).toHaveBeenCalledWith(4000, "input allowance reached");
     expect(live.session.sendClientContent).toHaveBeenCalledTimes(6);
+  });
+});
+
+describe("tool result input boundary", () => {
+  const call = (id: string, name = "read_page") => live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id, name, args: {} }] } });
+
+  it("forwards only a matching outstanding tool result, once", async () => {
+    const { client } = await start();
+    for (let i = 0; i < 10; i++) client.input({ type: "tool_result", id: `not-issued-${i}`, name: "read_page", response: { text: "x".repeat(50_000) } });
+    call("issued");
+    client.input({ type: "tool_result", id: "issued", name: "read_form", response: {} });
+    expect(live.session.sendToolResponse).not.toHaveBeenCalled();
+    const result = { type: "tool_result", id: "issued", name: "read_page", response: { title: "Create service" } };
+    client.input(result);
+    client.input(result);
+    expect(live.session.sendToolResponse).toHaveBeenCalledExactlyOnceWith({ functionResponses: [{ id: "issued", name: "read_page", response: result.response }] });
+  });
+
+  it("ends the session before forwarding an oversized issued result", async () => {
+    const { client, release } = await start();
+    call("issued");
+    client.input({ type: "tool_result", id: "issued", name: "read_page", response: { text: "x".repeat(50_000) } });
+    expect(live.session.sendToolResponse).not.toHaveBeenCalled();
+    expect(client.close).toHaveBeenCalledWith(4000, "input allowance reached");
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("charges serialized response, id and name to the same 24,000-character budget as text", async () => {
+    const { client } = await start();
+    const response = { text: "x".repeat(3970) };
+    for (let i = 0; i < 6; i++) {
+      call(String(i));
+      client.input({ type: "tool_result", id: String(i), name: "read_page", response });
+    }
+    const used = 6 * (1 + "read_page".length + JSON.stringify(response).length);
+    client.input({ type: "text", text: "x".repeat(24_000 - used) });
+    call("last");
+    client.input({ type: "tool_result", id: "last", name: "read_page", response: {} });
+    expect(live.session.sendToolResponse).toHaveBeenCalledTimes(6);
+    expect(client.close).toHaveBeenCalledWith(4000, "input allowance reached");
   });
 });

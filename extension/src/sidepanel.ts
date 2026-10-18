@@ -13,6 +13,7 @@ import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, t
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
 import { SessionLog, type Entry } from "./sessionlog.ts";
 import { parseCalmPreset } from "./calm.ts";
+import { isSensitiveUrl } from "./privacy.ts";
 
 import { HTTP, SERVER, SERVER_HOST } from "./config.ts";
 
@@ -346,7 +347,7 @@ async function toPage<T>(msg: ToPage, tabId?: number): Promise<T> {
     : tabId === undefined ? await activeTab() : await chrome.tabs.get(tabId);
   if (generation !== binding.generation) throw new Error("The Journey changed. Re-read the page.");
   if (wasBound && tabId !== undefined && tabId !== tab.id) throw new Error("Journey paused: that is not the bound tab.");
-  if (tab.url && new URL(tab.url).hostname === "accounts.google.com") throw new Error("Sign-in pages are never read.");
+  if (tab.url && isSensitiveUrl(tab.url)) throw new Error("GuideRail does not read or record sensitive account pages.");
   const command = wasBound ? { ...msg, expectedUrl: tab.url } : msg;
   let result: T;
   try {
@@ -544,6 +545,10 @@ async function updateViolations(form: FormState) {
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply) => {
+  if ((sender.url && isSensitiveUrl(sender.url)) || (sender.tab?.url && isSensitiveUrl(sender.tab.url))) {
+    if (msg.kind === "teach_status") reply({ on: false });
+    return;
+  }
   if (msg.kind === "teach_status") { reply({ on: mode === "teach" && binding.tabId === undefined }); return; }
   if (msg.kind === "tab_changed" || msg.kind === "toggle_voice") { handlePageMessage(msg, sender); return; }
   if (sender.frameId && sender.frameId !== 0) return;
@@ -562,7 +567,6 @@ chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply)
     return;
   }
   if (sender.tab?.id === undefined || sender.tab.id !== boundTab) return;
-  if (sender.url && new URL(sender.url).hostname === "accounts.google.com") return;
   handlePageMessage(msg, sender);
 });
 
@@ -643,7 +647,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
 // Recording follows the expert across page loads and tab switches.
 async function followTab(tabId: number) {
   const tab = await chrome.tabs.get(tabId).catch(() => null);
-  if (!tab || mode !== "teach") return;
+  if (!tab || mode !== "teach" || (tab.url && isSensitiveUrl(tab.url))) return;
   await toPage({ kind: "teach", on: true }, tabId).catch(() => {});
   if (!teach || !tab.url) return;
   teach.add({ t: "navigate", at: Date.now(), url: tab.url, title: tab.title ?? "" });

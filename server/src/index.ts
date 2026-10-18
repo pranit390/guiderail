@@ -244,6 +244,9 @@ function approverPage(approval?: Approval) {
 
 const wss = new WebSocketServer({ server, path: "/live", maxPayload: 64 * 1024 });
 wss.on("connection", (client, req) => {
+  // ws emits an error (including maxPayload violations) before closing. Even
+  // rejected clients need a listener so a malformed frame cannot kill Node.
+  client.on("error", () => client.terminate());
   const params = new URL(req.url ?? "", "http://x").searchParams;
   const reject = (message: string) => {
     client.send(JSON.stringify({ type: "error", message }));
