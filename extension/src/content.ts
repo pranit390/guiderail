@@ -121,6 +121,8 @@ const calm = new CalmView(host, layer, (text) => send({ kind: "customize_event",
 let followRunning = false;
 let obstacles: Rect[] = [];
 let placementDirty = true;
+let pageMutated = false;
+let scannedAt = 0;
 let lastTargetLayout = "";
 
 function placeStep() {
@@ -130,8 +132,11 @@ function placeStep() {
   Object.assign(ring.style, { left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px`, borderRadius: `${radius + 4}px` });
   const layout = JSON.stringify([rect, window.innerWidth, window.innerHeight]);
   if (layout !== lastTargetLayout) { placementDirty = true; lastTargetLayout = layout; }
+  if (pageMutated && performance.now() - scannedAt >= 200) placementDirty = true;
   if (!placementDirty) return;
   placementDirty = false;
+  pageMutated = false;
+  scannedAt = performance.now();
   stepChip.hidden = !!offscreen(highlighted);
   if (stepChip.hidden) return;
   stepChip.style.maxWidth = `${Math.min(260, window.innerWidth - 16)}px`;
@@ -228,7 +233,7 @@ function ensureOverlaySurface(target?: Element) {
     if (host.parentElement !== surface) surface.append(host);
   }
 }
-const surfaceObserver = new MutationObserver(() => { placementDirty = true; ensureOverlaySurface(); });
+const surfaceObserver = new MutationObserver(() => { pageMutated = true; ensureOverlaySurface(); });
 surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["open", "hidden", "style", "class"] });
 document.addEventListener("toggle", onSurfaceToggle, true);
 function onSurfaceToggle() { ensureOverlaySurface(); }

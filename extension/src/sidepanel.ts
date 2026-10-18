@@ -535,8 +535,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     }
     case "check_policy": {
       const form = await toPage<FormState>({ kind: "read_form" });
-      await updateViolations(form);
-      return { violations };
+      return { violations: await updateViolations(form) };
     }
     case "draft_message": {
       return confirmCompose(args);
@@ -712,7 +711,7 @@ async function updateViolations(form: FormState) {
   const revision = guidanceRevision;
   const checked = evaluate(rules, form);
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations: checked }).catch(() => undefined))?.shown ?? [];
-  if (revision !== guidanceRevision || mode !== "guide") return;
+  if (revision !== guidanceRevision || mode !== "guide") return checked;
   violations = checked;
   issues.hidden = violations.length === 0;
   const heading = $("#issues-summary");
@@ -743,6 +742,15 @@ async function updateViolations(form: FormState) {
       return li;
     }),
   );
+  return checked;
+}
+
+function refreshViolations() {
+  if (mode !== "guide") return;
+  const revision = guidanceRevision;
+  void toPage<FormState>({ kind: "read_form" })
+    .then((form) => { if (revision === guidanceRevision) return updateViolations(form); })
+    .catch(() => {});
 }
 
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
@@ -785,6 +793,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       break;
     case "tab_changed":
       clearGuidance();
+      refreshViolations();
       boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
         if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -797,7 +806,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       }
       break;
     case "page_event":
-      if (msg.generation !== undefined) clearGuidance();
+      if (msg.generation !== undefined) { clearGuidance(); refreshViolations(); }
       if (binding.tabId !== undefined) {
         if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control. Choose I did this · Next step, or re-read this Step.");
         else journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -816,7 +825,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       break;
     case "submit_intent":
       if (mode === "teach") break;
-      void updateViolations(msg.form).then(() => {
+      void updateViolations(msg.form).then((violations) => {
         const blocking = violations.filter((v) => v.severity === "block");
         // The values let the model check what rules can't, e.g. a Region that doesn't fit the customer.
         const values = Object.entries(msg.form.fields).filter(([, v]) => v).map(([k, v]) => `${k}=${v}`).join(", ");

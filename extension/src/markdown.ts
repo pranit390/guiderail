@@ -1,7 +1,7 @@
 /** A deliberately small Markdown vocabulary. All unrecognised syntax is text. */
 function inline(parent: HTMLElement, text: string, depth = 0) {
   if (depth > 3) { parent.append(document.createTextNode(text)); return; }
-  const tokens = /`([^`\n]+)`|\*\*([^\n]+?)\*\*|\*([^*\n]+)\*|_([^_\n]+)_/g;
+  const tokens = /`([^`\n]+)`|\*\*([^\n]+?)\*\*|\*([^*\n]+)\*|(?<!\w)_([^_\n]+)_(?!\w)/g;
   let start = 0;
   for (const match of text.matchAll(tokens)) {
     parent.append(document.createTextNode(text.slice(start, match.index)));
