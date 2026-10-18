@@ -15,7 +15,7 @@ citation chips 12px. Existing monospace appears only for values.
 ## 4. Spacing and layout
 Keep the existing 4/6/8/10/12px spacing vocabulary. One region, #scroll, owns
 scrolling: current Step, log and cards scroll together, and new log messages
-follow the latest. The current Step stays outside the log live region. Header
+follow the latest. The current Step stays outside the log. Header
 and composer stay pinned outside #scroll. Journey rows wrap within the card.
 
 ## 5. Components
