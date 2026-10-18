@@ -1,4 +1,5 @@
 // The side panel owns the session (ADR 0004): voice, tool calls, policy engine, Journey state.
+import { firestoreGuardStatus, renderFirestoreGuidance } from "./firestore.ts";
 import { JourneyBinding } from "./journey-binding.ts";
 import { parseCompileRequest } from "../../shared/journey.ts";
 import { STATES, stateGlyph, violationState } from "./states.ts";
@@ -501,7 +502,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     case "check_policy": {
       const form = await toPage<FormState>({ kind: "read_form" });
       await updateViolations(form);
-      return { violations };
+      return { violations, firestoreSecurityMode: firestoreGuardStatus(form) };
     }
     case "draft_message": {
       return confirmCompose(args);
@@ -673,6 +674,7 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 // ---------- Guard: Violations ----------
 
 async function updateViolations(form: FormState) {
+  renderFirestoreGuidance($("#firestore-guidance"), form);
   violations = evaluate(rules, form);
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations }).catch(() => undefined))?.shown ?? [];
   issues.hidden = violations.length === 0;
@@ -710,6 +712,7 @@ type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind:
 
 chrome.runtime.onMessage.addListener((msg: FromPage | TabChanged, sender, reply) => {
   if ((sender.url && isSensitiveUrl(sender.url)) || (sender.tab?.url && isSensitiveUrl(sender.tab.url))) {
+    if (sender.tab?.id === boundTab) $("#firestore-guidance").hidden = true;
     if (binding.tabId !== undefined && sender.tab?.id === binding.tabId) {
       journeyPanel.invalidate("Journey paused: return the bound tab to its Firebase Firestore project.");
     }
@@ -745,6 +748,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       appEvent(msg.text);
       break;
     case "tab_changed":
+      $("#firestore-guidance").hidden = true;
       boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
         if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -833,6 +837,7 @@ async function setTeach(on: boolean) {
   if (on) {
     violations = [];
     issues.hidden = true;
+    $("#firestore-guidance").hidden = true;
     $("#issues-list").replaceChildren();
     $("#issues-summary").textContent = "";
     await toPage({ kind: "show_violations", violations: [] }).catch(() => {});

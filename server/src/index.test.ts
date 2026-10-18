@@ -126,6 +126,15 @@ describe("cost-limited public coach", () => {
     expect(await response.json()).toEqual({ error: "not_allowed", message: "This account isn't allowed to use this GuideRail demo." });
   });
 
+  it("serves the approved Firestore seed Rule through the real Rules endpoint", async () => {
+    const response = await fetch(base + "/rules");
+    expect(response.status).toBe(200);
+    const { rules } = await response.json();
+    expect(rules.filter((rule: { id: string }) => rule.id === "firestore-no-test-mode")).toEqual([
+      expect.objectContaining({ scope: { url: "console.firebase.google.com/*", section: "Configure" },
+        check: { kind: "field_value_not_in", field: "Start in test mode", values: ["checked"] }, severity: "block" }),
+    ]);
+  });
   it("survives an oversized authenticated frame and admits another session", async () => {
     const origin = "chrome-extension://abcdefghijklmnop";
     async function connect() {

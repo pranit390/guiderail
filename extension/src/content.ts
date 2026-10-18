@@ -303,7 +303,7 @@ function readForm(): FormState {
   }
   const fields: Record<string, string> = {};
   for (const el of document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD}`)) {
-    if (labelInputs.has(el) || isSecret(el)) continue;
+    if (labelInputs.has(el) || isSecret(el) || !isVisible(el)) continue;
     const name = maskValue(nameOf(el));
     const value = safeValueOf(el);
     if (name) fields[name] = value || fields[name] || "";

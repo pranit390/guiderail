@@ -1,4 +1,7 @@
 // @vitest-environment happy-dom
+/// <reference types="node" />
+import { readFileSync } from "node:fs";
+const configureFixture = readFileSync("src/fixtures/firestore-configure.html", "utf8");
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { mountJourneyPanel } from "./journey-panel.ts";
 import { fixtureDraft } from "../../server/src/journeys/fixture.ts";
@@ -414,5 +417,48 @@ describe("highlight freshness", () => {
     vi.advanceTimersByTime(500);
     expect(ring().hidden).toBe(true);
     expect(request({ kind: "highlight", text: "Database ID", generation: snap.generation, index: db.i, name: db.name })).toMatchObject({ found: false, reason: "stale" });
+  });
+});
+
+
+describe("Firestore Configure practice copy", () => {
+  function configure() {
+    document.head.innerHTML = '<meta name="guiderail-url" content="console.firebase.google.com/project/practice-only/firestore"><style>* { opacity: 1; }</style>';
+    document.body.innerHTML = configureFixture;
+  }
+
+  it("blocks Test mode at its exact radio, holds the first Create and permits the human override", () => {
+    configure();
+    document.querySelector<HTMLInputElement>("#test")!.click();
+    expect(form().fields["Start in test mode"]).toBe("checked");
+    const violations = evaluate(rules, form());
+    expect(violations).toEqual([expect.objectContaining({ ruleId: "firestore-no-test-mode", field: "Start in test mode", severity: "block" })]);
+    expect(request({ kind: "show_violations", violations })).toEqual({ shown: ["Start in test mode"] });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    expect(shadow.querySelectorAll(".bad.stop")).toHaveLength(1);
+    expect(shadow.textContent).toContain("allows anyone to read and overwrite your data");
+    const click = () => {
+      const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+      document.querySelector("button")!.dispatchEvent(event);
+      return event;
+    };
+    expect(click().defaultPrevented).toBe(true);
+    expect(click().defaultPrevented).toBe(false);
+    document.querySelector<HTMLInputElement>("#production")!.click();
+    expect(evaluate(rules, form())).toEqual([]);
+    request({ kind: "show_violations", violations: [] });
+    expect(shadow.querySelectorAll(".bad")).toHaveLength(0);
+    expect(click().defaultPrevented).toBe(false);
+  });
+
+  it("does not check hidden wizard controls", () => {
+    configure();
+    document.querySelector<HTMLInputElement>("#test")!.checked = true;
+    document.querySelector<HTMLElement>("fieldset")!.style.display = "none";
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (this: Element) {
+      return this.closest("fieldset") ? new DOMRect() : new DOMRect(40, 100, 200, 60);
+    });
+    expect(form().fields).not.toHaveProperty("Start in test mode");
+    expect(evaluate(rules, form())).toEqual([]);
   });
 });

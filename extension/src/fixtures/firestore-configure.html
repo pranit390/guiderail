@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="guiderail-url" content="console.firebase.google.com/project/practice-only/firestore">
+  <title>Practice copy · Firestore Configure</title>
+</head>
+<body>
+  <p>Practice copy · Firestore Guard fixture. No Firebase connection.</p>
+  <dialog open aria-label="Create a database">
+    <h1>Create a database</h1>
+    <h2>Configure</h2>
+    <fieldset>
+      <legend>Security rules</legend>
+      <label for="production">Start in production mode</label>
+      <input id="production" name="mode" type="radio" checked>
+      <p>Client reads and writes are denied until you configure access.</p>
+      <label for="test">Start in test mode</label>
+      <input id="test" name="mode" type="radio">
+      <p>Test mode allows anyone to read and overwrite your data.</p>
+    </fieldset>
+    <button type="button">Create</button>
+  </dialog>
+</body>
+</html>
