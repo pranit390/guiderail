@@ -66,8 +66,10 @@ pins the first concrete Firestore project in that tab. Switching tabs pauses
 commands; closed tabs, another project, unsupported pages, and sign-in pages
 cannot substitute for it. Use **End Journey binding** to start over.
 
-Cited Steps remain documentation-derived. **Read and point to Step** matches an
-exact, unique name in a fresh page read; it does not click or fill the console.
+Cited Steps remain documentation-derived. **Read and point to Step** resolves
+the Step's control in a fresh page read with the shared resolver (exact name
+first, else one clear fuzzy match; ties and weak matches are refused). It does
+not click or fill the console.
 If a control is absent, the Step retains its citation and says "The doc says X.
 I can't see it on this screen." Re-read or explicitly skip it. **I did this ·
 Next step** records the person's report, not independent verification. After
