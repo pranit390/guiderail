@@ -423,7 +423,7 @@ button:disabled {
   background: var(--line);
 }
 
-.journey-list li {
+.journey-list > li {
   display: grid;
   grid-template-columns: 32px minmax(0, 1fr);
   gap: 16px;
@@ -514,13 +514,60 @@ button:disabled {
   color: var(--muted);
 }
 
-.controls {
+.step-mock {
+  max-width: 420px;
   margin: 16px 0 0;
-  padding-left: 1.2rem;
+  padding: 16px;
+  border: 1px solid var(--control);
+  border-radius: 12px;
+  background: var(--raised);
 }
 
-.controls li {
-  margin: 0 0 6px;
+.step-mock p {
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+
+.step-mock .step-mock-heading {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.source-chip {
+  display: inline-block;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--go);
+  font-size: 0.9rem;
+}
+
+.control-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: control;
+}
+
+.control-rail li {
+  counter-increment: control;
+  padding: 4px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  font-size: 0.9rem;
+}
+
+.control-rail li::before {
+  content: counter(control) ". ";
+  color: var(--muted);
+}
+
+.control-rail li[aria-current="step"] {
+  border-color: var(--go);
 }
 
 .source-row {

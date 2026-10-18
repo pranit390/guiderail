@@ -7,6 +7,7 @@ import FirestoreExample from "../components/FirestoreExample.astro";
 import FaqList from "../components/FaqList.astro";
 import {
   citedControls,
+  citedStep,
   consoleHref,
   content,
   docsHref,
@@ -81,8 +82,17 @@ import {
                   {stop.paragraphs.map((paragraph) => <p>{paragraph}</p>)}
                   {stop.title === "Cited Steps" && (
                     <>
-                      <ol class="controls">
-                        {citedControls.map((control) => <li>{control}</li>)}
+                      <figure class="step-mock" aria-label="Mock of one Step in the side panel">
+                        <p class="step-mock-heading">
+                          Step {citedStep.index + 1} of {citedControls.length} · {citedControls[citedStep.index]}
+                        </p>
+                        <p>{citedStep.status}</p>
+                        <a class="source-chip" href={docsHref}>Source: {citedStep.source}</a>
+                      </figure>
+                      <ol class="control-rail" aria-label="The ten cited controls, in order">
+                        {citedControls.map((control, i) => (
+                          <li aria-current={i === citedStep.index ? "step" : undefined}>{control}</li>
+                        ))}
                       </ol>
                       <div class="source-row">
                         <a href={docsHref}>Manage databases</a>

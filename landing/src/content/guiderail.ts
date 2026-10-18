@@ -50,6 +50,13 @@ export const citedControls = [
   "Create",
 ] as const;
 
+/** One Step as the side panel shows it. The heading and status lines match extension/src/journey-walk.ts. */
+export const citedStep = {
+  index: 5,
+  status: "Database ID is visible. You operate this control.",
+  source: "Manage databases, Create a database",
+} as const;
+
 export const hero = {
   titleLead: "GuideRail points.",
   titleRest: "You click.",
@@ -111,9 +118,8 @@ export const content: LandingContent = {
         title: "Cited Steps",
         tone: "step",
         paragraphs: [
-          "Before the voice session starts, GuideRail builds the Journey from two Firebase docs, Manage databases and Cloud Firestore locations. Each Step names one control, in this order.",
-          "The docs set the rules for the ID. It is 4 to 63 lowercase letters, numbers and hyphens, starts with a letter, ends with a letter or number, and can't look like a UUID. Leave it blank and Standard edition uses (default). After you delete a database, its ID takes about five minutes to free up. A project can hold 100 databases. You can't move a database to another location after you create it. Creating one needs roles/datastore.owner, which carries the datastore.databases.create permission.",
-          "If the docs name a control the page doesn't show, the coach tells you and keeps the citation up.",
+          "Before the voice session starts, GuideRail builds the Journey from two Firebase docs, Manage databases and Cloud Firestore locations. Each Step names one control and links to the doc it came from.",
+          "That link lets anyone in your enterprise check an instruction against the official doc. If the page doesn't show a control the doc names, GuideRail says so instead of guessing.",
         ],
       },
       {
