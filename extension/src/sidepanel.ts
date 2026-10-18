@@ -607,8 +607,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
     }
     case "check_policy": {
       const form = await toPage<FormState>({ kind: "read_form" });
-      await updateViolations(form);
-      return { violations };
+      return { violations: await updateViolations(form) };
     }
     case "draft_message": {
       return confirmCompose(args);
@@ -785,7 +784,7 @@ async function updateViolations(form: FormState) {
   const revision = guidanceRevision;
   const checked = evaluate(rules, form);
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations: checked }).catch(() => undefined))?.shown ?? [];
-  if (revision !== guidanceRevision || mode !== "guide") return;
+  if (revision !== guidanceRevision || mode !== "guide") return checked;
   violations = checked;
   if (!violations.some((v) => v.severity === "block")) $("#policy-override").hidden = true;
 
@@ -818,6 +817,15 @@ async function updateViolations(form: FormState) {
       return li;
     }),
   );
+  return checked;
+}
+
+function refreshViolations() {
+  if (mode !== "guide") return;
+  const revision = guidanceRevision;
+  void toPage<FormState>({ kind: "read_form" })
+    .then((form) => { if (revision === guidanceRevision) return updateViolations(form); })
+    .catch(() => {});
 }
 
 type TabChanged = { kind: "tab_changed"; tabId: number; url?: string } | { kind: "toggle_voice" };
@@ -862,6 +870,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
     case "tab_changed":
       clearGuidance();
       assist.invalidate("The tab or page changed. Review a new plan.");
+      refreshViolations();
       boundTab = msg.tabId;
       if (binding.tabId !== undefined) {
         if (msg.tabId === binding.tabId && msg.url && binding.accepts({ id: msg.tabId, url: msg.url })) journeyPanel.invalidate("The page changed. Re-read this Step before continuing.", true);
@@ -877,6 +886,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       if (msg.generation !== undefined) {
         clearGuidance();
         assist.invalidate("The page changed. Review a new plan.");
+        refreshViolations();
       }
       if (binding.tabId !== undefined) {
         if (msg.generation === undefined) journeyPanel.acted("You clicked the highlighted control. Choose I did this · Next step, or re-read this Step.");
@@ -896,7 +906,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       break;
     case "submit_intent":
       if (mode === "teach") break;
-      void updateViolations(msg.form).then(() => {
+      void updateViolations(msg.form).then((violations) => {
         const blocking = violations.filter((v) => v.severity === "block");
         if (blocking.length) {
           $("#policy-override").textContent = msg.continued

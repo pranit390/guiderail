@@ -12,6 +12,11 @@ describe("safe panel Markdown", () => {
     expect(el.querySelectorAll("ul li")).toHaveLength(2);
     expect(el.querySelectorAll("ol li")).toHaveLength(2);
   });
+  it("keeps underscores inside identifiers", () => {
+    const el = document.createElement("div"); renderMarkdown(el, "Use my_project_id with read_page_tool, not _this_.");
+    expect(el.textContent).toBe("Use my_project_id with read_page_tool, not this.");
+    expect([...el.querySelectorAll("em")].map((n) => n.textContent)).toEqual(["this"]);
+  });
   it("keeps HTML, scripts and unsafe links as text", () => {
     const text = '<img src=x onerror=alert(1)> **<script>alert(1)</script>** [click](javascript:alert(1))';
     const el = document.createElement("div"); renderMarkdown(el, text);
