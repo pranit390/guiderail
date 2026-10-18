@@ -7,7 +7,7 @@ import { briefPrompt, isPublicDoc, RELAY_TEXT_LIMIT, routePageTool, type Documen
 import { FIRESTORE_GOAL } from "../../shared/journey.ts";
 import { Mic, Speaker } from "./audio.ts";
 import type { FormState, FromPage, HighlightResult, PageSnapshot, ToPage } from "./messages.ts";
-import { evaluate, guidance, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
+import { evaluate, guidance, sectionOnScreen, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
 import { violationFieldLabel } from "./page.ts";
 import { actionAuthorized, authorizeTarget, highlightOutcome, highlightResult, type BoundSnapshot } from "./resolve.ts";
 import { describeForModel, shouldSpeak, TeachSession } from "./teach/session.ts";
@@ -408,7 +408,7 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       const items = guidance(rules, form, { firstName, consoleCreate: true }, args.section ?? "Labels");
       renderGuidance(items);
       const section = args.section ?? "Labels";
-      return { section, onScreen: form.sections.includes(section), requirements: items };
+      return { section, onScreen: sectionOnScreen(rules, form, section), requirements: items };
     }
     case "check_policy": {
       const form = await toPage<FormState>({ kind: "read_form" });

@@ -76,7 +76,7 @@ describe("recorder", () => {
     field.dispatchEvent(new Event("change", { bubbles: true }));
     expect(events).toEqual([
       expect.objectContaining({ t: "field", target: expect.objectContaining({ name: "Allow unauthenticated" }), value: "checked" }),
-      expect.objectContaining({ t: "field", value: "" }),
+      expect.objectContaining({ t: "field", value: "unchecked" }),
     ]);
   });
 

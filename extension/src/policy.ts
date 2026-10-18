@@ -41,7 +41,7 @@ export type Context = { firstName?: string; consoleCreate: boolean };
 
 const globToRegex = (glob: string) => new RegExp("^" + glob.split("*").map((p) => p.replace(/[.+?^${}()|[\]\\]/g, "\\$&")).join(".*"));
 
-const isFieldCheck = (c: Check) => c.kind === "field_value_not_in" || c.kind === "field_value_regex";
+const isFieldCheck = (c: Check): c is Extract<Check, { field: string }> => c.kind === "field_value_not_in" || c.kind === "field_value_regex";
 
 // Label checks need their section on screen; field checks only need the field itself (they skip
 // when it's absent). Guidance needs neither (a form may have no Labels field even though the
@@ -52,6 +52,14 @@ export function rulesFor(rules: Rule[], form: Pick<FormState, "url" | "sections"
       globToRegex(r.scope.url).test(form.url) &&
       (!onScreen || isFieldCheck(r.check) || form.sections.includes(r.scope.section)) &&
       (!section || r.scope.section.toLowerCase() === section.toLowerCase()),
+  );
+}
+
+// A section is on screen when the page shows it, or when a field its field Rules check is on the form.
+export function sectionOnScreen(rules: Rule[], form: FormState, section: string): boolean {
+  return (
+    form.sections.includes(section) ||
+    rulesFor(rules, form, section, false).some((r) => isFieldCheck(r.check) && r.check.field in form.fields)
   );
 }
 

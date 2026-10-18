@@ -57,7 +57,8 @@ function onClick(e: Event) {
 function onChange(e: Event) {
   const el = e.target as HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
   if (!emit || isSensitivePage() || ours(el) || isSecret(el) || !("value" in el)) return;
-  const value = safeValueOf(el) ?? "";
+  const checkable = el instanceof HTMLInputElement && (el.type === "checkbox" || el.type === "radio");
+  const value = checkable && !el.checked ? "unchecked" : safeValueOf(el) ?? "";
   const target = describe(el);
   emit({ t: "field", at: Date.now(), url: effectiveUrl(), target, value: isSecretField(target) ? MASK : maskValue(value) });
 }

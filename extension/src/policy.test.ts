@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import seed from "../../seed/rules/org-labeling-rules.json";
 import type { FormState } from "./messages.ts";
-import { evaluate, guidance, rulesFor, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
+import { evaluate, guidance, rulesFor, sectionOnScreen, summarizeViolations, violationCountText, type Rule, type Violation } from "./policy.ts";
 
 const rules = seed.rules as Rule[];
 
@@ -150,6 +150,20 @@ describe("field rules on a create form", () => {
   it("skips fields absent from the form and Rules for a different page", () => {
     expect(evaluate(taught, form({}))).toEqual([]);
     expect(evaluate(taught, { ...form({ "Allow unauthenticated": "checked" }), url: "console.cloud.google.com/iam-admin/iam" })).toEqual([]);
+  });
+});
+
+describe("sectionOnScreen", () => {
+  const authRule = { ...(rules[0] as Rule), id: "require-auth", check: { kind: "field_value_not_in", field: "Allow unauthenticated", values: ["checked"] }, scope: { url: "console.cloud.google.com/run/create*", section: "Authentication" } } as Rule;
+  const form = (fields: Record<string, string>, sections: string[] = []): FormState => ({ url: "console.cloud.google.com/run/create", labels: {}, fields, sections });
+
+  it("treats a field Rule's section as on screen when its field is on the form", () => {
+    expect(sectionOnScreen([authRule], form({ "Allow unauthenticated": "checked" }), "Authentication")).toBe(true);
+    expect(sectionOnScreen([authRule], form({}), "Authentication")).toBe(false);
+  });
+  it("keeps Labels on screen only when the page shows the section", () => {
+    expect(sectionOnScreen(rules, form({}, ["Labels"]), "Labels")).toBe(true);
+    expect(sectionOnScreen(rules, form({ "Service name": "ocr" }), "Labels")).toBe(false);
   });
 });
 
