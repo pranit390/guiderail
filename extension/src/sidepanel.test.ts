@@ -54,10 +54,10 @@ beforeEach(async () => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("calmer panel paths", () => {
-  it("keeps the current Step separate from the conversation live region", () => {
+  it("announces Journey changes through one conversation live region and keeps the current Step outside it", () => {
     const status = document.querySelector("[data-status]")!;
-    expect(status.closest('[aria-live="polite"]')).toBeNull();
-    expect(document.querySelector("#current-step")!.closest("#scroll")).toBeNull();
+    expect(status.closest('[aria-live="polite"]')?.id).toBe("log");
+    expect(document.querySelector("#current-step")!.closest("#log")).toBeNull();
     expect(document.querySelector("#journey [aria-live], #journey [role=status]")).toBeNull();
   });
   it("applies and restores from the buttons without a microphone or model", async () => {

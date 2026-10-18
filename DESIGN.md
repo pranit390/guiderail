@@ -8,7 +8,7 @@ Light: background #f4f7f5, surface #ffffff, secondary #eef2ef, separator #dde4df
 
 ## Typography and geometry
 
-Retain system UI at 14px/1.5, 16px brand, 12px secondary copy, 13px cards and 11px page chips. Conversation, guidance, Violations and drafts now share one scrolling region. Header, composer and the compact current Journey Step remain independently reachable; the full cited template is a disclosure. Page outlines sit outside fields; chips use existing collision detection. Neutral chat surfaces keep colour meaningful.
+Retain system UI at 14px/1.5, 16px brand, 12px secondary copy, 13px cards and 11px page chips. Retain existing panel scroll ownership; shared scrolling belongs to https://github.com/pranit390/guiderail/pull/47. The compact current Journey Step sits outside the conversation log so its controls stay reachable; the full cited template is a disclosure. Page outlines sit outside fields; chips use existing collision detection. Neutral chat surfaces keep colour meaningful.
 
 ## Primitives and states
 
@@ -22,4 +22,4 @@ Spoken replies is a native aria-pressed button beside the composer, default on, 
 
 ## Accessibility and accepted limits
 
-Keyboard focus uses Go with 2px offset. Controls have contrasting borders; state changes have polite announcements. The compact layout integrates the sibling panel scroll/reveal controller while retaining state tokens and voice controls. Current Step progression reveals the updated summary without moving composer focus. No autonomous form actions or Zen owner are introduced. Real console evidence requires a page available to this isolated browser; do not claim sandbox evidence as live-console proof.
+Keyboard focus uses Go with 2px offset. Controls have contrasting borders; state changes have polite announcements. The sibling scroll/reveal controller is not integrated here; state tokens and voice controls are retained. Current Step progression updates the compact summary without moving composer focus. No autonomous form actions or Zen owner are introduced. Real console evidence requires a page available to this isolated browser; do not claim sandbox evidence as live-console proof.
