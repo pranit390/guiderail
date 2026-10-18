@@ -84,6 +84,22 @@ describe("approved Database ID pin", () => {
 });
 
 describe("calmer content messages", () => {
+  it("reports a wizard control change without a route change, ignoring its own ring updates", async () => {
+    document.querySelector("meta")!.content = "console.firebase.google.com/project/fixture/firestore";
+    highlightPinned("Create", "button");
+    await vi.advanceTimersByTimeAsync(500);
+    runtime.sendMessage.mockClear();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(runtime.sendMessage.mock.calls.filter(([msg]) => msg.kind === "page_event")).toHaveLength(0);
+    document.querySelector("button")!.textContent = "Next";
+    await vi.advanceTimersByTimeAsync(500);
+    expect(runtime.sendMessage.mock.calls.filter(([msg]) => msg.kind === "page_event")).toEqual([
+      [expect.objectContaining({ generation: expect.any(Number) })],
+    ]);
+    runtime.sendMessage.mockClear();
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(runtime.sendMessage.mock.calls.filter(([msg]) => msg.kind === "page_event")).toHaveLength(0);
+  });
   it("announces a soft guard override without changing the second-click behavior", () => {
     request({ kind: "show_violations", violations: [{ field: "Labels", message: "Add owner", severity: "block" }] });
     const button = document.querySelector("button")!;

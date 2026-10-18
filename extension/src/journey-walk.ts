@@ -12,7 +12,7 @@ export function observeStep(control: string, page: PageSnapshot): StepObservatio
   return { state: "visible", text: `${match.name} is visible. You operate this control.`, target: match.name, role: element.role };
 }
 
-export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, read: () => Promise<PageSnapshot>, point: (text: string, role: string | undefined) => Promise<unknown>, changed: (text: string) => void, clear: () => Promise<unknown> = async () => {}, currentRegion: HTMLElement = parent) {
+export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, read: () => Promise<PageSnapshot>, point: (text: string, role: string | undefined) => Promise<unknown>, changed: (text: string) => void, clear: () => Promise<unknown> = async () => {}, currentRegion: HTMLElement = parent, prompt: (text: string) => void = () => {}) {
   const rows = [...parent.querySelectorAll<HTMLLIElement>("li")];
   let current = 0;
   let busy = false;
@@ -22,6 +22,22 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   // The highlighted Step survives a same-tab route change so its click, validated asynchronously, can still be recorded.
   let pointed = -1;
   let acted = -1;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let pendingAuto = false;
+  let attempts = 0;
+  let announced = false;
+  function cancelAuto() { clearTimeout(timer); timer = undefined; pendingAuto = false; }
+  function schedule(reset = false) {
+    cancelAuto();
+    if (reset) { attempts = 0; announced = false; }
+    if (!enabled || current >= rows.length || attempts >= 2) return;
+    timer = setTimeout(() => {
+      timer = undefined;
+      if (busy) { pendingAuto = true; return; }
+      attempts++;
+      void refresh(true);
+    }, 600);
+  }
   const statuses = rows.map(() => "Not checked on this screen.");
   const controls = document.createElement("div");
   const heading = document.createElement("h2");
@@ -49,8 +65,9 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     reread.disabled = !enabled || busy || current >= rows.length; skip.disabled = reread.disabled;
     next.disabled = reread.disabled || journey.steps[current].control === "Create" || (observed !== current && acted !== current);
   }
-  async function refresh() {
+  async function refresh(automatic = false) {
     if (!enabled || busy || current >= rows.length) return;
+    if (!automatic) { cancelAuto(); announced = false; }
     const reading = revision;
     busy = true; observed = -1; pointed = -1; render();
     let snapshot: PageSnapshot | undefined;
@@ -66,10 +83,19 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
         if (reading !== revision) return;
         if (!result || typeof result !== "object" || !("found" in result) || result.found !== true) throw new Error("The control changed or could not be highlighted. Re-read before continuing.");
         observed = current; pointed = current;
+        if (!announced) { prompt(`Step ${current + 1}: ${journey.steps[current].control}. You operate this control.`); announced = true; }
       }
       changed(`${observation.text} Source: ${journey.steps[current].citationHeading}.`);
     } catch (error) { if (reading !== revision) return; if (!snapshot) acted = -1; statuses[current] = error instanceof Error ? error.message : "The page could not be read."; }
-    finally { busy = false; reread.textContent = "Re-read this Step"; render(); }
+    finally {
+      busy = false; reread.textContent = "Re-read this Step"; render();
+      if (acted === current && journey.steps[current]?.control !== "Create") advance(false);
+      else if (pendingAuto) schedule();
+      else if (automatic && reading === revision && observed !== current) {
+        if (attempts < 2) schedule();
+        else if (!announced && snapshot) { prompt(`I can't see ${journey.steps[current].control} on this screen yet. Re-read this Step to retry.`); announced = true; }
+      }
+    }
   }
   function advance(skipped: boolean) {
     if (!enabled || busy || current >= rows.length) return;
@@ -77,13 +103,15 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     statuses[current] = skipped ? "Explicitly skipped by you; not verified." : "You reported this Step done; not independently verified.";
     changed(`${journey.steps[current].control}: ${statuses[current]}`);
     void clear();
-    current++; render();
+    current++; observed = -1; pointed = -1; acted = -1; revision++; render();
+    schedule(true);
     currentRegion.scrollTop = 0;
   }
   reread.addEventListener("click", () => void refresh());
   next.addEventListener("click", () => advance(false));
   skip.addEventListener("click", () => advance(true));
   render();
+  schedule(true);
   return {
     // A successful model pointer may move guidance to a later cited control.
     // It never marks the earlier Steps done, and Create remains a human boundary.
@@ -95,13 +123,14 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
         return target === control || (step.control !== "Create" && target.endsWith(` ${control}`)) ? [i] : [];
       });
       if (matches.length !== 1) return;
+      cancelAuto();
       if (current !== matches[0]) { revision++; current = matches[0]; acted = -1; }
       observed = current; pointed = current;
       statuses[current] = `${name} is visible. You operate this control.`;
       render();
     },
-    setEnabled(value: boolean) { if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); },
-    acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current || pointed === current) acted = current; statuses[current] = message; render(); },
-    invalidate(message: string, sameTab = false) { void clear(); revision++; observed = -1; if (!sameTab) { pointed = -1; acted = -1; } if (current < rows.length) statuses[current] = message; render(); },
+    setEnabled(value: boolean) { cancelAuto(); if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); if (value) schedule(true); },
+    acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current || pointed === current) acted = current; statuses[current] = message; render(); if (acted === current && journey.steps[current].control !== "Create") advance(false); },
+    invalidate(message: string, sameTab = false) { cancelAuto(); void clear(); revision++; observed = -1; if (!sameTab) { pointed = -1; acted = -1; } if (current < rows.length) statuses[current] = message; render(); if (sameTab) schedule(true); },
   };
 }

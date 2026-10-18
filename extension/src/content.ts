@@ -26,6 +26,8 @@ let highlighted: Element | null = null;
 let violationSummary = summarizeViolations([]);
 let warnedSubmitAt = 0;
 let lastInputAt = 0;
+let screenControls: ReturnType<typeof collectControls> | undefined;
+let screenDirty = false;
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---------- Reading the page ----------
@@ -37,7 +39,8 @@ function readPage(): PageSnapshot {
   snapshotRoles = new Map();
   const elements: PageElement[] = [];
   const rank: number[] = [];
-  for (const control of collectControls(MAX_ELEMENTS)) {
+  screenControls = collectControls(MAX_ELEMENTS);
+  for (const control of screenControls) {
     indexed.set(control.i, control.el);
     snapshotRoles.set(control.i, control.role);
     const item: PageElement = { i: control.i, role: control.role, name: control.name };
@@ -245,7 +248,10 @@ function ensureOverlaySurface(target?: Element) {
     if (host.parentElement !== surface) surface.append(host);
   }
 }
-const surfaceObserver = new MutationObserver(() => { invalidateTag(); ensureOverlaySurface(); });
+const surfaceObserver = new MutationObserver((mutations) => {
+  if (mutations.some((mutation) => !host.contains(mutation.target))) screenDirty = true;
+  invalidateTag(); ensureOverlaySurface();
+});
 surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["open", "hidden", "style", "class"] });
 document.addEventListener("toggle", onSurfaceToggle, true);
 function onSurfaceToggle() { ensureOverlaySurface(); }
@@ -443,7 +449,15 @@ document.addEventListener("click", onClick, true);
 
 let lastUrl = location.href;
 const urlTimer = setInterval(() => {
-  if (location.href !== lastUrl) {
+  const routeChanged = location.href !== lastUrl;
+  let controlsChanged = false;
+  if (screenDirty && screenControls && /^(https:\/\/)?console\.firebase\.google\.com\/project\/[^/]+\/firestore(?:\/|$)/.test(effectiveUrl()) && !isSensitivePage()) {
+    const controls = collectControls(MAX_ELEMENTS);
+    controlsChanged = controls.length !== screenControls.length || controls.some((control, i) => control.el !== screenControls?.[i]?.el || control.name !== screenControls[i].name || control.role !== screenControls[i].role);
+    screenControls = controls;
+  }
+  screenDirty = false;
+  if (routeChanged || controlsChanged) {
     lastUrl = location.href;
     generation += 1;
     assistPin = undefined;
