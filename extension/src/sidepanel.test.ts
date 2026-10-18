@@ -22,6 +22,7 @@ class Socket {
   close = vi.fn(() => { this.readyState = 3; this.onclose?.(); });
   constructor(public url: string) { sockets.push(this); }
   get params() { return new URL(this.url).searchParams; }
+
 }
 let sockets: Socket[];
 const sendMessage = vi.fn().mockResolvedValue({ ok: true });
@@ -31,6 +32,8 @@ const session = { set: vi.fn().mockResolvedValue(undefined), remove: vi.fn().moc
 
 beforeEach(async () => {
   vi.resetModules();
+  vi.stubGlobal("matchMedia", () => ({ matches: false }));
+  HTMLElement.prototype.scrollIntoView = vi.fn();
   sockets = [];
   storageSet.mockClear();
   Object.values(audio).forEach((mock) => mock.mockClear());
@@ -52,6 +55,41 @@ beforeEach(async () => {
 });
 
 afterEach(() => vi.unstubAllGlobals());
+
+describe("Teach controls in a long conversation", () => {
+  it("reveals recording controls when Teach starts from history", async () => {
+    const log = document.querySelector<HTMLElement>("#log")!;
+    const scroll = document.querySelector<HTMLElement>("#scroll")!;
+    const bar = document.querySelector<HTMLElement>("#teachbar")!;
+    log.textContent = "A long conversation. ".repeat(1000);
+    scroll.scrollTop = 0;
+    bar.scrollIntoView = vi.fn(() => { scroll.scrollTop = 9000; });
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    document.querySelector<HTMLButtonElement>("#teach")!.click();
+    await vi.waitFor(() => expect(bar.hidden).toBe(false));
+    expect(bar.scrollIntoView).toHaveBeenCalledWith({ block: "nearest", behavior: "smooth" });
+    expect(scroll.scrollTop).toBe(9000);
+    expect(document.querySelector("#teachstop")?.textContent).toContain("Stop and draft Playbook");
+  });
+
+  it.each(["network", "http", "json"])("reveals retry controls after a %s drafting failure", async (failure) => {
+    const bar = document.querySelector<HTMLElement>("#teachbar")!;
+    bar.scrollIntoView = vi.fn();
+    vi.stubGlobal("matchMedia", () => ({ matches: false }));
+    document.querySelector<HTMLButtonElement>("#teach")!.click();
+    await vi.waitFor(() => expect(bar.hidden).toBe(false));
+    vi.mocked(bar.scrollIntoView).mockClear();
+    if (failure === "network") vi.mocked(fetch).mockRejectedValue(new Error("offline"));
+    else vi.mocked(fetch).mockResolvedValue({
+      ok: failure !== "http",
+      statusText: "bad response",
+      json: failure === "json" ? async () => { throw new Error("invalid JSON"); } : async () => ({ error: "try again" }),
+    } as Response);
+    document.querySelector<HTMLButtonElement>("#teachstop")!.click();
+    await vi.waitFor(() => expect(bar.scrollIntoView).toHaveBeenCalledTimes(1));
+    expect(bar.hidden).toBe(false);
+  });
+});
 
 describe("calmer panel paths", () => {
   it("announces Journey changes through one conversation live region and keeps the current Step outside it", () => {

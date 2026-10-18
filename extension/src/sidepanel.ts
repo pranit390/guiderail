@@ -440,35 +440,35 @@ async function updateViolations(form: FormState) {
 
 function showViolations(shown: string[] = []) {
   panel.update(issues, () => `New: ${violationCountText(summarizeViolations(violations))}`, () => {
-  issues.hidden = violations.length === 0;
-  const heading = $("#issues-summary");
-  // The heading is the live region: only a change in the counts is announced, not every rebuild while typing.
-  const text = violations.length ? violationCountText(summarizeViolations(violations)) : "";
-  if (heading.textContent !== text) heading.textContent = text;
-  const list = $("#issues-list");
-  list.replaceChildren(
-    ...violations.map((v) => {
-      const li = document.createElement("li");
-      li.dataset.severity = v.severity;
-      const state = violationState(v.severity);
-      const field = document.createElement("span");
-      field.className = "field";
-      field.append(stateGlyph(state), document.createTextNode(`${STATES[state].label} · ${violationFieldLabel(v.field)}`));
-      const msg = document.createElement("span");
-      msg.className = "rule-msg";
-      msg.textContent = v.message;
-      msg.id = `issue-${v.ruleId}`;
-      li.setAttribute("aria-describedby", msg.id);
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.textContent = "Show field";
-      btn.setAttribute("aria-label", `Show ${violationFieldLabel(v.field)} field: ${v.message}`);
-      btn.addEventListener("click", () => { void toPage({ kind: "show_field", field: v.field }).catch(() => {}); });
-      if (shown.includes(v.field)) li.append(field, btn, msg);
-      else li.append(field, msg);
-      return li;
-    }),
-  );
+    issues.hidden = violations.length === 0;
+    const heading = $("#issues-summary");
+    // The heading is the live region: only a change in the counts is announced, not every rebuild while typing.
+    const text = violations.length ? violationCountText(summarizeViolations(violations)) : "";
+    if (heading.textContent !== text) heading.textContent = text;
+    const list = $("#issues-list");
+    list.replaceChildren(
+      ...violations.map((v) => {
+        const li = document.createElement("li");
+        li.dataset.severity = v.severity;
+        const state = violationState(v.severity);
+        const field = document.createElement("span");
+        field.className = "field";
+        field.append(stateGlyph(state), document.createTextNode(`${STATES[state].label} · ${violationFieldLabel(v.field)}`));
+        const msg = document.createElement("span");
+        msg.className = "rule-msg";
+        msg.textContent = v.message;
+        msg.id = `issue-${v.ruleId}`;
+        li.setAttribute("aria-describedby", msg.id);
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.textContent = "Show field";
+        btn.setAttribute("aria-label", `Show ${violationFieldLabel(v.field)} field: ${v.message}`);
+        btn.addEventListener("click", () => { void toPage({ kind: "show_field", field: v.field }).catch(() => {}); });
+        if (shown.includes(v.field)) li.append(field, btn, msg);
+        else li.append(field, msg);
+        return li;
+      }),
+    );
   });
 }
 
@@ -586,6 +586,7 @@ async function setTeach(on: boolean) {
   }
   await toPage({ kind: "teach", on }).catch(() => {});
   $("#teachbar").hidden = !on;
+  if (on) panel.reveal($("#teachbar"));
   connect();
 }
 
@@ -645,17 +646,20 @@ async function stopAndDraft() {
   } catch {
     say("system", "Couldn't reach the GuideRail server on localhost:8787. Press \"Stop and draft Playbook\" to try again.");
     $("#teachbar").hidden = false;
+    panel.reveal($("#teachbar"));
     return;
   }
   if (!res.ok) {
     say("system", `Couldn't draft the Playbook: ${await errorText(res)}. Press "Stop and draft Playbook" to try again.`);
     $("#teachbar").hidden = false;
+    panel.reveal($("#teachbar"));
     return;
   }
   let body: any;
   try { body = await res.json(); } catch {
     say("system", `Couldn't draft the Playbook: ${res.statusText || "bad response"}. Press "Stop and draft Playbook" to try again.`);
     $("#teachbar").hidden = false;
+    panel.reveal($("#teachbar"));
     return;
   }
   teach = null;
