@@ -62,7 +62,7 @@ export class CalmView {
       this.addClass("gr-calm-sandbox");
     }
     this.host.classList.add("gr-calm");
-    this.announce("Calmer view on for this page. Say put it back or click Restore in the panel to undo.");
+    this.announce("Calmer view on for this page. Say put it back to undo.");
     return { ok: true, preset };
   }
 

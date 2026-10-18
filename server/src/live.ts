@@ -77,9 +77,9 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
   const active = () => {
     clearTimeout(idle);
     if (client.readyState !== client.OPEN || [...pendingTools.values()].includes("draft_message")) return;
-    idle = setTimeout(() => end("idle", `Disconnected after ${IDLE_MS / 1000} seconds without activity. Type or press Talk to reconnect.`), IDLE_MS);
+    idle = setTimeout(() => end("idle", `Disconnected after ${IDLE_MS / 1000} seconds without activity. Type or tap the mic to reconnect.`), IDLE_MS);
   };
-  const cap = setTimeout(() => end("session limit", `This demo session reached its ${SESSION_MS / 60_000}-minute limit. Type or press Talk to reconnect if today's allowance remains.`), SESSION_MS);
+  const cap = setTimeout(() => end("session limit", `This demo session reached its ${SESSION_MS / 60_000}-minute limit. Type or tap the mic to reconnect if today's allowance remains.`), SESSION_MS);
   client.once("close", shutdown);
   client.on("error", shutdown);
   void open();

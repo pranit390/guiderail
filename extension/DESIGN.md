@@ -63,7 +63,7 @@ native keyboard-operable elements with the existing focus-visible treatment.
 No new animation. Pending operations disable duplicate starts. Missing controls
 retain their citations and offer re-read or explicit skip. Re-read never clicks
 or fills the console. Creating a resource is always the person's action.
-Retain the existing three 2400ms opacity breaths on the Here halo; Calmer and
+Retain the existing three 2400ms opacity breaths on the Here halo; the calmer page view and
 prefers-reduced-motion keep it static. Next hover/press changes brightness
 in place, with no positional motion. The beui animated-badge reference's
 reduced-motion rule (state lands at rest) is the interaction reference.
