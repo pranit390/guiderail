@@ -70,8 +70,9 @@ function findElement(text: string, role?: string): HighlightResult {
 const host = document.createElement("guiderail-overlay");
 const shadow = host.attachShadow({ mode: "open" });
 shadow.innerHTML = `<style>
-  :host { all: initial; --gr-edge:${EDGE_LIGHT}; --gr-halo:rgba(224,161,0,.20); --gr-bad:${BAD_LIGHT}; }
-  :host([data-theme="dark"]) { --gr-edge:${EDGE_DARK}; --gr-halo:rgba(242,185,39,.22); --gr-bad:${BAD_DARK}; }
+  :host { all: initial; }
+  .layer > * { --gr-edge:${EDGE_LIGHT}; --gr-halo:rgba(224,161,0,.20); --gr-bad:${BAD_LIGHT}; }
+  .layer > [data-theme="dark"] { --gr-edge:${EDGE_DARK}; --gr-halo:rgba(242,185,39,.22); --gr-bad:${BAD_DARK}; }
   .layer { position: fixed; inset: 0; pointer-events: none; z-index: 2147483647; }
   .ring { position: fixed; border-radius: 6px; outline: 2px solid var(--gr-edge); outline-offset: 2px;
           box-shadow: 0 0 10px 3px var(--gr-halo); transition: left .18s ease, top .18s ease, width .18s ease, height .18s ease; }
@@ -129,8 +130,8 @@ function placeChip(chip: HTMLElement, el: Element) {
   Object.assign(chip.style, { left: `${left}px`, top: `${top}px` });
 }
 
-function applyTheme(el: Element) {
-  host.dataset.theme = isDarkSurrounding(el) ? "dark" : "light";
+function applyTheme(node: HTMLElement, el: Element) {
+  node.dataset.theme = isDarkSurrounding(el) ? "dark" : "light";
 }
 
 // The person is interacting: an editable field has focus, or they typed in the last 2 seconds.
@@ -155,7 +156,8 @@ function placeCue(el: Element) {
 
 function pointAt(el: Element, opts: { scroll?: boolean } = {}) {
   highlighted = el;
-  applyTheme(el);
+  applyTheme(ring, el);
+  applyTheme(cue, el);
   ring.hidden = false;
   place(ring, el, 4);
   // Pulse twice (~1.4s each) then settle; never under reduced motion.
@@ -194,12 +196,12 @@ function follow() {
     placeChip(chip, el);
     return true;
   });
-  if (!highlighted && badBoxes.length === 0 && ring.hidden && !calm.active) { followRunning = false; return; }
   if (highlighted || badBoxes.length || calm.active) requestAnimationFrame(follow);
   else followRunning = false;
 }
-window.addEventListener("resize", () => { if (highlighted || badBoxes.length || calm.active) startFollow(); });
-document.addEventListener("scroll", () => { if (highlighted || badBoxes.length || calm.active) startFollow(); }, true);
+function onViewportChange() { if (highlighted || badBoxes.length || calm.active) startFollow(); }
+window.addEventListener("resize", onViewportChange);
+document.addEventListener("scroll", onViewportChange, true);
 
 function toast(text: string) {
   const t = document.createElement("div");
@@ -263,9 +265,9 @@ function showViolations(violations: ViolationDetail[]): string[] {
     const el = violationFieldElement(field);
     if (!el) continue;
     shown.push(field);
-    applyTheme(el);
     const box = document.createElement("div");
     box.className = "bad";
+    applyTheme(box, el);
     layer.append(box);
     const chip = document.createElement("div");
     chip.className = "chip";
@@ -303,6 +305,7 @@ function onInput() {
 document.addEventListener("input", onInput, true);
 
 function onClick(e: MouseEvent) {
+  if (!alive()) return shutdown();
   const target = e.target as Element;
   const button = target.closest('button,[role=button],input[type=submit]');
   if (button && SUBMIT_WORDS.test(nameOf(button))) {
@@ -357,6 +360,8 @@ function shutdown() {
   calm.restore();
   document.removeEventListener("input", onInput, true);
   document.removeEventListener("click", onClick, true);
+  window.removeEventListener("resize", onViewportChange);
+  document.removeEventListener("scroll", onViewportChange, true);
   clearInterval(urlTimer);
   clearTimeout(formTimer);
   setRecording(false);

@@ -90,4 +90,22 @@ describe("calmer content messages", () => {
     expect(document.querySelector("#guiderail-customize")).toBeNull();
     expect(document.querySelector("guiderail-overlay")).toBeNull();
   });
+
+  it("lets a submit through once the extension context is gone, even with blocking Violations", () => {
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    runtime.id = "";
+    const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+    document.querySelector("button")!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
+    expect(document.querySelector("guiderail-overlay")).toBeNull();
+  });
+
+  it("themes the Step ring and each Violation box from their own surroundings", () => {
+    document.querySelector<HTMLElement>('section[aria-label="Labels"]')!.style.backgroundColor = "rgb(22, 29, 40)";
+    request({ kind: "show_violations", violations: evaluate(rules, form()) });
+    expect(request({ kind: "highlight", text: "Create", role: "button" })).toMatchObject({ found: true });
+    const shadow = document.querySelector("guiderail-overlay")!.shadowRoot!;
+    expect(shadow.querySelector<HTMLElement>(".ring")!.dataset.theme).toBe("light");
+    expect(shadow.querySelector<HTMLElement>(".bad")!.dataset.theme).toBe("dark");
+  });
 });
