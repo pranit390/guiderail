@@ -150,7 +150,7 @@ function placeStep() {
   scannedAt = now;
   stepChip.hidden = !!offscreen(highlighted);
   if (stepChip.hidden) return;
-  stepChip.style.maxWidth = `${Math.min(260, window.innerWidth - 16)}px`;
+  Object.assign(stepChip.style, { left: "0px", top: "0px", maxWidth: `${Math.min(260, window.innerWidth - 16)}px` });
   obstacles = pageObstacles();
   const spot = placeTag(rect, { width: stepChip.offsetWidth, height: stepChip.offsetHeight }, { width: window.innerWidth, height: window.innerHeight }, obstacles);
   stepChip.hidden = !spot;
@@ -170,7 +170,7 @@ function placeChip(chip: HTMLElement, el: Element) {
   const rtl = getComputedStyle(el).direction === "rtl";
   // Narrow the chip to the room beside the field (gap 8px, margin 4px, padding 14px) so it can sit there.
   const room = (rtl ? r.left : window.innerWidth - r.right) - 26;
-  chip.style.maxWidth = `${room >= 120 ? Math.min(260, room) : 260}px`;
+  Object.assign(chip.style, { left: "0px", top: "0px", maxWidth: `${room >= 120 ? Math.min(260, room) : 260}px` });
   const w = chip.offsetWidth, h = chip.offsetHeight;
   // Beside the field at its inline end, vertically centred; else just below it. Never over another form control.
   const beside = new DOMRect(rtl ? r.left - 8 - w : r.right + 8, r.top + (r.height - h) / 2, w, h);

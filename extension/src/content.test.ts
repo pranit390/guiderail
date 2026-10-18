@@ -372,6 +372,20 @@ describe("calmer content messages", () => {
     expect(chip.hidden).toBe(true);
   });
 
+  it("measures the Here tag independently of its previous spot near the viewport edge", () => {
+    const width = (el: HTMLElement) => Math.min(120, window.innerWidth - (parseFloat(el.style.left) || 0));
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockImplementation(function (this: HTMLElement) { return width(this); });
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) { return width(this) < 120 ? 40 : 20; });
+    highlightPinned("Create", "button");
+    const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
+    expect(tag.hidden).toBe(false);
+    const top = tag.style.top;
+    tag.style.left = `${window.innerWidth - 60}px`;
+    highlightPinned("Create", "button");
+    expect(tag.hidden).toBe(false);
+    expect(tag.style.top).toBe(top);
+  });
+
   it("narrows a Rule chip to the room beside its field so it can sit there", () => {
     vi.stubGlobal("innerWidth", 520);
     vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 280, 60));

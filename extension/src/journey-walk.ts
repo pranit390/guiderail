@@ -1,5 +1,6 @@
 import type { CompiledJourney } from "../../shared/journey.ts";
 import type { PageSnapshot } from "./messages.ts";
+import { norm } from "./page.ts";
 import { resolveName } from "./resolve.ts";
 
 export type StepObservation = { state: "visible" | "missing" | "ambiguous"; text: string; target?: string; role?: string };
@@ -88,9 +89,13 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     // It never marks the earlier Steps done, and Create remains a human boundary.
     pointed(name: string) {
       if (!enabled) return;
-      const match = resolveName(name, journey.steps.map((step, i) => ({ i, role: "button", name: step.control })));
-      if (match.status !== "found") return;
-      if (current !== match.i) { revision++; current = match.i; acted = -1; }
+      const target = norm(name);
+      const matches = journey.steps.flatMap((step, i) => {
+        const control = norm(step.control);
+        return target === control || (step.control !== "Create" && target.endsWith(` ${control}`)) ? [i] : [];
+      });
+      if (matches.length !== 1) return;
+      if (current !== matches[0]) { revision++; current = matches[0]; acted = -1; }
       observed = current; pointed = current;
       statuses[current] = `${name} is visible. You operate this control.`;
       render();

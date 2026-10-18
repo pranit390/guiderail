@@ -30,6 +30,14 @@ describe("cited Guide walk", () => {
     expect(next.disabled).toBe(true);
     walk.pointed("Create"); expect(next.disabled).toBe(true);
   });
+  it("moves only on a whole-phrase match and never fuzzily to Create", () => {
+    const { parent, walk, next } = mount();
+    walk.pointed("Create database"); walk.pointed("Firestore Studio"); walk.pointed("Add database later");
+    expect(parent.querySelector(".journey-current h2")?.textContent).toBe("Step 1 of 10 · Databases & Storage");
+    expect(next.disabled).toBe(true);
+    walk.pointed("Cloud Firestore");
+    expect(parent.querySelector(".journey-current h2")?.textContent).toBe("Step 2 of 10 · Firestore");
+  });
   it("does not infer a current Step from a repeated Next name or an unrelated pointer", () => {
     const { parent, walk, next } = mount();
     walk.pointed("Next"); walk.pointed("Billing");

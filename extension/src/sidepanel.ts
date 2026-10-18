@@ -606,8 +606,9 @@ async function runTool(name: string, args: Record<string, any>): Promise<Record<
       return { section, onScreen: sectionOnScreen(rules, form, section), requirements: items };
     }
     case "check_policy": {
+      const revision = guidanceRevision;
       const form = await toPage<FormState>({ kind: "read_form" });
-      return { violations: await updateViolations(form) };
+      return { violations: await updateViolations(form, revision) };
     }
     case "draft_message": {
       return confirmCompose(args);
@@ -779,9 +780,8 @@ function renderGuidance(items: ReturnType<typeof guidance>) {
 
 // ---------- Guard: Violations ----------
 
-async function updateViolations(form: FormState) {
-  renderFirestoreGuidance($("#firestore-guidance"), form);
-  const revision = guidanceRevision;
+async function updateViolations(form: FormState, revision = guidanceRevision) {
+  if (revision === guidanceRevision && mode === "guide") renderFirestoreGuidance($("#firestore-guidance"), form);
   const checked = evaluate(rules, form);
   const shown = (await toPage<{ shown?: string[] }>({ kind: "show_violations", violations: checked }).catch(() => undefined))?.shown ?? [];
   if (revision !== guidanceRevision || mode !== "guide") return checked;
@@ -824,7 +824,7 @@ function refreshViolations() {
   if (mode !== "guide") return;
   const revision = guidanceRevision;
   void toPage<FormState>({ kind: "read_form" })
-    .then((form) => { if (revision === guidanceRevision) return updateViolations(form); })
+    .then((form) => updateViolations(form, revision))
     .catch(() => {});
 }
 

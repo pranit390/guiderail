@@ -1336,6 +1336,17 @@ describe("demo sign-in", () => {
 });
 
 describe("Firestore Guard panel", () => {
+  it("does not revive Firestore guidance from a policy read that began before a tab change", async () => {
+    const socket = await connected();
+    let finish: ((value: unknown) => void) | undefined;
+    sendMessage.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; })).mockRejectedValue(new Error("No content script"));
+    socket.receive({ type: "tool_call", id: "check", name: "check_policy", args: {} });
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    page({ kind: "tab_changed", tabId: 2 });
+    finish!({ ...form, url: "console.firebase.google.com/project/practice-only/firestore", fields: { "Start in test mode": "checked", "Start in Production mode": "" } });
+    await vi.waitFor(() => expect(sent(socket).some((m) => m.id === "check")).toBe(true));
+    expect($("#firestore-guidance").hidden).toBe(true);
+  });
   it("renders the block reason, safe choice and location source, then clears on Production", async () => {
     await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
     const firestore = { ...form, url: "console.firebase.google.com/project/practice-only/firestore", fields: { "Start in test mode": "checked", "Start in Production mode": "" } };
