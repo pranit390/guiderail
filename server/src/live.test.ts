@@ -27,10 +27,10 @@ class Client extends EventEmitter {
   input(msg: object) { this.emit("message", Buffer.from(JSON.stringify(msg))); }
 }
 
-async function start() {
+async function start(connect = relay) {
   const client = new Client();
   const release = vi.fn();
-  const end = relay(client as unknown as WebSocket, undefined, "guide", undefined, release);
+  const end = connect(client as unknown as WebSocket, undefined, "guide", undefined, release);
   for (let i = 0; i < 20 && !client.sent.length; i++) await Promise.resolve();
   expect(client.sent).toEqual([{ type: "ready" }]);
   return { client, end, release };
@@ -40,10 +40,11 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
   Object.values(live.session).forEach((fn) => fn.mockClear());
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe("Live idle timeout", () => {
-  it("closes the Live session after a minute without user input or model output", async () => {
+  it("closes the Live session after two minutes without user input or model output", async () => {
+    expect(IDLE_MS).toBe(120_000);
     const { client } = await start();
     vi.advanceTimersByTime(IDLE_MS - 1);
     expect(live.session.close).not.toHaveBeenCalled();
@@ -59,7 +60,7 @@ describe("Live idle timeout", () => {
     { type: "event", text: "User clicked the highlighted Labels" },
     { type: "context", text: "Expert clicked Next" },
     { type: "app", text: "Playbook draft ready" },
-  ])("restarts the minute on %j", async (msg) => {
+  ])("restarts the idle timeout on %j", async (msg) => {
     const { client } = await start();
     vi.advanceTimersByTime(IDLE_MS - 1);
     client.input(msg);
@@ -69,7 +70,7 @@ describe("Live idle timeout", () => {
     expect(live.session.close).toHaveBeenCalledOnce();
   });
 
-  it("restarts the minute on model output and transcribed speech", async () => {
+  it("restarts the idle timeout on model output and transcribed speech", async () => {
     await start();
     vi.advanceTimersByTime(IDLE_MS - 1);
     live.callbacks!.onmessage({ serverContent: { inputTranscription: { text: "where are labels" } } });
@@ -91,7 +92,7 @@ describe("Live idle timeout", () => {
     expect(client.close).toHaveBeenCalledWith(4000, "idle");
   });
 
-  it("pauses the minute while an email proposal awaits confirmation and restarts it once answered", async () => {
+  it("pauses the idle timeout while an email proposal awaits confirmation and restarts it once answered", async () => {
     const { client } = await start();
     live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "draft", name: "draft_message", args: {} }] } });
     client.input({ type: "text", text: "still reading" });
@@ -104,10 +105,10 @@ describe("Live idle timeout", () => {
     expect(client.close).toHaveBeenCalledWith(4000, "idle");
   });
 
-  it("still ends at the ten-minute cap while an email proposal awaits confirmation", async () => {
+  it("still ends at the twenty-minute cap while an email proposal awaits confirmation", async () => {
     const { client, release } = await start();
     live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "draft", name: "draft_message", args: {} }] } });
-    vi.advanceTimersByTime(10 * 60 * 1000 - 1);
+    vi.advanceTimersByTime(20 * 60 * 1000 - 1);
     expect(live.session.close).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(live.session.close).toHaveBeenCalledOnce();
@@ -115,14 +116,14 @@ describe("Live idle timeout", () => {
     expect(release).toHaveBeenCalledOnce();
   });
 
-  it("does not pause the minute for other outstanding tool calls", async () => {
+  it("does not pause the idle timeout for other outstanding tool calls", async () => {
     const { client } = await start();
     live.callbacks!.onmessage({ toolCall: { functionCalls: [{ id: "read", name: "read_page", args: {} }] } });
     vi.advanceTimersByTime(IDLE_MS);
     expect(client.close).toHaveBeenCalledWith(4000, "idle");
   });
 
-  it("does not restart the minute for session summaries, tool results, unknown messages or resumption updates", async () => {
+  it("does not restart the idle timeout for session summaries, tool results, unknown messages or resumption updates", async () => {
     const { client } = await start();
     vi.advanceTimersByTime(IDLE_MS / 2);
     client.input({ type: "session", text: "Session so far" });
@@ -131,6 +132,45 @@ describe("Live idle timeout", () => {
     live.callbacks!.onmessage({ sessionResumptionUpdate: { resumable: true, newHandle: "h" } });
     vi.advanceTimersByTime(IDLE_MS / 2);
     expect(live.session.close).toHaveBeenCalledOnce();
+  });
+});
+
+describe("configured Live limits", () => {
+  beforeEach(() => {
+    vi.stubEnv("LIVE_SESSION_MINUTES", "3");
+    vi.stubEnv("LIVE_IDLE_SECONDS", "30");
+    vi.resetModules();
+  });
+
+  it("uses the idle override and reports its actual duration", async () => {
+    const { relay } = await import("./live.ts");
+    const { client, release } = await start(relay);
+    vi.advanceTimersByTime(29_999);
+    expect(live.session.close).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(client.close).toHaveBeenCalledWith(4000, "idle");
+    expect(client.sent.at(-1)?.message).toContain("30 seconds");
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it("uses the same session override as admission despite ongoing activity", async () => {
+    const { relay } = await import("./live.ts");
+    const { LiveAdmission } = await import("./admission.ts");
+    const expired = vi.fn();
+    const admission = new LiveAdmission();
+    expect(admission.admit(expired).allowed).toBe(true);
+    const { client, release } = await start(relay);
+    for (let i = 0; i < 6; i++) {
+      vi.advanceTimersByTime(29_999);
+      client.input({ type: "text", text: "continue" });
+    }
+    expect(live.session.close).not.toHaveBeenCalled();
+    expect(expired).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(6);
+    expect(client.close).toHaveBeenCalledWith(4000, "session limit");
+    expect(client.sent.at(-1)?.message).toContain("3-minute limit");
+    expect(release).toHaveBeenCalledOnce();
+    expect(expired).toHaveBeenCalledOnce();
   });
 });
 

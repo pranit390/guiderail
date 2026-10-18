@@ -5,6 +5,9 @@ import { instructionFor, playbookTitle, type Mode } from "./instructions.ts";
 import { guideJourneyInstruction } from "./journeys/compile.ts";
 import { loadPlaybooks, loadRuleLines } from "./playbooks/load.ts";
 import { untrustedData, untrustedToolResult, UNTRUSTED_DATA_INSTRUCTION } from "./untrusted.ts";
+import { IDLE_MS, SESSION_MS } from "./live-limits.ts";
+
+export { IDLE_MS } from "./live-limits.ts";
 
 // Messages between the side panel and this relay. Audio is base64 PCM16:
 // 16 kHz from the client, 24 kHz to the client.
@@ -31,8 +34,6 @@ export type ServerMessage =
 const project = process.env.GOOGLE_CLOUD_PROJECT ?? "zoop-innovation";
 const location = process.env.GOOGLE_CLOUD_LOCATION ?? "us-central1";
 const model = process.env.LIVE_MODEL ?? "gemini-live-2.5-flash-native-audio";
-const MAX_SESSION_MS = 10 * 60 * 1000;
-export const IDLE_MS = 60 * 1000;
 const ACTIVITY = new Set<ClientMessage["type"]>(["text", "audio_end", "event", "context", "app"]);
 
 const ai = new GoogleGenAI({ vertexai: true, project, location });
@@ -72,13 +73,13 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
     client.close(4000, reason);
   };
   // Only user input, page activity and model output keep a connection open; raw mic frames (often silence) do not.
-  // An email proposal awaiting the user's confirmation pauses the minute; the ten-minute cap still applies.
+  // An email proposal awaiting the user's confirmation pauses idle expiry; the session cap still applies.
   const active = () => {
     clearTimeout(idle);
     if (client.readyState !== client.OPEN || [...pendingTools.values()].includes("draft_message")) return;
-    idle = setTimeout(() => end("idle", "Disconnected after one minute without activity. Type or press Talk to reconnect."), IDLE_MS);
+    idle = setTimeout(() => end("idle", `Disconnected after ${IDLE_MS / 1000} seconds without activity. Type or press Talk to reconnect.`), IDLE_MS);
   };
-  const cap = setTimeout(() => end("session limit", "This demo session reached its ten-minute limit. Type or press Talk to reconnect if today's allowance remains."), MAX_SESSION_MS);
+  const cap = setTimeout(() => end("session limit", `This demo session reached its ${SESSION_MS / 60_000}-minute limit. Type or press Talk to reconnect if today's allowance remains.`), SESSION_MS);
   client.once("close", shutdown);
   client.on("error", shutdown);
   void open();

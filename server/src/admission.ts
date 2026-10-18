@@ -1,8 +1,9 @@
 import { randomBytes, randomUUID } from "node:crypto";
+import { DAILY_LIVE_MS, SESSION_MS } from "./live-limits.ts";
+
+export { DAILY_LIVE_MS, SESSION_MS } from "./live-limits.ts";
 
 const MINUTE = 60_000;
-export const DAILY_LIVE_MS = 5 * MINUTE;
-export const SESSION_MS = 10 * MINUTE;
 
 type Admission = { allowed: true; release: () => void } | { allowed: false; message: string };
 
