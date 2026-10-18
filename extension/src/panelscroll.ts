@@ -4,7 +4,7 @@ const shown = (el: HTMLElement) => (el.hidden ? "" : el.textContent ?? "");
 export class PanelScroll {
   // Cards changed while the person was typing or reading history, oldest first.
   private pending = new Map<HTMLElement, () => string>();
-  // The card a smooth reveal is moving to, until that scroll ends or the card is hidden or settled in view.
+  // The card a reveal is bringing into view, until that scroll ends or the card is hidden or settled in view.
   private revealing: HTMLElement | null = null;
 
   constructor(
@@ -17,7 +17,15 @@ export class PanelScroll {
       const [card] = this.pending.keys();
       if (card) this.reveal(card);
     });
-    scroll.addEventListener("scrollend", () => (this.revealing = null));
+    scroll.addEventListener("scrollend", () => {
+      this.revealing = null;
+      for (const card of this.pending.keys()) if (this.settled(card)) this.pending.delete(card);
+      this.showChip();
+    });
+    // The header, status and chip can resize the viewport after a reveal starts; keep the card in view.
+    new ResizeObserver(() => {
+      if (this.revealing && !this.settled(this.revealing)) this.scrollTo(this.revealing);
+    }).observe(scroll);
     const cancelReveal = () => (this.revealing = null);
     scroll.addEventListener("wheel", cancelReveal, { passive: true });
     scroll.addEventListener("touchmove", cancelReveal, { passive: true });
@@ -36,7 +44,7 @@ export class PanelScroll {
     const following = before <= this.scroll.getBoundingClientRect().bottom + 1;
     write();
     const grew = this.log.getBoundingClientRect().bottom - before;
-    if (this.revealing) this.revealing.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (this.revealing) this.scrollTo(this.revealing);
     else if (following && grew > 0) this.scroll.scrollTop += grew;
   }
 
@@ -56,11 +64,15 @@ export class PanelScroll {
   }
 
   reveal(el: HTMLElement) {
-    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
-    this.revealing = still ? null : el;
-    el.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
+    this.revealing = el;
+    this.scrollTo(el);
     this.pending.delete(el);
     this.showChip();
+  }
+
+  private scrollTo(el: HTMLElement) {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    el.scrollIntoView({ block: "nearest", behavior: still ? "auto" : "smooth" });
   }
 
   private settled(el: HTMLElement) {

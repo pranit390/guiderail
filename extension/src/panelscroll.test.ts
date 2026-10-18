@@ -10,6 +10,8 @@ let top = 0;
 let scroll: HTMLElement, log: HTMLElement, issues: HTMLElement, guide: HTMLElement, input: HTMLInputElement, chip: HTMLButtonElement;
 let panel: PanelScroll;
 let reduced = false;
+let viewBottom = VIEW;
+let resized: () => void;
 
 const logHeight = () => log.children.length * LINE;
 const maxTop = () => Math.max(0, logHeight() + CARD - VIEW);
@@ -29,7 +31,8 @@ beforeEach(() => {
   chip = document.getElementById("newcards") as HTMLButtonElement;
   top = 0;
   Object.defineProperty(scroll, "scrollTop", { get: () => top, set: (v: number) => { top = Math.min(Math.max(0, v), maxTop()); } });
-  scroll.getBoundingClientRect = () => ({ top: 0, bottom: VIEW }) as DOMRect;
+  viewBottom = VIEW;
+  scroll.getBoundingClientRect = () => ({ top: 0, bottom: viewBottom }) as DOMRect;
   log.getBoundingClientRect = () => ({ top: -top, bottom: logHeight() - top }) as DOMRect;
   issues.getBoundingClientRect = () => ({ top: logHeight() - top, bottom: logHeight() + 100 - top }) as DOMRect;
   guide.getBoundingClientRect = () => ({ top: logHeight() + 100 - top, bottom: logHeight() + 200 - top }) as DOMRect;
@@ -37,6 +40,7 @@ beforeEach(() => {
   guide.scrollIntoView = vi.fn();
   reduced = false;
   vi.stubGlobal("matchMedia", (q: string) => ({ matches: reduced && q.includes("reduce") }));
+  vi.stubGlobal("ResizeObserver", class { constructor(callback: () => void) { resized = callback; } observe() {} });
   panel = new PanelScroll(scroll, log, input, chip);
   for (let i = 0; i < 10; i++) line()();
   scroll.scrollTop = logHeight() - VIEW;
@@ -176,6 +180,19 @@ describe("PanelScroll.update", () => {
     expect(chip.hidden).toBe(true);
     expect(document.activeElement).toBe(scroll);
   });
+
+  it("withdraws the chip once the person scrolls the card into view themselves", () => {
+    scroll.scrollTop = 20;
+    violate("Test mode lets anyone read your data");
+    scroll.scrollTop = logHeight() - 50;
+    scroll.dispatchEvent(new Event("scrollend"));
+    expect(chip.hidden).toBe(false);
+
+    scroll.scrollTop = logHeight();
+    scroll.dispatchEvent(new Event("scrollend"));
+    expect(chip.hidden).toBe(true);
+    expect(issues.scrollIntoView).not.toHaveBeenCalled();
+  });
 });
 
 describe("PanelScroll reveal while the coach streams", () => {
@@ -208,6 +225,7 @@ describe("PanelScroll reveal while the coach streams", () => {
 
   it("does not re-reveal after an instant reveal under reduced motion", () => {
     reduced = true;
+    issues.scrollIntoView = vi.fn(() => (scroll.scrollTop = logHeight()));
     scroll.scrollTop = logHeight() - VIEW;
     violate("Test mode lets anyone read your data");
     const at = top;
@@ -245,5 +263,28 @@ describe("PanelScroll reveal while the coach streams", () => {
     panel.append(line());
     expect(issues.scrollIntoView).toHaveBeenCalledTimes(1);
     expect(top).toBe(at + LINE);
+  });
+
+  it.each([false, true])("keeps the card in view when the viewport shrinks during a reveal (reduced motion: %s)", (still) => {
+    reduced = still;
+    scroll.scrollTop = logHeight() - VIEW;
+    violate("Test mode lets anyone read your data");
+    viewBottom = 70;
+    resized();
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(2);
+    expect(issues.scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest", behavior: still ? "auto" : "smooth" });
+  });
+
+  it("leaves the viewport alone on resize once the reveal is over or the reader has taken over", () => {
+    violate("Test mode lets anyone read your data");
+    scroll.dispatchEvent(new Event("wheel"));
+    viewBottom = 70;
+    resized();
+    viewBottom = VIEW;
+    violate("Test mode lets anyone read your data", "Pick a location");
+    scroll.dispatchEvent(new Event("scrollend"));
+    viewBottom = 70;
+    resized();
+    expect(issues.scrollIntoView).toHaveBeenCalledTimes(2);
   });
 });

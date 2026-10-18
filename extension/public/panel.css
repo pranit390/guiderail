@@ -15,7 +15,6 @@
     --gr-stop:#ff7a70; --gr-stop-tint:#3a1a17; --gr-on-stop:#2d0805; color-scheme:dark; }
 }
 * { box-sizing: border-box; }
-[hidden] { display:none !important; }
 html, body { height:100%; }
 body { margin:0; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--ink); font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; }
 header { flex:none; display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-bottom: 1px solid var(--line); }
