@@ -25,12 +25,13 @@ class Socket {
   static OPEN = 1;
   readyState = Socket.OPEN;
   onmessage: ((event: { data: string }) => void) | undefined;
-  onclose: (() => void) | undefined;
+  onclose: ((event: { code: number; wasClean: boolean }) => void) | undefined;
   onerror: (() => void) | undefined;
   send = vi.fn();
-  close = vi.fn(() => { this.readyState = 3; this.onclose?.(); });
+  close = vi.fn(() => this.closed(1005));
   constructor(readonly url: string) { sockets.push(this); }
   get params() { return new URL(this.url).searchParams; }
+  closed(code: number) { this.readyState = 3; this.onclose?.({ code, wasClean: code !== 1006 }); }
   receive(msg: object) { this.onmessage?.({ data: JSON.stringify(msg) }); }
 }
 let sockets: Socket[];
@@ -110,7 +111,7 @@ describe("audit recovery and announcements", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     expect(document.querySelector("#log .user")).toBeNull();
     sockets[0].onerror?.();
-    sockets[0].onclose?.();
+    sockets[0].closed(1006);
     expect($("#server-banner").hidden).toBe(false);
     expect($("#server-message").textContent).toContain("Can't reach coach.example");
     expect($<HTMLInputElement>("#text").value).toBe("  retain this exact draft  ");
@@ -126,25 +127,28 @@ describe("audit recovery and announcements", () => {
     expect($<HTMLInputElement>("#text").value).toBe("");
   });
 
+  const lose = (socket: Socket, handshake: boolean) => { if (handshake) socket.onerror?.(); socket.closed(1006); };
+
   it("backs off 2, 4, 8, 16, 30 seconds after transport loss and stops after five automatic retries, even if each reconnects", async () => {
     await connected();
     vi.useFakeTimers();
     for (const [index, delay] of [2000, 4000, 8000, 16000, 30000].entries()) {
-      sockets[index].onerror?.();
+      lose(sockets[index], index % 2 === 1);
+      expect($("#server-message").textContent).toContain(index % 2 ? "Can't reach coach.example" : "Disconnected");
       await vi.advanceTimersByTimeAsync(delay - 1);
       expect(sockets).toHaveLength(index + 1);
       await vi.advanceTimersByTimeAsync(1);
       expect(sockets).toHaveLength(index + 2);
       sockets[index + 1].receive({ type: "ready" });
     }
-    sockets[5].onerror?.();
+    lose(sockets[5], false);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sockets).toHaveLength(6);
     expect($("#server-message").textContent).toContain("Retry when you're ready");
     $("#server-retry").click();
     await vi.advanceTimersByTimeAsync(0);
     expect(sockets).toHaveLength(7);
-    sockets[6].onerror?.();
+    lose(sockets[6], false);
     await vi.advanceTimersByTimeAsync(2000);
     expect(sockets).toHaveLength(8);
   });
@@ -154,11 +158,12 @@ describe("audit recovery and announcements", () => {
     [4000, "This demo session reached its ten-minute limit."],
     [4000, "This demo session reached its session or daily voice limit."],
     [4001, "Missing, invalid or expired session credential. Reconnect from the extension."],
-  ])("does not reopen a session after the server's deliberate %s close: %s", async (_code, message) => {
+    [1005, "Couldn't reach the voice model: unavailable"],
+  ])("does not reopen a session after the server's deliberate %s close: %s", async (code, message) => {
     const socket = await connected();
     vi.useFakeTimers();
     socket.receive({ type: "error", message });
-    socket.onclose?.();
+    socket.closed(code);
     await vi.advanceTimersByTimeAsync(60_000);
     expect(sockets).toHaveLength(1);
     expect(sessionRequests()).toBe(1);
@@ -287,7 +292,7 @@ describe("lazy Live connection", () => {
   it("stays disconnected after the relay closes until the next input", async () => {
     const socket = await connected();
     socket.receive({ type: "error", message: "Disconnected after one minute without activity." });
-    socket.onclose?.();
+    socket.closed(4000);
     expect(status()).toBe("Disconnected. Type or press Talk to reconnect");
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sockets).toHaveLength(1);
@@ -316,7 +321,7 @@ describe("lazy Live connection", () => {
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     expect($<HTMLInputElement>("#text").value).toBe(exact);
     expect($<HTMLInputElement>("#text").readOnly).toBe(true);
-    sockets[0].onclose?.();
+    sockets[0].closed(1006);
     expect($<HTMLInputElement>("#text").value).toBe(exact);
     expect($<HTMLInputElement>("#text").readOnly).toBe(false);
     policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner label.", severity: "block" }];
@@ -411,7 +416,7 @@ describe("explicit email proposal confirmation", () => {
     const socket = await connected();
     socket.receive({ type: "tool_call", id: "draft", name: "draft_message", args });
     await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(false));
-    socket.onclose?.();
+    socket.closed(4000);
     expect($("#compose-confirmation").hidden).toBe(false);
     expect($("#compose-to").textContent).toBe(args.to);
     expect($("#compose-subject").textContent).toBe(args.subject);
@@ -431,7 +436,7 @@ describe("explicit email proposal confirmation", () => {
     const socket = await connected();
     socket.receive({ type: "tool_call", id: "draft", name: "draft_message", args });
     await vi.waitFor(() => expect($("#compose-confirmation").hidden).toBe(false));
-    socket.onclose?.();
+    socket.closed(4000);
     $("#compose-cancel").click();
     expect($("#compose-confirmation").hidden).toBe(true);
     $("#compose-confirm").click();
@@ -1073,7 +1078,7 @@ describe("page activity across idle disconnects", () => {
     type("second try");
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "ready" });
-    sockets[0].onclose?.();
+    sockets[0].closed(1005);
     type("third try");
     await vi.waitFor(() => expect(sockets).toHaveLength(2));
     sockets[1].receive({ type: "ready" });
@@ -1125,7 +1130,7 @@ describe("page activity across idle disconnects", () => {
     page({ kind: "submit_intent", label: "Create", form });
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "error", message: "Today's demo voice allowance is used." });
-    sockets[0].onclose?.();
+    sockets[0].closed(4000);
     expect(document.querySelector('#log [role="alert"]')?.textContent).toContain("Add an owner label.");
   });
 

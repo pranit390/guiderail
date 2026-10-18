@@ -367,7 +367,7 @@ async function connect(retrying = false) {
     if (msg.type === "ready") onReady();
     void onServer(msg);
   };
-  sock.onclose = () => { if (ws === sock) connectionLost("Disconnected. Type or press Talk to reconnect", false); };
+  sock.onclose = (event) => { if (ws === sock) connectionLost("Disconnected. Type or press Talk to reconnect", !event.wasClean); };
   sock.onerror = () => { if (ws === sock) connectionLost(`Can't reach ${SERVER_HOST}`); };
 }
 
