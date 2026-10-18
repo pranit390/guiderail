@@ -26,6 +26,24 @@ const change = (id: string, value: string) => {
 };
 
 describe("recorder", () => {
+  it("masks OTP, credential and token-named values through the shared page boundary", () => {
+    document.body.insertAdjacentHTML("beforeend", '<input id="otp" aria-label="One-time code"><textarea id="cred" name="credential"></textarea>');
+    change("otp", "123456");
+    change("cred", "ordinary-looking-secret");
+    change("tok", "short-token");
+    expect(events).toHaveLength(3);
+    expect(events.every((event) => event.t === "field" && event.value === "«masked»")).toBe(true);
+  });
+
+  it("records nothing on sensitive account origins", () => {
+    vi.stubGlobal("location", new URL("https://accounts.google.com/signin"));
+    try {
+      startRecording((event) => events.push(event));
+      document.querySelector("button")!.click();
+      change("svc", "must-not-leave-browser");
+      expect(events).toEqual([]);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("records a click with the element's meaning", () => {
     document.querySelector("button")!.click();
     expect(events[0]).toMatchObject({ t: "click", target: { role: "button", name: "Create service" } });

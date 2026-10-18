@@ -29,7 +29,13 @@ daily allowance is used, the panel shows the warning as a prominent alert.
 
 One Cloud Run service, `guiderail-coach`, in `zoop-innovation/us-central1`:
 request-based CPU billing, 1 vCPU, 512 MiB, minimum 0, maximum 1, concurrency 10,
-timeout 3600 seconds, session affinity, no startup CPU boost. Attach only
+timeout 3600 seconds, session affinity, no startup CPU boost. Pin **both** the
+service annotation `metadata.annotations.run.googleapis.com/maxScale: '1'`
+and revision annotation `spec.template.metadata.annotations.autoscaling.knative.dev/maxScale: '1'`;
+the installed older gcloud's `--max-instances=1` sets only the revision limit.
+Export the existing service, change only the service annotation, and apply it
+with `gcloud run services replace`; verify both levels with a fresh describe.
+Attach only
 `guiderail-coach@zoop-innovation.iam.gserviceaccount.com`, with the project binding
 `roles/aiplatform.user`. No service-account keys are needed.
 
@@ -65,15 +71,29 @@ Disconnected clients stop consuming time. Every limit closes the Vertex Live
 session immediately and frees the concurrency slot then, before the client's
 WebSocket close handshake. Each session also has
 a ten-minute upper limit, eight completed replies, a 512-output-token limit per response,
-24,000 input text characters, a 64 KiB WebSocket frame limit, and PCM input paced
+24,000 aggregate input text characters (including tool-result JSON, ID and name),
+a 4,000-character limit per text/tool-result message, a 64 KiB WebSocket frame limit, and PCM input paced
 to real time with a two-second burst. Context compression targets 4,096 tokens
 after an 8,192-token trigger. The shared daily allowance will normally close a
 session before the ten-minute upper limit. Reconnect consumes another credential
 and the remaining daily allowance; it does not restore minutes in that instance.
 
+Client tool results are accepted only once for an outstanding model-issued ID
+and matching tool name. Forged, mismatched and replayed results are not sent to
+Vertex. Oversized frames close only the offending socket, shut down its upstream
+and release its admission slot; they do not crash the coach process.
+
+Page reads, form reads and Teach recording share secret-field/value masking,
+including API keys, tokens, credentials and one-time codes. Account surfaces
+`accounts.google.com`, `myaccount.google.com` and `passwords.google.com` (and
+their subdomains) are excluded from reads and event forwarding, even with broad
+Google host permission. Names, labels, ordinary visible values and page/Teach
+context from other supported pages may leave the browser for the hosted coach
+and Vertex; this is heuristic secret masking, not a claim to detect every secret.
+
 ## Expected cost commitment through 6 November 2026
 
-This is an **expected-spend commitment below USD 6**, as clarified by firstmate;
+This is an **expected spend of USD 5.69 under single-instance assumptions**, as clarified by firstmate;
 it is not a mathematical guarantee. Use a conservative 21 UTC-date allowance
 covering deployment on 17 October UTC through 6 November: 21 × 5 = 105 aggregate
 connected Live minutes. Do not assume Cloud Run's shared billing-account free tier remains
@@ -85,7 +105,7 @@ available.
 | Live context/text | Additional reserve equal to base audio for repeated context and transcription/text; short eight-reply sessions | 2.3625 |
 | Cloud Run active compute | 6,300 s at $0.000024/vCPU-s + 0.5 × $0.0000025/GiB-s = $0.00002525/s; no free-tier discount | 0.159075 |
 | Startup, HTTP, network and logs | Small judge traffic, short requests, bounded payloads; reserve | 0.30 |
-| Three source builds and one retained image | Initial failed startup, corrected serving build and one post-validation redeploy; image held through judging; reserve | 0.50 |
+| Four source builds and retained task images | Initial failed startup, corrected serving build, post-validation redeploy and security-fix redeploy; task image sets held through judging; reserve | 0.50 |
 | **Planning total** | 5.684075, rounded upward | **5.69** |
 | **Margin to $6** | Approximately | **0.31** |
 

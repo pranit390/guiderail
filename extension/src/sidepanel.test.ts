@@ -30,8 +30,9 @@ class Socket {
 }
 let sockets: Socket[];
 // The side panel registers its runtime listener first; the content script (when imported) registers second.
-const page = (msg: object, tabId = 1) =>
-  vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0](msg, { tab: { id: tabId } } as chrome.runtime.MessageSender, () => {});
+const fromPage = (msg: object, sender: { url?: string; tab?: { id: number; url?: string } }, reply: (value: unknown) => void) =>
+  vi.mocked(chrome.runtime.onMessage.addListener).mock.calls[0][0](msg, sender as chrome.runtime.MessageSender, reply);
+const page = (msg: object, tabId = 1) => fromPage(msg, { tab: { id: tabId } }, () => {});
 const form = { sections: [], fields: [] };
 const sendMessage = vi.fn().mockResolvedValue({ ok: true });
 const fetchMock = vi.fn(async (url: string): Promise<{ ok: boolean; json: () => Promise<unknown> }> => url.endsWith("/session")
@@ -365,6 +366,26 @@ describe("duplicate-Save sandbox end to end", () => {
 });
 
 describe("page activity across idle disconnects", () => {
+  it("does not forward account-page messages even from the bound tab", async () => {
+    const socket = await connected();
+    const sender = { url: "https://accounts.google.com/signin", tab: { id: 1 } };
+    const reply = vi.fn();
+    fromPage({ kind: "page_event", text: "sensitive-account-marker" }, sender, reply);
+    fromPage({ kind: "teach_status" }, sender, reply);
+    expect(reply).toHaveBeenCalledWith({ on: false });
+    expect(socket.send).not.toHaveBeenCalled();
+    expect($("#log").textContent).not.toContain("sensitive-account-marker");
+  });
+
+  it("refuses account-page read tools before injecting or messaging the tab", async () => {
+    const socket = await connected();
+    sendMessage.mockClear();
+    const account = { id: 1, url: "https://accounts.google.com/signin" };
+    Object.assign(chrome.tabs, { query: vi.fn().mockResolvedValue([account]), get: vi.fn().mockResolvedValue(account) });
+    socket.receive({ type: "tool_call", id: "account-read", name: "read_page", args: {} });
+    await vi.waitFor(() => expect(sent(socket)).toContainEqual({ type: "tool_result", id: "account-read", name: "read_page", response: { error: "GuideRail does not read or record sensitive account pages." } }));
+    expect(sendMessage).not.toHaveBeenCalled();
+  });
   it("remembers bound-tab page events while disconnected and summarises them on the next connection", async () => {
     await vi.waitFor(() => expect(chrome.tabs.query).toHaveBeenCalled());
     page({ kind: "page_event", text: "User clicked the highlighted Labels" });

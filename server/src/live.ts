@@ -53,6 +53,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
   let audioBytes = 0;
   let textChars = 0;
   let turns = 0;
+  const pendingTools = new Map<string, string>();
   let idle: ReturnType<typeof setTimeout> | undefined;
   let stopped = false;
   const shutdown = () => {
@@ -60,6 +61,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
     stopped = true;
     clearTimeout(cap);
     clearTimeout(idle);
+    pendingTools.clear();
     session?.close();
     release();
   };
@@ -76,6 +78,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
   };
   const cap = setTimeout(() => end("session limit", "This demo session reached its ten-minute limit. Type or press Talk to reconnect if today's allowance remains."), MAX_SESSION_MS);
   client.once("close", shutdown);
+  client.on("error", shutdown);
   void open();
   return end;
 
@@ -95,7 +98,8 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
         },
         callbacks: {
           onmessage: (msg) => {
-            forward(msg, send, session);
+            if (stopped) return;
+            forward(msg, send, session, pendingTools);
             if (msg.serverContent || msg.toolCall) active();
             if (msg.serverContent?.turnComplete && ++turns >= 8) {
               end("reply allowance reached", "This demo session reached its eight-reply allowance. Reconnect if today's allowance remains.");
@@ -123,10 +127,20 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
       } catch {
         return;
       }
-      if (!session || !msg || typeof msg !== "object") return;
+      if (stopped || !session || !msg || typeof msg !== "object") return;
       if ("text" in msg && (typeof msg.text !== "string" || msg.text.length > 4000)) return;
       if (msg.type === "audio" && (typeof msg.data !== "string" || msg.data.length > 48_000 || !/^[A-Za-z0-9+/]*={0,2}$/.test(msg.data))) return;
       if (msg.type === "tool_result" && (typeof msg.id !== "string" || typeof msg.name !== "string" || !msg.response || typeof msg.response !== "object")) return;
+      if (msg.type === "tool_result") {
+        if (pendingTools.get(msg.id) !== msg.name) return;
+        pendingTools.delete(msg.id); // Each issued call can be answered only once.
+        const chars = msg.id.length + msg.name.length + JSON.stringify(msg.response).length;
+        textChars += chars;
+        if (chars > 4000) {
+          end("input allowance reached", "This demo session reached its input allowance.");
+          return;
+        }
+      }
       if ("text" in msg) textChars += msg.text.length;
       if (msg.type === "audio") audioBytes += Buffer.byteLength(msg.data, "base64");
       if (textChars > 24_000 || audioBytes > (Date.now() - started) * 32 + 64_000) {
@@ -165,7 +179,7 @@ export function relay(client: WebSocket, resumptionHandle?: string, mode: Mode =
   }
 }
 
-function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, session: Session | undefined) {
+function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, session: Session | undefined, pendingTools: Map<string, string>) {
   for (const call of msg.toolCall?.functionCalls ?? []) {
     const name = call.name ?? "";
     const args = (call.args ?? {}) as Record<string, unknown>;
@@ -176,7 +190,9 @@ function forward(msg: LiveServerMessage, send: (m: ServerMessage) => void, sessi
         .then((response) => session?.sendToolResponse({ functionResponses: [{ id: call.id, name, response }] }));
       continue;
     }
-    send({ type: "tool_call", id: call.id ?? "", name, args });
+    if (!call.id || !name) continue;
+    pendingTools.set(call.id, name);
+    send({ type: "tool_call", id: call.id, name, args });
   }
   const content = msg.serverContent;
   if (content) {

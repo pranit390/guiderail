@@ -1,9 +1,10 @@
 // Runs in Google pages. Reads the page, points at elements, watches what the user does.
 // It never clicks, types or submits for the user (ADR 0001).
 import type { FormState, FromPage, HighlightResult, PageElement, PageSnapshot, ToPage, ViolationDetail } from "./messages.ts";
-import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isVisible, nameOf, norm, roleOf, sectionOf, valueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
+import { allElements, BAD_DARK, BAD_LIGHT, collectControls, CUSTOM_FIELD, EDGE_DARK, EDGE_LIGHT, effectiveUrl, findSection, isDarkSurrounding, isSecret, isSensitivePage, isVisible, nameOf, norm, roleOf, sectionOf, safeValueOf, violationFieldElement, violationFieldLabel } from "./page.ts";
 import { summarizeViolations, violationCountText } from "./policy.ts";
 import { liveHighlight } from "./resolve.ts";
+import { isSecretField, MASK, maskValue } from "./teach/events.ts";
 import { startRecording, stopRecording } from "./teach/recorder.ts";
 import { GLYPH_CSS, STATES, stateGlyph, violationState } from "./states.ts";
 import { CalmView, parseCalmPreset } from "./calm.ts";
@@ -261,14 +262,14 @@ function readForm(): FormState {
     for (let k = 0; k + 1 < inputs.length; k += 2) {
       labelInputs.add(inputs[k]).add(inputs[k + 1]);
       const key = inputs[k].value.trim();
-      if (key) labels[key] = inputs[k + 1].value.trim();
+      if (key) labels[maskValue(key)] = isSecretField({ name: key }) ? MASK : maskValue(inputs[k + 1].value.trim());
     }
   }
   const fields: Record<string, string> = {};
   for (const el of document.querySelectorAll(`input,select,textarea,${CUSTOM_FIELD}`)) {
     if (labelInputs.has(el) || isSecret(el)) continue;
-    const name = nameOf(el);
-    const value = valueOf(el);
+    const name = maskValue(nameOf(el));
+    const value = safeValueOf(el);
     if (name && value) fields[name] = value;
   }
   const sections = section ? ["Labels"] : [];
@@ -313,6 +314,7 @@ function showViolations(violations: ViolationDetail[]): string[] {
 const alive = () => { try { return !!chrome.runtime?.id; } catch { return false; } };
 
 function send(msg: FromPage) {
+  if (isSensitivePage()) return;
   if (!alive()) return shutdown();
   try {
     chrome.runtime.sendMessage(msg).catch(() => {});
@@ -364,6 +366,10 @@ const urlTimer = setInterval(() => {
 // ---------- Requests from the side panel ----------
 
 chrome.runtime.onMessage.addListener((msg: ToPage, _sender, reply) => {
+  if (isSensitivePage()) {
+    reply({ error: "GuideRail does not read or record sensitive account pages." });
+    return false;
+  }
   switch (msg.kind) {
     case "customize":
       try { reply(calm.set(parseCalmPreset(msg.preset))); startFollow(); }
@@ -398,7 +404,7 @@ function shutdown() {
 
 // A page loaded mid-Teach (navigation, reload, new tab) picks recording back up.
 try {
-  chrome.runtime.sendMessage({ kind: "teach_status" } satisfies FromPage)
+  if (!isSensitivePage()) chrome.runtime.sendMessage({ kind: "teach_status" } satisfies FromPage)
     .then((res: { on?: boolean } | undefined) => { if (res?.on) setRecording(true); })
     .catch(() => {});
 } catch {
