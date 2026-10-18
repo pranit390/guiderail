@@ -336,7 +336,7 @@ function clearGuidance() {
 
 // ---------- Connection to the relay ----------
 
-const IDLE_STATUS = `Type or press Talk to connect to ${SERVER_HOST}`;
+const IDLE_STATUS = `Type or tap the mic to connect to ${SERVER_HOST}`;
 let retryTimer: ReturnType<typeof setTimeout> | undefined;
 let retries = 0;
 const RETRY_DELAYS = [2000, 4000, 8000, 16000, 30000];
@@ -374,7 +374,7 @@ async function connect(retrying = false) {
     const response = await authFetch(`${HTTP}/session`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" });
     const body = await response.json();
     if (!response.ok || typeof body.credential !== "string") {
-      if (attempt === connectionAttempt) connectionLost(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`, false);
+      if (attempt === connectionAttempt) connectionLost(`Can't connect to ${SERVER_HOST}. Type or tap the mic to retry`, false);
       say("system", body.error ?? "Session admission failed.");
       return;
     }
@@ -382,7 +382,7 @@ async function connect(retrying = false) {
   } catch (error) {
     // A rejected sign-in has already shown the form and closed this attempt.
     if (attempt !== connectionAttempt || error instanceof AuthError) return;
-    connectionLost(`Can't connect to ${SERVER_HOST}. Type or press Talk to retry`);
+    connectionLost(`Can't connect to ${SERVER_HOST}. Type or tap the mic to retry`);
     say("system", error instanceof Error ? error.message : "Session admission failed.");
     return;
   }
@@ -398,7 +398,7 @@ async function connect(retrying = false) {
     if (msg.type === "ready") onReady();
     void onServer(msg);
   };
-  sock.onclose = (event) => { if (ws === sock) connectionLost("Disconnected. Type or press Talk to reconnect", !event.wasClean); };
+  sock.onclose = (event) => { if (ws === sock) connectionLost("Disconnected. Type or tap the mic to reconnect", !event.wasClean); };
   sock.onerror = () => { if (ws === sock) connectionLost(`Can't reach ${SERVER_HOST}`); };
 }
 

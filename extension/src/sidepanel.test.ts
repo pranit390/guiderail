@@ -154,7 +154,7 @@ describe("audit recovery and announcements", () => {
   });
 
   it.each([
-    [4000, "Disconnected after one minute without activity. Type or press Talk to reconnect."],
+    [4000, "Disconnected after one minute without activity. Type or tap the mic to reconnect."],
     [4000, "This demo session reached its ten-minute limit."],
     [4000, "This demo session reached its session or daily voice limit."],
     [4001, "Missing, invalid or expired session credential. Reconnect from the extension."],
@@ -328,7 +328,7 @@ describe("lazy Live connection", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sessionRequests()).toBe(0);
     expect(sockets).toHaveLength(0);
-    expect(status()).toBe("Type or press Talk to connect to coach.example");
+    expect(status()).toBe("Type or tap the mic to connect to coach.example");
   });
 
   it("connects on the first typed message and delivers it once the relay is ready", async () => {
@@ -372,7 +372,7 @@ describe("lazy Live connection", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sockets).toHaveLength(1);
     expect(sessionRequests()).toBe(1);
-    expect(status()).toBe("Type or press Talk to connect to coach.example");
+    expect(status()).toBe("Type or tap the mic to connect to coach.example");
     type("why this region?");
     await vi.waitFor(() => expect(sockets).toHaveLength(2));
     expect(sockets[1].url).toContain("mode=teach");
@@ -382,7 +382,7 @@ describe("lazy Live connection", () => {
     const socket = await connected();
     socket.receive({ type: "error", message: "Disconnected after one minute without activity." });
     socket.closed(4000);
-    expect(status()).toBe("Disconnected. Type or press Talk to reconnect");
+    expect(status()).toBe("Disconnected. Type or tap the mic to reconnect");
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(sockets).toHaveLength(1);
     type("next step?");
@@ -394,7 +394,7 @@ describe("lazy Live connection", () => {
   it("keeps queued input in the composer when the coach is busy, and sends only the next explicit submission", async () => {
     fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     type("hello");
-    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or tap the mic to retry"));
     expect(sockets).toHaveLength(0);
     expect($<HTMLInputElement>("#text").value).toBe("hello");
     expect($<HTMLInputElement>("#text").readOnly).toBe(false);
@@ -428,7 +428,7 @@ describe("lazy Live connection", () => {
     fetchMock.mockImplementationOnce(async () => { throw new Error("offline"); });
     const exact = "  Keep   my exact spacing and punctuation!  ";
     type(exact);
-    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or tap the mic to retry"));
     expect($<HTMLInputElement>("#text").value).toBe(exact);
     expect(sockets).toHaveLength(0);
     expect($<HTMLInputElement>("#text").readOnly).toBe(false);
@@ -701,7 +701,7 @@ describe("compile during Teach", () => {
 
     document.querySelector<HTMLButtonElement>("[data-compile]")!.click();
     document.querySelector<HTMLButtonElement>("#teach")!.click();
-    await vi.waitFor(() => expect(status()).toBe("Type or press Talk to connect to coach.example"));
+    await vi.waitFor(() => expect(status()).toBe("Type or tap the mic to connect to coach.example"));
     type("Explain this step");
     await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("teach"));
     const teach = sockets.at(-1)!;
@@ -712,7 +712,7 @@ describe("compile during Teach", () => {
     expect(teach.close).not.toHaveBeenCalled();
 
     document.querySelector<HTMLButtonElement>("#teachstop")!.click();
-    await vi.waitFor(() => expect(status()).toBe("Type or press Talk to connect to coach.example"));
+    await vi.waitFor(() => expect(status()).toBe("Type or tap the mic to connect to coach.example"));
     type("Continue the Journey");
     await vi.waitFor(() => expect(sockets.at(-1)!.params.get("mode")).toBe("guide"));
     expect(sockets.at(-1)!.params.get("goalId")).toBe(FIRESTORE_GOAL.id);
@@ -1205,7 +1205,7 @@ describe("page activity across idle disconnects", () => {
   it("remembers delivered input but excludes failed undelivered text from reconnect history", async () => {
     fetchMock.mockImplementationOnce(async () => ({ ok: false, json: async () => ({ error: "The coach is busy." }) }));
     type("first try");
-    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or press Talk to retry"));
+    await vi.waitFor(() => expect(status()).toBe("Can't connect to coach.example. Type or tap the mic to retry"));
     type("second try");
     await vi.waitFor(() => expect(sockets).toHaveLength(1));
     sockets[0].receive({ type: "ready" });
