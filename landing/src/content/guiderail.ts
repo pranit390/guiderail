@@ -55,7 +55,7 @@ export const hero = {
   titleRest: "You click.",
   intro:
     "GuideRail is a Chrome side panel. It reads the official Firebase docs and highlights the next control on the real console, with the doc citation beside each Step.",
-  note: "Guide only points. Assist can type the Database ID once you approve, then reads it back. Pick Test mode and GuideRail holds your first Create click. Neither one clicks Create for you.",
+  note: "Guide only points. Assist can type the Database ID once you approve, then reads it back. Pick Test mode and GuideRail holds your first Create click. Neither Guide nor Assist clicks Create for you.",
   journeyLink: "See the Firestore Journey",
   figureCaption: "This is a mock of the Firebase form with made-up values. It isn't connected to any account.",
   staticStory:
@@ -166,8 +166,8 @@ export const content: LandingContent = {
     ],
   },
   close: {
-    heading: "Download it, load it, then press Cmd+Shift+K on the Firebase console.",
-    lede: "Ctrl+Shift+K if you're not on a Mac.",
+    heading: "Download it, load it, then open GuideRail on the Firebase console.",
+    lede: "Use the toolbar icon or your keyboard shortcut. The welcome page shows the shortcut, or how to set one.",
   },
   footer: "GuideRail is a Chrome extension that coaches you through creating a Firestore database.",
 };
