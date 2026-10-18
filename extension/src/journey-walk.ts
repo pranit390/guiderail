@@ -25,8 +25,8 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   let timer: ReturnType<typeof setTimeout> | undefined;
   let pendingAuto = false;
   let attempts = 0;
-  let announced = "";
-  function say(text: string) { if (announced === text) return; announced = text; prompt(text); }
+  const announced = new Set<string>();
+  function say(text: string) { if (announced.has(text)) return; announced.add(text); prompt(text); }
   function cancelAuto() { clearTimeout(timer); timer = undefined; pendingAuto = false; }
   function schedule(reset = false) {
     cancelAuto();
@@ -68,16 +68,17 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
   }
   async function refresh(automatic = false) {
     if (!enabled || busy || current >= rows.length) return;
-    if (!automatic) { cancelAuto(); announced = ""; }
+    if (!automatic) { cancelAuto(); announced.clear(); }
     const reading = revision;
     busy = true; observed = -1; pointed = -1; render();
     let snapshot: PageSnapshot | undefined;
+    let observation: StepObservation | undefined;
     try {
       await clear();
       if (reading !== revision) return;
       snapshot = await read();
       if (reading !== revision) return;
-      const observation = observeStep(journey.steps[current].control, snapshot);
+      observation = observeStep(journey.steps[current].control, snapshot);
       statuses[current] = observation.text;
       if (observation.target) {
         const result = await point(observation.target, observation.role);
@@ -94,7 +95,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
       else if (pendingAuto) schedule();
       else if (automatic && reading === revision && observed !== current) {
         if (attempts < 2) schedule();
-        else if (snapshot) say(`I can't see ${journey.steps[current].control} on this screen yet. Re-read this Step to retry.`);
+        else if (snapshot) say(observation?.state === "missing" ? `I can't see ${journey.steps[current].control} on this screen yet. Re-read this Step to retry.` : statuses[current]);
       }
     }
   }
@@ -104,7 +105,7 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
     statuses[current] = skipped ? "Explicitly skipped by you; not verified." : "You reported this Step done; not independently verified.";
     changed(`${journey.steps[current].control}: ${statuses[current]}`);
     void clear();
-    current++; observed = -1; pointed = -1; acted = -1; announced = ""; revision++; render();
+    current++; observed = -1; pointed = -1; acted = -1; announced.clear(); revision++; render();
     schedule(true);
     currentRegion.scrollTop = 0;
   }
@@ -125,12 +126,12 @@ export function mountJourneyWalk(parent: HTMLElement, journey: CompiledJourney, 
       });
       if (matches.length !== 1) return;
       cancelAuto();
-      if (current !== matches[0]) { revision++; current = matches[0]; acted = -1; announced = ""; }
+      if (current !== matches[0]) { revision++; current = matches[0]; acted = -1; announced.clear(); }
       observed = current; pointed = current;
       statuses[current] = `${name} is visible. You operate this control.`;
       render();
     },
-    setEnabled(value: boolean) { cancelAuto(); if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); if (value) { announced = ""; schedule(true); } },
+    setEnabled(value: boolean) { cancelAuto(); if (!value) void clear(); enabled = value; revision++; observed = -1; pointed = -1; acted = -1; render(); if (value) { announced.clear(); schedule(true); } },
     acted(message: string) { revision++; if (current >= rows.length) return; if (observed === current || pointed === current) acted = current; statuses[current] = message; render(); if (acted === current && journey.steps[current].control !== "Create") advance(false); },
     invalidate(message: string, sameTab = false) { cancelAuto(); void clear(); revision++; observed = -1; if (!sameTab) { pointed = -1; acted = -1; } if (current < rows.length) statuses[current] = message; render(); if (sameTab) schedule(true); },
   };

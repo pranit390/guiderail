@@ -102,6 +102,24 @@ describe("cited Guide walk", () => {
     expect(read).toHaveBeenCalledTimes(7); expect(prompt).toHaveBeenCalledTimes(2);
     expect(prompt).toHaveBeenLastCalledWith("I can't see Databases & Storage on this screen yet. Re-read this Step to retry.");
   });
+  it("does not replay announcements when the cited control alternates between visible and missing", async () => {
+    vi.useFakeTimers();
+    const { read, point, prompt, walk } = mount(); read.mockResolvedValue(page(["Databases & Storage"]));
+    await vi.advanceTimersByTimeAsync(600);
+    for (let i = 0; i < 2; i++) {
+      read.mockResolvedValue(page([])); walk.invalidate("wizard changed", true); await vi.advanceTimersByTimeAsync(1_200);
+      read.mockResolvedValue(page(["Databases & Storage"])); walk.invalidate("wizard changed", true); await vi.advanceTimersByTimeAsync(600);
+    }
+    expect(point).toHaveBeenCalledTimes(3);
+    expect(prompt.mock.calls).toEqual([["Step 1: Databases & Storage. You operate this control."], ["I can't see Databases & Storage on this screen yet. Re-read this Step to retry."]]);
+  });
+  it("uses truthful fallback wording when the cited control is ambiguous", async () => {
+    vi.useFakeTimers();
+    const { read, point, prompt } = mount(); read.mockResolvedValue(page(["Databases & Storage", "Databases & Storage"]));
+    await vi.advanceTimersByTimeAsync(1_200);
+    expect(read).toHaveBeenCalledTimes(2); expect(point).not.toHaveBeenCalled();
+    expect(prompt).toHaveBeenCalledExactlyOnceWith("More than one Databases & Storage is visible. Choose the control yourself, then re-read.");
+  });
   it("re-points after a same-tab page change but cancels work on another tab or after ending", async () => {
     vi.useFakeTimers();
     const { read, point, walk } = mount(); read.mockResolvedValue(page(["Databases & Storage"]));
