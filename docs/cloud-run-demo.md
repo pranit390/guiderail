@@ -28,7 +28,12 @@ Guide. The first typed message or Talk press requests a credential and opens the
 Live session; that first message (or up to about 1.5 seconds of speech) is kept
 and delivered once the relay is ready. The status reads **Connected to <host>**
 only after Vertex Live acknowledges setup. Typing works without microphone
-permission. Only pages in the active (bound) tab reach the coach. While
+permission. When the server can't be reached or the socket closes uncleanly
+(for example a mid-session 1006 drop), a server banner keeps unsent text in the
+composer and retries after 2, 4, 8, 16 and 30 seconds. Deliberate closes (idle,
+session limit, allowance, admission) show the banner without reopening a
+session; **Retry connection** reconnects on demand. Only pages in the active
+(bound) tab reach the coach. While
 disconnected, their page events, recorded Teach steps and app events are kept in
 the panel's bounded session memory (at most 200 entries; the next connection gets
 a summary under 3,500 characters). A Create click with blocking Violations

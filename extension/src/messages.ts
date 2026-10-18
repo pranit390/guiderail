@@ -37,7 +37,7 @@ export type FromPage =
   | { kind: "customize_event"; text: string }
   | { kind: "page_event"; text: string; generation?: number }
   | { kind: "form_changed"; form: FormState }
-  | { kind: "submit_intent"; label: string; form: FormState }
+  | { kind: "submit_intent"; label: string; form: FormState; continued?: boolean }
   | { kind: "teach_event"; event: TeachEvent }
   | { kind: "teach_status" }; // a freshly loaded page asks whether to record; the side panel replies { on }
 

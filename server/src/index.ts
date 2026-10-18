@@ -262,23 +262,31 @@ function approverPage(approval?: Approval) {
   <dt>Role</dt><dd>${escape(roleTitle(approval.role))} <code>${escape(approval.role)}</code></dd>
   <dt>Resource</dt><dd>${escape(approval.resource)}</dd>
   <dt>Why</dt><dd>${escape(approval.reason)}</dd>
-  <dt>Status</dt><dd id="status">${escape(approval.status)}</dd>
+  <dt>Status</dt><dd id="status" role="status">${granted ? "Approver confirmed grant · access not verified" : escape(approval.status)}</dd>
 </dl>
 <div class="actions">
   <a class="btn primary" href="${escape(grantUrl)}">Open IAM and grant with GuideRail</a>
-  <button class="btn secondary" id="grant"${granted ? " disabled" : ""}>Mark as granted</button>
+  <button class="btn secondary" id="grant"${granted ? " disabled" : ""}>I have granted this role</button>
 </div>
-<p class="note" id="note"${granted ? "" : " hidden"}>Marked as granted. ${escape(approval.requester)}'s Journey can continue.</p>
+<p class="note" id="note" role="status"${granted ? "" : " hidden"}>Approver confirmed grant. ${escape(approval.requester)}: retry your original action to verify access. GuideRail has not checked IAM permissions.</p>
 <script>
+  const confirmation = document.getElementById("note").textContent;
   document.getElementById("grant").addEventListener("click", async (e) => {
     e.target.disabled = true;
-    const res = await fetch("/approvals/${approval.id}/grant", { method: "POST" });
     const note = document.getElementById("note");
-    if (res.ok) {
-      document.getElementById("status").textContent = "granted";
-    } else {
-      note.textContent = "Couldn't mark as granted: " + ((await res.json()).error ?? res.status);
-      note.style.color = "#d93025";
+    try {
+      const res = await fetch("/approvals/${approval.id}/grant", { method: "POST" });
+      if (res.ok) {
+        document.getElementById("status").textContent = "Approver confirmed grant · access not verified";
+        note.textContent = confirmation;
+        note.style.color = "";
+      } else {
+        note.textContent = "Couldn't record confirmation: " + ((await res.json()).error ?? res.status);
+        note.style.color = "#d93025";
+        e.target.disabled = false;
+      }
+    } catch {
+      note.textContent = "Couldn't reach GuideRail. Retry confirmation when connected.";
       e.target.disabled = false;
     }
     note.hidden = false;
