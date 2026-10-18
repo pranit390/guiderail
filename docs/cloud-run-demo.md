@@ -26,7 +26,7 @@ the source revision. The default image target is
 The panel does not connect when it opens or when switching between Teach and
 Guide. The first typed message or Talk press requests a credential and opens the
 Live session; that first message (or up to about 1.5 seconds of speech) is kept
-and delivered once the relay is ready. The header status shows a green dot (titled **Connected to <host>**)
+and delivered once the relay is ready. The header status shows a green dot (titled **Connected to GuideRail**)
 only after Vertex Live acknowledges setup. Typing works without microphone
 permission. When the server can't be reached or the socket closes uncleanly
 (for example a mid-session 1006 drop), a server banner keeps unsent text in the
