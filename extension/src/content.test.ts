@@ -386,6 +386,36 @@ describe("calmer content messages", () => {
     expect(tag.style.top).toBe(top);
   });
 
+  it("hides the Here tag at once when page text appears under it, then places it clear of that text after the throttled rescan", async () => {
+    vi.spyOn(HTMLElement.prototype, "offsetWidth", "get").mockReturnValue(120);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(20);
+    const at = (el: HTMLElement) => new DOMRect(parseFloat(el.style.left), parseFloat(el.style.top), 120, 20);
+    let described = new DOMRect(0, 0, 0, 0);
+    vi.mocked(Element.prototype.getBoundingClientRect).mockImplementation(function (this: Element) {
+      if (this.classList.contains("step-chip")) return at(this as HTMLElement);
+      if (this.classList.contains("description")) return described;
+      return new DOMRect(40, 100, 200, 60);
+    });
+    vi.spyOn(Range.prototype, "getClientRects").mockImplementation(function (this: Range) {
+      return (this.startContainer.parentElement?.classList.contains("description") ? [described] : []) as unknown as DOMRectList;
+    });
+    highlightPinned("Create", "button");
+    const tag = document.querySelector("guiderail-overlay")!.shadowRoot!.querySelector<HTMLElement>(".step-chip")!;
+    expect(tag.hidden).toBe(false);
+    const first = at(tag);
+    described = new DOMRect(first.left - 4, first.top, 200, 20);
+    const description = document.createElement("p");
+    description.className = "description";
+    description.textContent = "Your data will be private by default.";
+    document.body.append(description);
+    await Promise.resolve();
+    expect(tag.hidden).toBe(true);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(tag.hidden).toBe(false);
+    const next = at(tag);
+    expect(next.left < described.right && described.left < next.right && next.top < described.bottom && described.top < next.bottom).toBe(false);
+  });
+
   it("narrows a Rule chip to the room beside its field so it can sit there", () => {
     vi.stubGlobal("innerWidth", 520);
     vi.mocked(Element.prototype.getBoundingClientRect).mockReturnValue(new DOMRect(40, 100, 280, 60));

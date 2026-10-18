@@ -304,6 +304,23 @@ describe("readable current panel guidance", () => {
     expect($("#issues").hidden).toBe(true);
     expect($("#issues-list").children).toHaveLength(0);
   });
+  it.each([
+    ["tab_changed", { kind: "tab_changed", tabId: 1, url: "https://console.firebase.google.com/project/other/firestore" }],
+    ["page_event", { kind: "page_event", text: "The page changed.", generation: 2 }],
+  ])("keeps the override notice hidden after %s during a held submit, but still warns the coach", async (_name, change) => {
+    const socket = await connected();
+    policy.violations = [{ ruleId: "owner", field: "Labels", message: "Add an owner.", severity: "block" }];
+    let finish: (result: unknown) => void = () => {};
+    sendMessage.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    page({ kind: "submit_intent", label: "Create", form, continued: true });
+    await vi.waitFor(() => expect(sendMessage).toHaveBeenCalledWith(1, expect.objectContaining({ kind: "show_violations" })));
+    sendMessage.mockResolvedValue({ ok: true });
+    page(change);
+    finish({ shown: ["Labels"] });
+    await vi.waitFor(() => expect(sent(socket)).toContainEqual({ type: "event", text: expect.stringContaining('User is about to click "Create" but 1 to fix (1 Rule) remain: Add an owner.') }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect($("#policy-override").hidden).toBe(true);
+  });
 });
 
 describe("lazy Live connection", () => {

@@ -906,11 +906,12 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
       if (mode === "teach") break;
       void updateViolations(msg.form);
       break;
-    case "submit_intent":
+    case "submit_intent": {
       if (mode === "teach") break;
-      void updateViolations(msg.form).then((violations) => {
+      const revision = guidanceRevision;
+      void updateViolations(msg.form, revision).then((violations) => {
         const blocking = violations.filter((v) => v.severity === "block");
-        if (blocking.length) {
+        if (blocking.length && revision === guidanceRevision && mode === "guide") {
           $("#policy-override").textContent = msg.continued
             ? `${violationCountText(summarizeViolations(violations))}. You continued with ${msg.label} anyway; review the issues below.`
             : `${violationCountText(summarizeViolations(violations))}. Review before ${msg.label}. This is a soft guard: a second click within 10 seconds continues anyway.`;
@@ -930,6 +931,7 @@ function handlePageMessage(msg: Exclude<FromPage, { kind: "teach_status" }> | Ta
         }
       });
       break;
+    }
     case "teach_event":
       if (!teach || mode !== "teach") break;
       teach.add(msg.event);

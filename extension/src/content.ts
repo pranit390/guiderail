@@ -244,7 +244,27 @@ function ensureOverlaySurface(target?: Element) {
     if (host.parentElement !== surface) surface.append(host);
   }
 }
-const surfaceObserver = new MutationObserver(() => { pageMutated = true; ensureOverlaySurface(); });
+// New or changed page content under a visible Here tag hides it at once; the throttled rescan places it again.
+function hideTagOver(nodes: Iterable<Node | null>) {
+  if (stepChip.hidden) return;
+  const tag = stepChip.getBoundingClientRect();
+  for (const node of nodes) {
+    const el = node instanceof Element ? node : node?.parentElement;
+    if (!el || el === host) continue;
+    const r = el.getBoundingClientRect();
+    if (r.left < tag.right && tag.left < r.right && r.top < tag.bottom && tag.top < r.bottom) {
+      stepChip.hidden = true;
+      placementDirty = true;
+      layoutMovedAt = performance.now();
+      return;
+    }
+  }
+}
+const surfaceObserver = new MutationObserver((records) => {
+  pageMutated = true;
+  hideTagOver(records.flatMap((r) => r.type === "childList" ? [...r.addedNodes] : [r.target]));
+  ensureOverlaySurface();
+});
 surfaceObserver.observe(document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["open", "hidden", "style", "class"] });
 document.addEventListener("toggle", onSurfaceToggle, true);
 function onSurfaceToggle() { ensureOverlaySurface(); }
@@ -308,7 +328,8 @@ function onViewportChange() { pageMutated = true; if (highlighted || badBoxes.le
 const layoutObserver = new ResizeObserver(onViewportChange);
 document.fonts?.addEventListener("loadingdone", onViewportChange);
 window.addEventListener("resize", onViewportChange);
-document.addEventListener("scroll", onViewportChange, true);
+function onScroll(e: Event) { hideTagOver([e.target instanceof Document ? e.target.documentElement : e.target as Node]); onViewportChange(); }
+document.addEventListener("scroll", onScroll, true);
 
 function toast(text: string) {
   const t = document.createElement("div");
@@ -514,7 +535,7 @@ function shutdown() {
   document.removeEventListener("input", onInput, true);
   document.removeEventListener("click", onClick, true);
   window.removeEventListener("resize", onViewportChange);
-  document.removeEventListener("scroll", onViewportChange, true);
+  document.removeEventListener("scroll", onScroll, true);
   clearInterval(urlTimer);
   clearTimeout(formTimer);
   setRecording(false);
