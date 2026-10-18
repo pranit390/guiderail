@@ -6,7 +6,7 @@ The page is the Follow the rail concept with the Rail check logo. The primary bu
 
 `https://guiderail-coach-q7tihot5sq-uc.a.run.app/download/guiderail-extension.zip`
 
-That zip is produced by the coach deploy, which includes the Firebase sign-in key. This landing build does not produce it. Judges sign in with the demo login from the deck. Install is still Load unpacked: unzip, `chrome://extensions`, Developer mode, Load unpacked, pin GuideRail, open the Firebase console.
+That zip is produced by the coach deploy, which includes the Firebase sign-in key. This landing build does not produce it. Judges sign in with the demo login from the deck. Install is still Load unpacked.
 
 ## One command
 
@@ -42,4 +42,4 @@ The flagship story is Create a Firestore database on the Firebase console: Goal,
 
 The form under that story is an illustration. It does not call the coach, and it does not create a database. Guide outlines Database ID. Assist proposes `demo-guide` and fills it only after approval. Test mode is a Violation. You click Create.
 
-The install list under the download button is Load unpacked: unzip, `chrome://extensions`, Developer mode, Load unpacked, pin GuideRail, open the Firebase console. A link beside it opens the labelled practice pages on the hosted coach.
+The install list under the download button comes from `installSteps` in `src/content/guiderail.ts`: Load unpacked, then how to open GuideRail and sign in. A link beside it opens the labelled practice pages on the hosted coach.
