@@ -75,6 +75,17 @@ describe("Journey panel", () => {
     panel.setEnabled(true);
     expect(button.disabled).toBe(false);
   });
+  it("compiles through the fetch function it is given, so the panel can add sign-in headers", async () => {
+    const global = vi.fn(); vi.stubGlobal("fetch", global);
+    const signed = vi.fn().mockResolvedValue(new Response(JSON.stringify(fixture)));
+    const container = document.createElement("section"); document.body.append(container);
+    const compiled = vi.fn();
+    mountJourneyPanel(container, { http: "http://localhost:8826", fetch: signed, compiled, brief: async () => {} });
+    container.querySelector<HTMLButtonElement>("[data-compile]")!.click();
+    await vi.waitFor(() => expect(compiled).toHaveBeenCalledOnce());
+    expect(signed).toHaveBeenCalledWith("http://localhost:8826/journeys/compile", expect.objectContaining({ method: "POST" }));
+    expect(global).not.toHaveBeenCalled();
+  });
   it("reports absent public text without inventing a briefing", async () => {
     const { container } = mount(); container.querySelector<HTMLButtonElement>("[data-brief]")!.click();
     await vi.waitFor(() => expect(container.textContent).toContain("No visible document section was found"));
